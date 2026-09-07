@@ -4,19 +4,18 @@ struct NowPlayingView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var showingQueue = false
-    @State private var animateBleed = false
 
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
 
             ZStack {
-                liquidBleedBackground(size: geo.size)
+                optimizedAmbientBackground(size: geo.size)
 
                 if isLandscape {
-                    HStack(spacing: 32) {
-                        artworkPane(maxHeight: geo.size.height * 0.44)
-                            .frame(maxWidth: geo.size.width * 0.44)
+                    HStack(spacing: 36) {
+                        artworkPane(maxHeight: geo.size.height * 0.46)
+                            .frame(width: geo.size.width * 0.44)
                         
                         rightPane
                             .frame(maxWidth: .infinity)
@@ -34,94 +33,68 @@ struct NowPlayingView: View {
             .overlay(alignment: .topLeading) {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white.opacity(0.85))
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
                         .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
+                        .liquidGlass(cornerRadius: 22, opacity: 0.6)
                         .padding(20)
                 }
             }
             .overlay(alignment: .topTrailing) {
                 Button { showingQueue.toggle() } label: {
                     Image(systemName: showingQueue ? "quote.bubble.fill" : "list.bullet")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white.opacity(0.85))
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
                         .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
+                        .liquidGlass(cornerRadius: 22, opacity: 0.6)
                         .padding(20)
                 }
             }
         }
-        .onAppear {
-            animateBleed = true
-        }
     }
 
-    private func liquidBleedBackground(size: CGSize) -> some View {
+    private func optimizedAmbientBackground(size: CGSize) -> some View {
         ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color.black.ignoresSafeArea()
 
             if let data = audioManager.currentTrack?.artworkData, let img = UIImage(data: data) {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
-                    .scaleEffect(animateBleed ? 1.4 : 1.15)
-                    .rotationEffect(.degrees(animateBleed ? 15 : -15))
-                    .blur(radius: 85)
-                    .opacity(0.7)
-                    .animation(.easeInOut(duration: 8).repeatForever(autoreverses: true), value: animateBleed)
+                    .clipped()
+                    .blur(radius: 50)
+                    .opacity(0.48)
+                    .overlay(Color.black.opacity(0.35))
             } else {
-                Circle()
-                    .fill(Color.purple.opacity(0.55))
-                    .frame(width: size.width * 0.7, height: size.width * 0.7)
-                    .blur(radius: 90)
-                    .offset(x: animateBleed ? -120 : 120, y: animateBleed ? -90 : 90)
-                    .animation(.easeInOut(duration: 7).repeatForever(autoreverses: true), value: animateBleed)
-
-                Circle()
-                    .fill(Color.blue.opacity(0.55))
-                    .frame(width: size.width * 0.65, height: size.width * 0.65)
-                    .blur(radius: 90)
-                    .offset(x: animateBleed ? 120 : -120, y: animateBleed ? 90 : -90)
-                    .animation(.easeInOut(duration: 6).repeatForever(autoreverses: true), value: animateBleed)
+                LinearGradient(
+                    colors: [Color(red: 0.12, green: 0.12, blue: 0.2), Color.black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             }
-
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.35)
-                .edgesIgnoringSafeArea(.all)
         }
+        .drawingGroup()
+        .ignoresSafeArea()
     }
 
     private func artworkPane(maxHeight: CGFloat) -> some View {
-        VStack(spacing: 14) {
-            Spacer(minLength: 10)
+        VStack(spacing: 16) {
+            Spacer(minLength: 8)
 
             if let data = audioManager.currentTrack?.artworkData, let img = UIImage(data: data) {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: maxHeight)
-                    .cornerRadius(22)
+                    .cornerRadius(20)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 22)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.45), .white.opacity(0.08), .clear],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
-                            )
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
                     )
-                    .shadow(color: .black.opacity(0.55), radius: 25, y: 12)
+                    .shadow(color: .black.opacity(0.55), radius: 24, y: 12)
             } else {
-                RoundedRectangle(cornerRadius: 22)
+                RoundedRectangle(cornerRadius: 20)
                     .fill(Color.white.opacity(0.08))
                     .frame(width: maxHeight, height: maxHeight)
                     .overlay(
@@ -130,7 +103,7 @@ struct NowPlayingView: View {
                             .foregroundColor(.white.opacity(0.35))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 22)
+                        RoundedRectangle(cornerRadius: 20)
                             .stroke(Color.white.opacity(0.15), lineWidth: 1)
                     )
             }
@@ -173,7 +146,7 @@ struct NowPlayingView: View {
             }
             .padding(.horizontal, 4)
 
-            HStack(spacing: 34) {
+            HStack(spacing: 32) {
                 Button { audioManager.toggleShuffle() } label: {
                     Image(systemName: "shuffle")
                         .font(.system(size: 18, weight: .semibold))
@@ -202,8 +175,11 @@ struct NowPlayingView: View {
                 }
             }
             .foregroundColor(.white)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .liquidGlass(cornerRadius: 30, opacity: 0.35)
 
-            Spacer(minLength: 10)
+            Spacer(minLength: 8)
         }
     }
 
@@ -215,23 +191,6 @@ struct NowPlayingView: View {
                 lyricsPane
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 24)
-                .fill(.ultraThinMaterial)
-                .opacity(0.65)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(
-                    LinearGradient(
-                        colors: [.white.opacity(0.35), .white.opacity(0.08), .clear, .white.opacity(0.15)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: .black.opacity(0.25), radius: 25, x: 0, y: 15)
         .padding(.vertical, 8)
     }
 
@@ -252,12 +211,12 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 28) {
                         ForEach(lyrics) { line in
                             let isActive = line.id == activeId
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 Text(line.text)
-                                    .font(.system(size: isActive ? 30 : 22, weight: .bold, design: .rounded))
+                                    .font(.system(size: isActive ? 32 : 24, weight: .bold, design: .rounded))
                                     .foregroundColor(isActive ? .white : .white.opacity(0.25))
                                     .blur(radius: isActive ? 0 : 0.6)
                                     .scaleEffect(isActive ? 1.02 : 0.98, anchor: .leading)
@@ -267,7 +226,6 @@ struct NowPlayingView: View {
                                     Text(romaji)
                                         .font(.system(size: isActive ? 15 : 12, weight: .medium, design: .rounded))
                                         .foregroundColor(isActive ? .white.opacity(0.85) : .white.opacity(0.2))
-                                        .blur(radius: isActive ? 0 : 0.4)
                                 }
                             }
                             .id(line.id)
@@ -279,8 +237,20 @@ struct NowPlayingView: View {
                         }
                     }
                     .padding(.vertical, 160)
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 20)
                 }
+                .mask(
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: .black, location: 0.12),
+                            .init(color: .black, location: 0.88),
+                            .init(color: .clear, location: 1.0)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
                 .onChange(of: audioManager.currentTime) { _, _ in
                     if let activeId = activeId {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
@@ -330,6 +300,7 @@ struct NowPlayingView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
         }
+        .liquidGlass(cornerRadius: 24, opacity: 0.4)
     }
 
     private func repeatIcon() -> String {
