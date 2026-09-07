@@ -16,47 +16,55 @@ class LocalLibrary: ObservableObject {
     }
 
     func reloadFiles() {
-        let fileManager = FileManager.default
-        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            statusMessage = "Unable to access Documents folder"
-            return
-        }
+        Task {
+            statusMessage = "Scanning..."
+            let fileManager = FileManager.default
+            guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                statusMessage = "Unable to access Documents folder"
+                return
+            }
 
-        let audioExts = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
-        var discovered: [LocalTrack] = []
+            let audioExts = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
+            var discoveredURLs: [URL] = []
 
-        if let enumerator = fileManager.enumerator(
-            at: docs,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) {
-            for case let fileURL as URL in enumerator {
-                if audioExts.contains(fileURL.pathExtension.lowercased()) {
-                    let track = parseAsset(at: fileURL)
-                    discovered.append(track)
+            if let enumerator = fileManager.enumerator(
+                at: docs,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) {
+                for case let fileURL as URL in enumerator {
+                    if audioExts.contains(fileURL.pathExtension.lowercased()) {
+                        discoveredURLs.append(fileURL)
+                    }
                 }
             }
+
+            var discovered: [LocalTrack] = []
+            for fileURL in discoveredURLs {
+                let track = await parseAsset(at: fileURL)
+                discovered.append(track)
+            }
+
+            discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            self.tracks = discovered
+
+            let albumDict = Dictionary(grouping: discovered, by: { "\($0.album)_\($0.artist)" })
+            self.albums = albumDict.map { _, trackList in
+                AlbumGroup(
+                    name: trackList.first?.album ?? "Unknown Album",
+                    artist: trackList.first?.artist ?? "Unknown Artist",
+                    artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData,
+                    tracks: trackList
+                )
+            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+            let artistDict = Dictionary(grouping: discovered, by: { $0.artist })
+            self.artists = artistDict.map { artistName, trackList in
+                ArtistGroup(name: artistName, tracks: trackList)
+            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+            self.statusMessage = "Indexed \(discovered.count) songs"
         }
-
-        discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        tracks = discovered
-
-        let albumDict = Dictionary(grouping: discovered, by: { "\($0.album)_\($0.artist)" })
-        albums = albumDict.map { _, trackList in
-            AlbumGroup(
-                name: trackList.first?.album ?? "Unknown Album",
-                artist: trackList.first?.artist ?? "Unknown Artist",
-                artworkData: trackList.first?.artworkData,
-                tracks: trackList
-            )
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-        let artistDict = Dictionary(grouping: discovered, by: { $0.artist })
-        artists = artistDict.map { artistName, trackList in
-            ArtistGroup(name: artistName, tracks: trackList)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-        statusMessage = "Indexed \(discovered.count) songs"
     }
 
     func importExternalURLs(_ urls: [URL]) {
@@ -73,9 +81,12 @@ class LocalLibrary: ObservableObject {
         reloadFiles()
     }
 
-    private func parseAsset(at url: URL) -> LocalTrack {
+    private func parseAsset(at url: URL) async -> LocalTrack {
         let asset = AVURLAsset(url: url)
-        let duration = CMTimeGetSeconds(asset.duration)
+
+        let durationSeconds = (try? await asset.load(.duration).seconds) ?? 0.0
+        let duration = durationSeconds.isNaN ? 0.0 : durationSeconds
+        let allMetadata = (try? await asset.load(.metadata)) ?? []
 
         var title = url.deletingPathExtension().lastPathComponent
         var artist = "Unknown Artist"
@@ -83,23 +94,44 @@ class LocalLibrary: ObservableObject {
         var genre = "Unknown Genre"
         var artworkData: Data?
 
-        for item in asset.commonMetadata {
-            guard let key = item.commonKey?.rawValue else { continue }
-            switch key {
-            case "title":
-                title = (item.value as? String) ?? title
-            case "artist":
-                artist = (item.value as? String) ?? artist
-            case "albumName":
-                album = (item.value as? String) ?? album
-            case "type":
-                genre = (item.value as? String) ?? genre
-            case "artwork":
-                if let data = item.dataValue {
-                    artworkData = data
+        for item in allMetadata {
+            let keyString = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
+
+            // Title: common, ID3 (TIT2), iTunes (©nam)
+            if keyString == "title" || keyString == "TIT2" || keyString == "©nam" {
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
+                    title = str
                 }
-            default:
-                break
+            }
+            // Artist: common, ID3 (TPE1, TPE2), iTunes (©ART, aART)
+            else if keyString == "artist" || keyString == "TPE1" || keyString == "TPE2" || keyString == "©ART" || keyString == "aART" {
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
+                    artist = str
+                }
+            }
+            // Album: common, ID3 (TALB), iTunes (©alb)
+            else if keyString == "albumName" || keyString == "album" || keyString == "TALB" || keyString == "©alb" {
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
+                    album = str
+                }
+            }
+            // Genre: common, ID3 (TCON), iTunes (©gen)
+            else if keyString == "type" || keyString == "genre" || keyString == "TCON" || keyString == "©gen" {
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
+                    genre = str
+                }
+            }
+            // Artwork: common, ID3 (APIC), iTunes (covr)
+            else if keyString == "artwork" || keyString == "APIC" || keyString == "covr" {
+                if let data = try? await item.load(.dataValue) {
+                    artworkData = data
+                } else if let rawVal = try? await item.load(.value) {
+                    if let d = rawVal as? Data {
+                        artworkData = d
+                    } else if let dict = rawVal as? [String: Any], let d = dict["data"] as? Data {
+                        artworkData = d
+                    }
+                }
             }
         }
 
@@ -109,7 +141,7 @@ class LocalLibrary: ObservableObject {
             artist: artist,
             album: album,
             genre: genre,
-            duration: duration.isNaN ? 0.0 : duration,
+            duration: duration,
             artworkData: artworkData
         )
     }
