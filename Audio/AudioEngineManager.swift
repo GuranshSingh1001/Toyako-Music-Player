@@ -231,20 +231,37 @@ class AudioEngineManager: ObservableObject {
 
     private func setupRemoteControls() {
         let commandCenter = MPRemoteCommandCenter.shared()
+        
+        commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
+            guard let self = self, !self.isPlaying else { return .commandFailed }
+            self.togglePlayPause()
             return .success
         }
+
+        commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
+            guard let self = self, self.isPlaying else { return .commandFailed }
+            self.togglePlayPause()
             return .success
         }
+
+        commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             self?.forward()
             return .success
         }
+
+        commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             self?.backward()
+            return .success
+        }
+
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            self?.seek(to: positionEvent.positionTime)
             return .success
         }
     }
@@ -261,6 +278,7 @@ class AudioEngineManager: ObservableObject {
             if type == .began {
                 self?.player.pause()
                 self?.isPlaying = false
+                self?.updatePlaybackState()
             }
         }
     }
@@ -271,8 +289,8 @@ class AudioEngineManager: ObservableObject {
             MPMediaItemPropertyArtist: track.artist,
             MPMediaItemPropertyAlbumTitle: track.album,
             MPMediaItemPropertyPlaybackDuration: track.duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: 0.0,
-            MPNowPlayingInfoPropertyPlaybackRate: 1.0
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
         if let data = track.artworkData, let image = UIImage(data: data) {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
