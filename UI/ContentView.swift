@@ -69,6 +69,9 @@ struct ContentView: View {
             }
         }
         .keyboardShortcut(" ", modifiers: [])
+        .onAppear {
+        MusicImporter.scanDocumentsDirectory(into: modelContext, existingTracks: tracks)
+    }
         .onChange(of: selectedCategory) { oldValue, newValue in
             // Handle category switching logic here
         }
