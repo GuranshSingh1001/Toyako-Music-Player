@@ -10,16 +10,42 @@ struct NowPlayingView: View {
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
+            
+            // Define the swipe-to-dismiss gesture
+            let dismissGesture = DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                .onChanged { value in
+                    if value.translation.height > 0 {
+                        dragOffset = value.translation.height
+                    }
+                }
+                .onEnded { value in
+                    if value.translation.height > 100 || value.predictedEndTranslation.height > 200 {
+                        closePlayer(geoHeight: geo.size.height)
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
 
             ZStack {
                 Color.black.ignoresSafeArea()
+                
+                // 1. Gesture attached to the background (empty space)
                 appleMusicSmartBleedBackground(size: geo.size)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(dismissGesture)
 
                 if isLandscape {
                     HStack(spacing: geo.size.width * 0.035) {
+                        
+                        // 2. Gesture attached to the Artwork Pane side
                         artworkPane(maxHeight: geo.size.height * 0.48)
                             .frame(width: geo.size.width * 0.35) // 35:65 ratio for wider lyrics
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(dismissGesture)
 
+                        // 3. NO gesture attached to the lyrics; allows normal vertical scrolling
                         lyricsPane
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -28,13 +54,16 @@ struct NowPlayingView: View {
                 } else {
                     VStack(spacing: 20) {
                         artworkPane(maxHeight: geo.size.height * 0.38)
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(dismissGesture)
+                        
                         lyricsPane
                     }
                     .padding(24)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .clipped() // Fixes the bloom: Strictly chops off any blur bleeding out of the view bounds
+            .clipped()
             .overlay(alignment: .topLeading) {
                 Button {
                     closePlayer(geoHeight: geo.size.height)
@@ -45,27 +74,8 @@ struct NowPlayingView: View {
                         .padding(24)
                 }
             }
-            // Move view via offset based on visibility & drag
             .offset(y: isVisible ? max(0, dragOffset) : geo.size.height)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10, coordinateSpace: .local)
-                    .onChanged { value in
-                        if value.translation.height > 0 {
-                            dragOffset = value.translation.height
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 100 || value.predictedEndTranslation.height > 200 {
-                            closePlayer(geoHeight: geo.size.height)
-                        } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                dragOffset = 0
-                            }
-                        }
-                    }
-            )
             .onAppear {
-                // Instantly slide UP when loaded in the ZStack
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                     isVisible = true
                 }
@@ -75,7 +85,6 @@ struct NowPlayingView: View {
     }
 
     private func closePlayer(geoHeight: CGFloat) {
-        // Slide DOWN, then safely remove from ContentView
         withAnimation(.easeIn(duration: 0.25)) {
             dragOffset = geoHeight
         }
@@ -100,10 +109,12 @@ struct NowPlayingView: View {
                     .saturation(isBright ? 0.8 : 1.45)
                     .blur(radius: isBright ? 45 : 65)
                     .opacity(isBright ? 0.65 : 0.92)
+                    
+                // Color.black.opacity(isBright ? 0.45 : 0.20)
             }
         }
         .frame(width: size.width, height: size.height)
-        .clipped() // Double protection ensuring the blurred edges don't escape the container
+        .clipped()
         .ignoresSafeArea()
     }
 
