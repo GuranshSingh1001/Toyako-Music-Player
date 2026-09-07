@@ -11,19 +11,16 @@ struct NowPlayingView: View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
             
-            // 1:1 hardware-accelerated DragGesture
             let dismissGesture = DragGesture(minimumDistance: 5, coordinateSpace: .global)
                 .onChanged { value in
                     let y = value.translation.height
                     if y > 0 {
-                        // Instant assignment without animation wrapper for zero-latency tracking
                         dragOffset = y
                     }
                 }
                 .onEnded { value in
                     let y = value.translation.height
                     let predicted = value.predictedEndTranslation.height
-                    // Lowered threshold makes flicking it down feel effortless
                     if y > 100 || (predicted - y) > 200 {
                         withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
                             dragOffset = geo.size.height
@@ -41,21 +38,19 @@ struct NowPlayingView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 
-                // 1. Gesture attached ONLY to the background
-                OptimizedBackgroundBleed(artworkData: audioManager.currentTrack?.artworkData)
+                // 1. Moving Apple Music Ambient Mesh Bleed
+                AppleMusicMovingBleedBackground(artworkData: audioManager.currentTrack?.artworkData)
                     .contentShape(Rectangle())
                     .gesture(dismissGesture)
                     .ignoresSafeArea()
 
                 if isLandscape {
                     HStack(spacing: geo.size.width * 0.035) {
-                        // 2. Gesture attached ONLY to the Artwork Pane
                         artworkPane(maxHeight: geo.size.height * 0.48)
                             .frame(width: geo.size.width * 0.35)
                             .contentShape(Rectangle())
                             .gesture(dismissGesture)
 
-                        // 3. NO gesture on lyrics; allows butter-smooth native vertical scrolling
                         lyricsPane
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -89,10 +84,8 @@ struct NowPlayingView: View {
                         .padding(24)
                 }
             }
-            // Move the entire flattened view via offset
             .offset(y: isVisible ? dragOffset : geo.size.height)
             .onAppear {
-                // Crisp, fast entrance
                 withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
                     isVisible = true
                 }
@@ -138,28 +131,17 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 4)
 
-            VStack(spacing: 6) {
-                Slider(
-                    value: Binding(
-                        get: { audioManager.playbackProgress },
-                        set: { newProgress in
-                            if let dur = audioManager.currentTrack?.duration {
-                                audioManager.seek(to: newProgress * dur)
-                            }
-                        }
-                    ),
-                    in: 0.0...1.0
-                )
-                .tint(.white)
-
-                HStack {
-                    Text(formatTime(audioManager.currentTime))
-                    Spacer()
-                    Text("-" + formatTime(max(0, (audioManager.currentTrack?.duration ?? 0) - audioManager.currentTime)))
+            // Authentic Apple Music Pill Scrubber
+            AppleMusicScrubberBar(
+                progress: audioManager.playbackProgress,
+                duration: audioManager.currentTrack?.duration ?? 0,
+                currentTime: audioManager.currentTime,
+                onSeek: { newProgress in
+                    if let dur = audioManager.currentTrack?.duration {
+                        audioManager.seek(to: newProgress * dur)
+                    }
                 }
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.65))
-            }
+            )
             .padding(.horizontal, 4)
 
             HStack(spacing: 40) {
@@ -257,7 +239,7 @@ struct NowPlayingView: View {
                     .padding(.vertical, 240)
                     .padding(.horizontal, 16)
                 }
-                .compositingGroup() // Flattens scroll content for 60fps mask rendering
+                .compositingGroup()
                 .mask(
                     LinearGradient(
                         gradient: Gradient(stops: [
@@ -270,10 +252,8 @@ struct NowPlayingView: View {
                         endPoint: .bottom
                     )
                 )
-                // Ensures we only trigger the scroll engine exactly when the line changes
                 .onChange(of: activeId) { _, newId in
                     if let newId = newId {
-                        // High damping prevents bouncy jitter; keeps it completely fluid
                         withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
                             proxy.scrollTo(newId, anchor: .center)
                         }
@@ -293,6 +273,68 @@ struct NowPlayingView: View {
     private func activeLineId() -> UUID? {
         audioManager.currentLyrics.last(where: { $0.time <= audioManager.currentTime })?.id
     }
+}
+
+// MARK: - Authentic Apple Music Interactive Scrubber
+struct AppleMusicScrubberBar: View {
+    let progress: Double
+    let duration: TimeInterval
+    let currentTime: TimeInterval
+    let onSeek: (Double) -> Void
+
+    @State private var isDragging: Bool = false
+    @State private var dragProgress: Double = 0.0
+
+    private var activeProgress: Double {
+        isDragging ? dragProgress : progress
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Track base (translucent capsule)
+                    Capsule()
+                        .fill(Color.white.opacity(0.18))
+                        .frame(height: isDragging ? 8 : 5)
+
+                    // Track elapsed fill
+                    Capsule()
+                        .fill(Color.white.opacity(0.85))
+                        .frame(width: max(0, min(geo.size.width * CGFloat(activeProgress), geo.size.width)),
+                               height: isDragging ? 8 : 5)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isDragging = true
+                            let computed = Double(value.location.x / geo.size.width)
+                            dragProgress = max(0.0, min(1.0, computed))
+                        }
+                        .onEnded { value in
+                            let computed = Double(value.location.x / geo.size.width)
+                            let finalVal = max(0.0, min(1.0, computed))
+                            onSeek(finalVal)
+                            isDragging = false
+                        }
+                )
+                .animation(.easeInOut(duration: 0.15), value: isDragging)
+            }
+            .frame(height: 14)
+
+            // Timestamps
+            HStack {
+                Text(formatTime(isDragging ? duration * dragProgress : currentTime))
+                Spacer()
+                let remaining = max(0, duration - (isDragging ? duration * dragProgress : currentTime))
+                Text("-" + formatTime(remaining))
+            }
+            .font(.system(size: 12, weight: .medium, design: .monospaced))
+            .foregroundColor(.white.opacity(0.6))
+        }
+    }
 
     private func formatTime(_ duration: TimeInterval) -> String {
         let mins = Int(duration) / 60
@@ -301,38 +343,56 @@ struct NowPlayingView: View {
     }
 }
 
-// MARK: - Dedicated Hardware-Accelerated Background View
-/// Isolating this into a separate struct and using .drawingGroup() stops SwiftUI
-/// from recalculating the heavy 65pt Gaussian blur during 60fps swiping animations.
-struct OptimizedBackgroundBleed: View {
+// MARK: - Animated Apple Music Bleed Engine
+struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
     @State private var isBright: Bool = false
+    @State private var phase: Bool = false
 
     var body: some View {
         ZStack {
             if let data = artworkData, let img = UIImage(data: data) {
+                // Secondary offset layer
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
-                    .scaleEffect(1.35)
+                    .scaleEffect(phase ? 1.45 : 1.30)
+                    .rotationEffect(.degrees(phase ? 8 : -8))
+                    .offset(x: phase ? 30 : -30, y: phase ? -25 : 25)
                     .clipped()
                     .brightness(isBright ? -0.15 : -0.05)
                     .saturation(isBright ? 0.8 : 1.45)
+                    .blur(radius: 60, opaque: true)
+                    .opacity(0.75)
+
+                // Primary moving layer
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(phase ? 1.35 : 1.50)
+                    .rotationEffect(.degrees(phase ? -12 : 12))
+                    .offset(x: phase ? -35 : 35, y: phase ? 30 : -30)
+                    .clipped()
+                    .brightness(isBright ? -0.15 : -0.05)
+                    .saturation(isBright ? 0.85 : 1.5)
                     .blur(radius: isBright ? 45 : 65, opaque: true)
                     .opacity(isBright ? 0.65 : 0.92)
             } else {
                 Color.black
             }
         }
-        // MAGICAL PERFORMANCE FIX: Forces rendering to a single offscreen GPU Metal texture
         .drawingGroup()
-        .onAppear { calculateBrightness() }
+        .onAppear {
+            calculateBrightness()
+            withAnimation(.easeInOut(duration: 18).repeatForever(autoreverses: true)) {
+                phase.toggle()
+            }
+        }
         .onChange(of: artworkData) { _, _ in calculateBrightness() }
     }
 
     private func calculateBrightness() {
         guard let data = artworkData, let img = UIImage(data: data) else { return }
-        // Push the heavy pixel scanning to the background so the UI thread doesn't stutter
         DispatchQueue.global(qos: .userInitiated).async {
             let bright = img.isImageTooBright()
             DispatchQueue.main.async {
