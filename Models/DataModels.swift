@@ -71,7 +71,6 @@ struct LyricLine: Identifiable, Equatable {
 
 extension String {
     func toJapaneseRomaji() -> String? {
-        // Only process lines containing Japanese scripts (Kanji, Hiragana, Katakana)
         guard self.range(of: #"[一-龯ぁ-んァ-ヶ]"#, options: .regularExpression) != nil else {
             return nil
         }
@@ -85,8 +84,8 @@ extension String {
         let length = CFStringGetLength(cfText)
         guard length > 0 else { return nil }
 
-        // Use ja_JP locale to force Japanese phonetic readings instead of Mandarin Pinyin
-        guard let locale = CFLocaleCreate(kCFAllocatorDefault, "ja_JP" as CFString),
+        let localeIdentifier = CFLocaleCreateCanonicalLanguageIdentifierFromString(kCFAllocatorDefault, "ja" as CFString)
+        guard let locale = CFLocaleCreate(kCFAllocatorDefault, localeIdentifier),
               let tokenizer = CFStringTokenizerCreate(
                   kCFAllocatorDefault,
                   cfText,
@@ -102,14 +101,14 @@ extension String {
 
         while !tokenType.isEmpty {
             if let latin = CFStringTokenizerCopyCurrentTokenAttribute(tokenizer, kCFStringTokenizerAttributeLatinTranscription) as? String {
-                let cleaned = latin.trimmingCharacters(in: .whitespaces)
+                let cleaned = latin.trimmingCharacters(in: CharacterSet.whitespaces)
                 if !cleaned.isEmpty {
                     words.append(cleaned)
                 }
             } else {
                 let range = CFStringTokenizerGetCurrentTokenRange(tokenizer)
                 let sub = (CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) as String)
-                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet.whitespaces)
                 if !sub.isEmpty {
                     words.append(sub)
                 }
@@ -124,7 +123,7 @@ extension String {
         result = result.replacingOccurrences(of: " ?", with: "?")
         result = result.replacingOccurrences(of: " )", with: ")")
         result = result.replacingOccurrences(of: "( ", with: "(")
-        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        result = result.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
         return (result.isEmpty || result == self) ? nil : result
     }
