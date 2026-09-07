@@ -31,13 +31,10 @@ class AudioEngineManager: ObservableObject {
     func play(track: LocalTrack) {
         currentTrack = track
         loadLyrics(for: track)
-        
-        // Detach previous observers on the same player instance before swapping items
+
+        // Detach previous observers on this persistent player before swapping tracks
         detachTimeObserver()
-        if let token = endObserverToken {
-            NotificationCenter.default.removeObserver(token)
-            endObserverToken = nil
-        }
+        detachEndObserver()
 
         let playerItem = AVPlayerItem(url: track.url)
         player.replaceCurrentItem(with: playerItem)
@@ -46,7 +43,7 @@ class AudioEngineManager: ObservableObject {
 
         updateNowPlaying(track: track)
         attachTimeObserver(duration: track.duration)
-        
+
         endObserverToken = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
@@ -70,6 +67,11 @@ class AudioEngineManager: ObservableObject {
         if queueIndex + 1 < queue.count {
             queueIndex += 1
             play(track: queue[queueIndex])
+        } else {
+            player.pause()
+            isPlaying = false
+            seek(to: 0.0)
+            updatePlaybackState()
         }
     }
 
@@ -91,6 +93,7 @@ class AudioEngineManager: ObservableObject {
         if let duration = currentTrack?.duration, duration > 0 {
             playbackProgress = time / duration
         }
+        updatePlaybackState()
     }
 
     private func loadLyrics(for track: LocalTrack) {
@@ -109,9 +112,16 @@ class AudioEngineManager: ObservableObject {
         }
     }
 
+    private func detachEndObserver() {
+        if let token = endObserverToken {
+            NotificationCenter.default.removeObserver(token)
+            endObserverToken = nil
+        }
+    }
+
     private func attachTimeObserver(duration: TimeInterval) {
         guard duration > 0 else { return }
-        
+
         let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
@@ -181,8 +191,6 @@ class AudioEngineManager: ObservableObject {
 
     deinit {
         detachTimeObserver()
-        if let token = endObserverToken {
-            NotificationCenter.default.removeObserver(token)
-        }
+        detachEndObserver()
     }
 }
