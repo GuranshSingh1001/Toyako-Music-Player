@@ -20,41 +20,68 @@ struct ContentView: View {
     @State private var newPlaylistName = ""
     @State private var searchText = ""
     @State private var playlistToEdit: Playlist?
-    
-    // Controls the Apple Music Pill visibility on scroll
-    @State private var showFloatingPill = true
 
     var body: some View {
         ZStack {
-            // Main Single-Column App Navigation
-            NavigationStack {
-                ZStack(alignment: .top) {
-                    
-                    // 1. Content Area
+            NavigationSplitView {
+                List(selection: $selectedCategory) {
+                    Section("Library") {
+                        NavigationLink(value: LibraryCategory.songs) {
+                            Label("Songs", systemImage: "music.note")
+                        }
+                        NavigationLink(value: LibraryCategory.albums) {
+                            Label("Albums", systemImage: "square.stack")
+                        }
+                        NavigationLink(value: LibraryCategory.artists) {
+                            Label("Artists", systemImage: "music.mic")
+                        }
+                    }
+
+                    Section("Playlists") {
+                        ForEach(library.playlists) { pl in
+                            NavigationLink(value: LibraryCategory.playlist(pl.id)) {
+                                Label(pl.name, systemImage: "music.note.list")
+                            }
+                        }
+                        Button {
+                            showNewPlaylistAlert = true
+                        } label: {
+                            Label("New Playlist...", systemImage: "plus")
+                        }
+                    }
+
+                    Section("Status") {
+                        Text(library.statusMessage)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .navigationTitle("Library")
+            } detail: {
+                ZStack(alignment: .bottom) {
                     detailContent
                         .searchable(text: $searchText, prompt: "Search songs, albums, artists")
-                        .safeAreaInset(edge: .top) {
-                            Color.clear.frame(height: 70) // Prevents list items from hiding under the pill
-                        }
-                        // Instantly detects scroll direction to hide/show the pill seamlessly
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 15, coordinateSpace: .global)
-                                .onChanged { value in
-                                    let isScrollingDown = value.translation.height < 0
-                                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) {
-                                        showFloatingPill = !isScrollingDown
-                                    }
-                                }
-                        )
 
-                    // 2. iPadOS 18 Style Floating Pill
-                    FloatingTabBar(
-                        selectedCategory: $selectedCategory,
-                        playlists: library.playlists,
-                        showNewPlaylistAlert: $showNewPlaylistAlert
-                    )
-                    .offset(y: showFloatingPill ? 10 : -100)
-                    .opacity(showFloatingPill ? 1 : 0)
+                    if audioManager.currentTrack != nil {
+                        MiniPlayerView()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                                    showNowPlaying = true
+                                }
+                            }
+                            .gesture(
+                                DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                                    .onEnded { value in
+                                        if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
+                                            withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                                                showNowPlaying = true
+                                            }
+                                        }
+                                    }
+                            )
+                            .padding(.bottom, 12)
+                    }
                 }
                 .navigationTitle(titleForCategory())
                 .toolbar {
@@ -109,33 +136,6 @@ struct ContentView: View {
                 library.reloadFiles()
             }
             
-            // 3. MiniPlayer fixed at bottom
-            VStack {
-                Spacer()
-                if audioManager.currentTrack != nil {
-                    MiniPlayerView()
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                                showNowPlaying = true
-                            }
-                        }
-                        .gesture(
-                            DragGesture(minimumDistance: 10, coordinateSpace: .local)
-                                .onEnded { value in
-                                    // Swipe-up to present player
-                                    if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
-                                        withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                                            showNowPlaying = true
-                                        }
-                                    }
-                                }
-                        )
-                        .padding(.bottom, 12)
-                }
-            }
-
-            // 4. NowPlayingOverlay
             if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
                     .transition(.identity) 
@@ -213,76 +213,6 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Authentic Apple Music Floating Pill
-struct FloatingTabBar: View {
-    @Binding var selectedCategory: LibraryCategory?
-    let playlists: [Playlist]
-    @Binding var showNewPlaylistAlert: Bool
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            TabButton(title: "Songs", icon: "music.note", category: .songs, selected: $selectedCategory)
-            TabButton(title: "Albums", icon: "square.stack", category: .albums, selected: $selectedCategory)
-            TabButton(title: "Artists", icon: "music.mic", category: .artists, selected: $selectedCategory)
-            
-            Menu {
-                ForEach(playlists) { pl in
-                    Button(pl.name) { selectedCategory = .playlist(pl.id) }
-                }
-                Divider()
-                Button("New Playlist...") { showNewPlaylistAlert = true }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "music.note.list")
-                    Text("Playlists")
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(isPlaylistSelected ? Color.primary : Color.clear)
-                .clipShape(Capsule())
-                .foregroundColor(isPlaylistSelected ? Color(UIColor.systemBackground) : Color.primary.opacity(0.7))
-            }
-        }
-        .padding(8)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .shadow(color: .black.opacity(0.15), radius: 20, y: 8)
-    }
-    
-    var isPlaylistSelected: Bool {
-        if case .playlist(_) = selectedCategory { return true }
-        return false
-    }
-}
-
-struct TabButton: View {
-    let title: String
-    let icon: String
-    let category: LibraryCategory
-    @Binding var selected: LibraryCategory?
-    
-    var isSelected: Bool { selected == category }
-    
-    var body: some View {
-        Button {
-            selected = category
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                Text(title)
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(isSelected ? Color.primary : Color.clear)
-            .clipShape(Capsule())
-            .foregroundColor(isSelected ? Color(UIColor.systemBackground) : Color.primary.opacity(0.7))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - Playlists & Utility Views
 
 struct PlaylistHeaderView: View {
@@ -328,7 +258,8 @@ struct PlaylistHeaderView: View {
                             if !audioManager.isShuffle {
                                 audioManager.toggleShuffle()
                             }
-                            audioManager.startQueue(tracks: tracks, startIndex: 0)
+                            let randomIndex = Int.random(in: 0..<tracks.count)
+                            audioManager.startQueue(tracks: tracks, startIndex: randomIndex)
                         }
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
