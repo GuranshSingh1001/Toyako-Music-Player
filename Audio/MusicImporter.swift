@@ -48,19 +48,28 @@ class LocalLibrary: ObservableObject {
             discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             self.tracks = discovered
 
-            let albumDict = Dictionary(grouping: discovered, by: { "\($0.album)_\($0.artist)" })
+            // Case-insensitive album grouping (e.g. "SINGLES" & "singles")
+            let albumDict = Dictionary(grouping: discovered, by: {
+                "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
+            })
             self.albums = albumDict.map { _, trackList in
-                AlbumGroup(
-                    name: trackList.first?.album ?? "Unknown Album",
-                    artist: trackList.first?.artist ?? "Unknown Artist",
+                let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
+                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+                return AlbumGroup(
+                    name: preferredName,
+                    artist: preferredArtist,
                     artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData,
                     tracks: trackList
                 )
             }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
-            let artistDict = Dictionary(grouping: discovered, by: { $0.artist })
-            self.artists = artistDict.map { artistName, trackList in
-                ArtistGroup(name: artistName, tracks: trackList)
+            // Case-insensitive artist grouping (e.g. "Does" & "DOES")
+            let artistDict = Dictionary(grouping: discovered, by: {
+                $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
+            })
+            self.artists = artistDict.map { _, trackList in
+                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+                return ArtistGroup(name: preferredArtist, tracks: trackList)
             }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
             self.statusMessage = "Indexed \(discovered.count) songs"
@@ -97,32 +106,23 @@ class LocalLibrary: ObservableObject {
         for item in allMetadata {
             let keyString = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
 
-            // Title: common, ID3 (TIT2), iTunes (©nam)
             if keyString == "title" || keyString == "TIT2" || keyString == "©nam" {
                 if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
                     title = str
                 }
-            }
-            // Artist: common, ID3 (TPE1, TPE2), iTunes (©ART, aART)
-            else if keyString == "artist" || keyString == "TPE1" || keyString == "TPE2" || keyString == "©ART" || keyString == "aART" {
+            } else if keyString == "artist" || keyString == "TPE1" || keyString == "TPE2" || keyString == "©ART" || keyString == "aART" {
                 if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
                     artist = str
                 }
-            }
-            // Album: common, ID3 (TALB), iTunes (©alb)
-            else if keyString == "albumName" || keyString == "album" || keyString == "TALB" || keyString == "©alb" {
+            } else if keyString == "albumName" || keyString == "album" || keyString == "TALB" || keyString == "©alb" {
                 if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
                     album = str
                 }
-            }
-            // Genre: common, ID3 (TCON), iTunes (©gen)
-            else if keyString == "type" || keyString == "genre" || keyString == "TCON" || keyString == "©gen" {
+            } else if keyString == "type" || keyString == "genre" || keyString == "TCON" || keyString == "©gen" {
                 if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
                     genre = str
                 }
-            }
-            // Artwork: common, ID3 (APIC), iTunes (covr)
-            else if keyString == "artwork" || keyString == "APIC" || keyString == "covr" {
+            } else if keyString == "artwork" || keyString == "APIC" || keyString == "covr" {
                 if let data = try? await item.load(.dataValue) {
                     artworkData = data
                 } else if let rawVal = try? await item.load(.value) {
