@@ -1,60 +1,62 @@
 import Foundation
 import AVFoundation
 
-struct LocalTrack: Identifiable, Hashable {
-    let id = UUID()
-    let url: URL
-    let title: String
-    let artist: String
-    let duration: TimeInterval
-}
-
 @MainActor
 class LocalLibrary: ObservableObject {
     @Published var tracks: [LocalTrack] = []
-    @Published var statusMessage: String = "No songs loaded"
+    @Published var albums: [AlbumGroup] = []
+    @Published var artists: [ArtistGroup] = []
+    @Published var playlists: [Playlist] = []
+    @Published var statusMessage: String = "Scanning..."
+
+    private let playlistStorageKey = "offline_music_playlists"
+
+    init() {
+        loadPlaylists()
+    }
 
     func reloadFiles() {
         let fileManager = FileManager.default
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            statusMessage = "Cannot locate Documents folder"
+            statusMessage = "Unable to access Documents folder"
             return
         }
 
-        let audioExtensions = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
-        var discoveredTracks: [LocalTrack] = []
+        let audioExts = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
+        var discovered: [LocalTrack] = []
 
-        // Recursive enumerator: searches root AND all subfolders/containers
         if let enumerator = fileManager.enumerator(
             at: docs,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) {
             for case let fileURL as URL in enumerator {
-                if audioExtensions.contains(fileURL.pathExtension.lowercased()) {
-                    let asset = AVURLAsset(url: fileURL)
-                    let duration = CMTimeGetSeconds(asset.duration)
-                    let title = fileURL.deletingPathExtension().lastPathComponent
-                    
-                    discoveredTracks.append(
-                        LocalTrack(
-                            url: fileURL,
-                            title: title,
-                            artist: "Local Track",
-                            duration: duration.isNaN ? 0 : duration
-                        )
-                    )
+                if audioExts.contains(fileURL.pathExtension.lowercased()) {
+                    let track = parseAsset(at: fileURL)
+                    discovered.append(track)
                 }
             }
         }
 
-        if discoveredTracks.isEmpty {
-            statusMessage = "Zero audio files found in: \(docs.path)"
-            tracks = []
-        } else {
-            tracks = discoveredTracks
-            statusMessage = "Successfully loaded \(discoveredTracks.count) audio file(s)"
-        }
+        discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        tracks = discovered
+
+        let albumDict = Dictionary(grouping: discovered, by: { "\($0.album)_\($0.artist)" })
+        albums = albumDict.map { _, trackList in
+            AlbumGroup(
+                name: trackList.first?.album ?? "Unknown Album",
+                artist: trackList.first?.artist ?? "Unknown Artist",
+                artworkData: trackList.first?.artworkData,
+                tracks: trackList
+            )
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        let artistDict = Dictionary(grouping: discovered, by: { $0.artist })
+        artists = artistDict.map { artistName, trackList in
+            ArtistGroup(name: artistName, tracks: trackList)
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        statusMessage = "Indexed \(discovered.count) songs"
     }
 
     func importExternalURLs(_ urls: [URL]) {
@@ -63,14 +65,80 @@ class LocalLibrary: ObservableObject {
 
         for url in urls {
             let hasAccess = url.startAccessingSecurityScopedResource()
-            defer {
-                if hasAccess { url.stopAccessingSecurityScopedResource() }
-            }
-
-            let destination = docs.appendingPathComponent(url.lastPathComponent)
-            try? fileManager.removeItem(at: destination)
-            try? fileManager.copyItem(at: url, to: destination)
+            let dest = docs.appendingPathComponent(url.lastPathComponent)
+            try? fileManager.removeItem(at: dest)
+            try? fileManager.copyItem(at: url, to: dest)
+            if hasAccess { url.stopAccessingSecurityScopedResource() }
         }
         reloadFiles()
+    }
+
+    private func parseAsset(at url: URL) -> LocalTrack {
+        let asset = AVURLAsset(url: url)
+        let duration = CMTimeGetSeconds(asset.duration)
+
+        var title = url.deletingPathExtension().lastPathComponent
+        var artist = "Unknown Artist"
+        var album = "Unknown Album"
+        var genre = "Unknown Genre"
+        var artworkData: Data?
+
+        for item in asset.commonMetadata {
+            guard let key = item.commonKey?.rawValue else { continue }
+            switch key {
+            case "title":
+                title = (item.value as? String) ?? title
+            case "artist":
+                artist = (item.value as? String) ?? artist
+            case "albumName":
+                album = (item.value as? String) ?? album
+            case "type":
+                genre = (item.value as? String) ?? genre
+            case "artwork":
+                if let data = item.dataValue {
+                    artworkData = data
+                }
+            default:
+                break
+            }
+        }
+
+        return LocalTrack(
+            url: url,
+            title: title,
+            artist: artist,
+            album: album,
+            genre: genre,
+            duration: duration.isNaN ? 0.0 : duration,
+            artworkData: artworkData
+        )
+    }
+
+    func createPlaylist(name: String) {
+        let newPlaylist = Playlist(name: name, trackURLs: [])
+        playlists.append(newPlaylist)
+        savePlaylists()
+    }
+
+    func addTrackToPlaylist(playlistID: UUID, track: LocalTrack) {
+        if let idx = playlists.firstIndex(where: { $0.id == playlistID }) {
+            if !playlists[idx].trackURLs.contains(track.url) {
+                playlists[idx].trackURLs.append(track.url)
+                savePlaylists()
+            }
+        }
+    }
+
+    private func savePlaylists() {
+        if let encoded = try? JSONEncoder().encode(playlists) {
+            UserDefaults.standard.set(encoded, forKey: playlistStorageKey)
+        }
+    }
+
+    private func loadPlaylists() {
+        if let data = UserDefaults.standard.data(forKey: playlistStorageKey),
+           let decoded = try? JSONDecoder().decode([Playlist].self, from: data) {
+            playlists = decoded
+        }
     }
 }
