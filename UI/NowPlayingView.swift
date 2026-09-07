@@ -126,8 +126,11 @@ struct NowPlayingView: View {
     }
 
     private var lyricsPane: some View {
-        ScrollViewReader { proxy in
-            if audioManager.currentLyrics.isEmpty {
+        let lyrics = audioManager.currentLyrics
+        let playhead = audioManager.currentTime
+
+        return ScrollViewReader { proxy in
+            if lyrics.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "text.bubble")
                         .font(.largeTitle)
@@ -139,8 +142,8 @@ struct NowPlayingView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 28) {
-                        ForEach(audioManager.currentLyrics) { line in
-                            let active = isActiveLine(line)
+                        ForEach(lyrics) { line in
+                            let active = line.id == currentActiveLineId(lyrics: lyrics, time: playhead)
                             Text(line.text)
                                 .font(.system(size: 28, weight: .bold, design: .rounded))
                                 .foregroundColor(active ? .white : .white.opacity(0.2))
@@ -155,9 +158,9 @@ struct NowPlayingView: View {
                     .padding(.horizontal, 24)
                 }
                 .onChange(of: audioManager.currentTime) { _, newTime in
-                    if let active = audioManager.currentLyrics.last(where: { $0.time <= newTime }) {
+                    if let activeId = currentActiveLineId(lyrics: lyrics, time: newTime) {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            proxy.scrollTo(active.id, anchor: .center)
+                            proxy.scrollTo(activeId, anchor: .center)
                         }
                     }
                 }
@@ -200,11 +203,8 @@ struct NowPlayingView: View {
         }
     }
 
-    private func isActiveLine(_ line: LyricLine) -> Bool {
-        guard let current = audioManager.currentLyrics.last(where: { $0.time <= audioManager.currentTime }) else {
-            return false
-        }
-        return current.id == line.id
+    private func currentActiveLineId(lyrics: [LyricLine], time: TimeInterval) -> UUID? {
+        lyrics.last(where: { $0.time <= time })?.id
     }
 
     private func formatTime(_ duration: TimeInterval) -> String {
