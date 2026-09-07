@@ -1,20 +1,19 @@
 import SwiftUI
 
 struct NowPlayingView: View {
-    @Environment(\.dismiss) var dismiss
+    @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
 
     @State private var dragOffset: CGFloat = 0
-    @State private var opacityVal: Double = 1.0
+    @State private var isVisible: Bool = false
 
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
 
             ZStack {
+                Color.black.ignoresSafeArea()
                 appleMusicSmartBleedBackground(size: geo.size)
-                    .opacity(opacityVal)
-                    .scaleEffect(1.0 + (dragOffset / geo.size.height) * 0.1)
 
                 if isLandscape {
                     HStack(spacing: geo.size.width * 0.035) {
@@ -35,49 +34,57 @@ struct NowPlayingView: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                Button { dismiss() } label: {
+                Button {
+                    closePlayer(geoHeight: geo.size.height)
+                } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white.opacity(0.85))
                         .padding(24)
                 }
             }
-            .offset(y: max(0, dragOffset))
-            .opacity(opacityVal)
-            // Fluid, unified swipe-down-to-dismiss gesture
+            // Move view via offset based on visibility & drag
+            .offset(y: isVisible ? max(0, dragOffset) : geo.size.height)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 10, coordinateSpace: .local)
                     .onChanged { value in
                         if value.translation.height > 0 {
                             dragOffset = value.translation.height
-                            opacityVal = max(0.2, 1.0 - (value.translation.height / 300.0))
                         }
                     }
                     .onEnded { value in
-                        if value.translation.height > 70 || value.predictedEndTranslation.height > 120 {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                dragOffset = geo.size.height
-                                opacityVal = 0.0
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                dismiss()
-                            }
+                        if value.translation.height > 100 || value.predictedEndTranslation.height > 200 {
+                            closePlayer(geoHeight: geo.size.height)
                         } else {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 dragOffset = 0
-                                opacityVal = 1.0
                             }
                         }
                     }
             )
+            .onAppear {
+                // Instantly slide UP when loaded in the ZStack
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    isVisible = true
+                }
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func closePlayer(geoHeight: CGFloat) {
+        // Slide DOWN, then safely remove from ContentView
+        withAnimation(.easeIn(duration: 0.25)) {
+            dragOffset = geoHeight
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            isPresented = false
         }
     }
 
     // MARK: - Smart Luminance-Adaptive Background Bleed
     private func appleMusicSmartBleedBackground(size: CGSize) -> some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-
             if let data = audioManager.currentTrack?.artworkData, let img = UIImage(data: data) {
                 let isBright = img.isImageTooBright()
 
@@ -92,9 +99,7 @@ struct NowPlayingView: View {
                     .blur(radius: isBright ? 45 : 65)
                     .opacity(isBright ? 0.65 : 0.92)
 
-                //Color.black.opacity(isBright ? 0.45 : 0.20)
-            } else {
-                Color.black
+                // Color.black.opacity(isBright ? 0.45 : 0.20)
             }
         }
         .ignoresSafeArea()
@@ -231,14 +236,14 @@ struct NowPlayingView: View {
                                     .padding(.vertical, 10)
                                 } else {
                                     Text(line.text)
-                                        .font(.system(size: 50, weight: .bold, design: .rounded)) // 46pt Lyrics
+                                        .font(.system(size: 50, weight: .bold, design: .rounded))
                                         .foregroundColor(.white)
                                         .opacity(isActive ? 1.0 : 0.3)
-                                        .blur(radius: isActive ? 0.0 : 1.5) // 1.5pt Inactive Blur
+                                        .blur(radius: isActive ? 0.0 : 1.5)
 
                                     if let romaji = line.romanized, !romaji.isEmpty {
                                         Text(romaji)
-                                            .font(.system(size: 22, weight: .medium, design: .rounded)) // 22pt Romaji
+                                            .font(.system(size: 22, weight: .medium, design: .rounded))
                                             .foregroundColor(.white)
                                             .opacity(isActive ? 0.8 : 0.2)
                                             .blur(radius: isActive ? 0.0 : 1.0)
