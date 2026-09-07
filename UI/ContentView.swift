@@ -8,6 +8,7 @@ struct ContentView: View {
     
     @State private var selectedCategory: String? = "Songs"
     @State private var showNowPlaying = false
+    @State private var showFilePicker = false
 
     var body: some View {
         NavigationSplitView {
@@ -24,7 +25,25 @@ struct ContentView: View {
             .navigationTitle("Library")
         } detail: {
             ZStack(alignment: .bottom) {
-                TrackListView(tracks: tracks)
+                if tracks.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "music.note.list")
+                            .font(.system(size: 64))
+                            .foregroundColor(.gray)
+                        Text("No Music Found")
+                            .font(.title2.bold())
+                        Text("Import audio files from your iPad or iCloud Drive to begin.")
+                            .foregroundColor(.secondary)
+                        Button("Import Files") {
+                            showFilePicker = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.top, 8)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    TrackListView(tracks: tracks)
+                }
                 
                 if audioManager.currentTrack != nil {
                     MiniPlayerView()
@@ -32,13 +51,26 @@ struct ContentView: View {
                         .padding(.bottom, 8)
                 }
             }
+            .navigationTitle("Songs")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: { showFilePicker = true }) {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
         }
         .fullScreenCover(isPresented: $showNowPlaying) {
             NowPlayingView()
         }
-        .keyboardShortcut(" ", modifiers: []) // Space to play/pause globally
+        .sheet(isPresented: $showFilePicker) {
+            DocumentPicker { urls in
+                MusicImporter.importAudioFiles(from: urls, into: modelContext)
+            }
+        }
+        .keyboardShortcut(" ", modifiers: [])
         .onChange(of: selectedCategory) { oldValue, newValue in
-            // Handle category switching
+            // Handle category switching logic here
         }
     }
 }
