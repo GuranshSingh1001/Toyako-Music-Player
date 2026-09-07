@@ -59,4 +59,24 @@ struct LyricLine: Identifiable, Equatable {
     let id = UUID()
     let time: TimeInterval
     let text: String
+    let romanized: String?
+
+    init(time: TimeInterval, text: String) {
+        self.time = time
+        self.text = text
+        self.romanized = text.toRomaji()
+    }
+}
+
+extension String {
+    func toRomaji() -> String? {
+        let hasJapanese = self.range(of: #"[一-龯ぁ-んァ-ヶ]"#, options: .regularExpression) != nil
+        guard hasJapanese else { return nil }
+        
+        let mutable = NSMutableString(string: self)
+        CFStringTransform(mutable, nil, kCFStringTransformToLatin, false)
+        CFStringTransform(mutable, nil, kCFStringTransformStripCombiningMarks, false)
+        let converted = mutable as String
+        return converted != self ? converted : nil
+    }
 }
