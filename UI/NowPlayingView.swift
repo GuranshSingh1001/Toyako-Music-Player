@@ -231,7 +231,7 @@ struct NowPlayingView: View {
                                 } else {
                                     // 40pt massive Apple Music lyric sizing with inactive blur
                                     Text(line.text)
-                                        .font(.system(size: 40, weight: .bold, design: .rounded))
+                                        .font(.system(size: 58, weight: .bold, design: .rounded))
                                         .foregroundColor(.white)
                                         .opacity(isActive ? 1.0 : 0.3)
                                         .blur(radius: isActive ? 0.0 : 1.5)
