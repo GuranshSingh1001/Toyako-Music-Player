@@ -12,9 +12,14 @@ class AudioEngineManager: ObservableObject {
     @Published var currentTime: TimeInterval = 0.0
     @Published var playbackProgress: Double = 0.0
     @Published var currentLyrics: [LyricLine] = []
-    
+
     @Published var queue: [LocalTrack] = []
+    @Published var originalQueue: [LocalTrack] = []
     @Published var queueIndex: Int = 0
+
+    @Published var isShuffle: Bool = false
+    @Published var repeatMode: RepeatMode = .off
+    @Published var crossfadeEnabled: Bool = true
 
     init() {
         setupRemoteControls()
@@ -23,24 +28,74 @@ class AudioEngineManager: ObservableObject {
 
     func startQueue(tracks: [LocalTrack], startIndex: Int) {
         guard !tracks.isEmpty, tracks.indices.contains(startIndex) else { return }
-        queue = tracks
-        queueIndex = startIndex
-        play(track: tracks[startIndex])
+        originalQueue = tracks
+        
+        if isShuffle {
+            var shuffled = tracks
+            let selected = shuffled.remove(at: startIndex)
+            shuffled.shuffle()
+            queue = [selected] + shuffled
+            queueIndex = 0
+        } else {
+            queue = tracks
+            queueIndex = startIndex
+        }
+        play(track: queue[queueIndex])
     }
 
     func play(track: LocalTrack) {
         currentTrack = track
         loadLyrics(for: track)
 
-        // Detach previous observers on this persistent player before swapping tracks
         detachTimeObserver()
         detachEndObserver()
 
         let playerItem = AVPlayerItem(url: track.url)
-        player.replaceCurrentItem(with: playerItem)
-        player.play()
-        isPlaying = true
 
+        if crossfadeEnabled && isPlaying {
+            fadeOutAndSwitch(to: playerItem, track: track)
+        } else {
+            player.volume = 1.0
+            player.replaceCurrentItem(with: playerItem)
+            player.play()
+            finalizePlay(track: track, playerItem: playerItem)
+        }
+    }
+
+    private func fadeOutAndSwitch(to newItem: AVPlayerItem, track: LocalTrack) {
+        var currentVol = player.volume
+        Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] timer in
+            guard let self = self else { timer.invalidate(); return }
+            currentVol -= 0.15
+            if currentVol <= 0.05 {
+                timer.invalidate()
+                self.player.replaceCurrentItem(with: newItem)
+                self.player.play()
+                self.fadeIn()
+                self.finalizePlay(track: track, playerItem: newItem)
+            } else {
+                self.player.volume = currentVol
+            }
+        }
+    }
+
+    private func fadeIn() {
+        var currentVol: Float = 0.0
+        self.player.volume = 0.0
+        Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] timer in
+            guard let self = self else { timer.invalidate(); return }
+            currentVol += 0.15
+            if currentVol >= 1.0 {
+                self.player.volume = 1.0
+                timer.invalidate()
+            } else {
+                self.player.volume = currentVol
+            }
+        }
+    }
+
+    private func finalizePlay(track: LocalTrack, playerItem: AVPlayerItem) {
+        isPlaying = true
         updateNowPlaying(track: track)
         attachTimeObserver(duration: track.duration)
 
@@ -49,7 +104,49 @@ class AudioEngineManager: ObservableObject {
             object: playerItem,
             queue: .main
         ) { [weak self] _ in
-            self?.forward()
+            self?.handleTrackEnded()
+        }
+    }
+
+    private func handleTrackEnded() {
+        switch repeatMode {
+        case .one:
+            seek(to: 0.0)
+            player.play()
+        case .all:
+            forward()
+        case .off:
+            if queueIndex + 1 < queue.count {
+                forward()
+            } else {
+                player.pause()
+                isPlaying = false
+                seek(to: 0.0)
+                updatePlaybackState()
+            }
+        }
+    }
+
+    func toggleShuffle() {
+        isShuffle.toggle()
+        guard let current = currentTrack else { return }
+
+        if isShuffle {
+            var pool = originalQueue.filter { $0.id != current.id }
+            pool.shuffle()
+            queue = [current] + pool
+            queueIndex = 0
+        } else {
+            queue = originalQueue
+            queueIndex = queue.firstIndex(where: { $0.id == current.id }) ?? 0
+        }
+    }
+
+    func toggleRepeat() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
         }
     }
 
@@ -67,11 +164,9 @@ class AudioEngineManager: ObservableObject {
         if queueIndex + 1 < queue.count {
             queueIndex += 1
             play(track: queue[queueIndex])
-        } else {
-            player.pause()
-            isPlaying = false
-            seek(to: 0.0)
-            updatePlaybackState()
+        } else if repeatMode == .all && !queue.isEmpty {
+            queueIndex = 0
+            play(track: queue[queueIndex])
         }
     }
 
@@ -80,6 +175,9 @@ class AudioEngineManager: ObservableObject {
             seek(to: 0.0)
         } else if queueIndex > 0 {
             queueIndex -= 1
+            play(track: queue[queueIndex])
+        } else if repeatMode == .all && !queue.isEmpty {
+            queueIndex = queue.count - 1
             play(track: queue[queueIndex])
         } else {
             seek(to: 0.0)
