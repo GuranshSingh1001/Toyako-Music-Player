@@ -17,33 +17,43 @@ class LocalLibrary: ObservableObject {
     func reloadFiles() {
         let fileManager = FileManager.default
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            statusMessage = "Cannot access Documents folder"
+            statusMessage = "Cannot locate Documents folder"
             return
         }
 
-        do {
-            let files = try fileManager.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil)
-            let audioExtensions = ["mp3", "m4a", "wav", "flac", "aac", "aiff"]
-            let matchedFiles = files.filter { audioExtensions.contains($0.pathExtension.lowercased()) }
+        let audioExtensions = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
+        var discoveredTracks: [LocalTrack] = []
 
-            if matchedFiles.isEmpty {
-                statusMessage = "Folder is empty: \(docs.path)"
-                tracks = []
-                return
+        // Recursive enumerator: searches root AND all subfolders/containers
+        if let enumerator = fileManager.enumerator(
+            at: docs,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) {
+            for case let fileURL as URL in enumerator {
+                if audioExtensions.contains(fileURL.pathExtension.lowercased()) {
+                    let asset = AVURLAsset(url: fileURL)
+                    let duration = CMTimeGetSeconds(asset.duration)
+                    let title = fileURL.deletingPathExtension().lastPathComponent
+                    
+                    discoveredTracks.append(
+                        LocalTrack(
+                            url: fileURL,
+                            title: title,
+                            artist: "Local Track",
+                            duration: duration.isNaN ? 0 : duration
+                        )
+                    )
+                }
             }
+        }
 
-            var loaded: [LocalTrack] = []
-            for file in matchedFiles {
-                let asset = AVURLAsset(url: file)
-                let duration = CMTimeGetSeconds(asset.duration)
-                let title = file.deletingPathExtension().lastPathComponent
-                loaded.append(LocalTrack(url: file, title: title, artist: "Local File", duration: duration.isNaN ? 0 : duration))
-            }
-
-            self.tracks = loaded
-            self.statusMessage = "Loaded \(loaded.count) songs"
-        } catch {
-            statusMessage = "Error reading files: \(error.localizedDescription)"
+        if discoveredTracks.isEmpty {
+            statusMessage = "Zero audio files found in: \(docs.path)"
+            tracks = []
+        } else {
+            tracks = discoveredTracks
+            statusMessage = "Successfully loaded \(discoveredTracks.count) audio file(s)"
         }
     }
 
@@ -52,16 +62,14 @@ class LocalLibrary: ObservableObject {
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
 
         for url in urls {
-            let canAccess = url.startAccessingSecurityScopedResource()
-            let dest = docs.appendingPathComponent(url.lastPathComponent)
-
-            if !fileManager.fileExists(atPath: dest.path) {
-                try? fileManager.copyItem(at: url, to: dest)
+            let hasAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if hasAccess { url.stopAccessingSecurityScopedResource() }
             }
 
-            if canAccess {
-                url.stopAccessingSecurityScopedResource()
-            }
+            let destination = docs.appendingPathComponent(url.lastPathComponent)
+            try? fileManager.removeItem(at: destination)
+            try? fileManager.copyItem(at: url, to: destination)
         }
         reloadFiles()
     }
