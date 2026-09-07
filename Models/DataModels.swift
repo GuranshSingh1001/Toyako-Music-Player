@@ -1,50 +1,56 @@
-import SwiftData
 import Foundation
+import UIKit
 
-@Model final class Track {
-    @Attribute(.unique) var id: UUID
-    var fileURL: URL
-    var title: String
-    var artistName: String
-    var albumTitle: String
-    var duration: TimeInterval
-    var isFavorite: Bool
-    var trackNumber: Int
-    
-    init(fileURL: URL, title: String, artistName: String, albumTitle: String, duration: TimeInterval, trackNumber: Int = 1) {
-        self.id = UUID()
-        self.fileURL = fileURL
+struct LocalTrack: Identifiable, Hashable {
+    let id: UUID
+    let url: URL
+    let title: String
+    let artist: String
+    let album: String
+    let genre: String
+    let duration: TimeInterval
+    let artworkData: Data?
+
+    init(id: UUID = UUID(), url: URL, title: String, artist: String = "Unknown Artist", album: String = "Unknown Album", genre: String = "Unknown Genre", duration: TimeInterval = 0.0, artworkData: Data? = nil) {
+        self.id = id
+        self.url = url
         self.title = title
-        self.artistName = artistName
-        self.albumTitle = albumTitle
+        self.artist = artist
+        self.album = album
+        self.genre = genre
         self.duration = duration
-        self.isFavorite = false
-        self.trackNumber = trackNumber
-    }
-}
-
-@Model final class Album {
-    @Attribute(.unique) var id: UUID
-    var title: String
-    var artistName: String
-    @Attribute(.externalStorage) var artworkData: Data?
-    
-    init(title: String, artistName: String, artworkData: Data? = nil) {
-        self.id = UUID()
-        self.title = title
-        self.artistName = artistName
         self.artworkData = artworkData
     }
 }
 
-@Model final class Playlist {
-    @Attribute(.unique) var id: UUID
+struct AlbumGroup: Identifiable, Hashable {
+    var id: String { "\(name)_\(artist)" }
+    let name: String
+    let artist: String
+    let artworkData: Data?
+    let tracks: [LocalTrack]
+}
+
+struct ArtistGroup: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let tracks: [LocalTrack]
+}
+
+struct Playlist: Identifiable, Codable {
+    let id: UUID
     var name: String
-    var items: [Track]
-    
-    init(name: String, items: [Track] = []) {
-        self.id = UUID()
+    var trackURLs: [URL]
+
+    init(id: UUID = UUID(), name: String, trackURLs: [URL] = []) {
+        self.id = id
         self.name = name
-        self.items = items
+        self.trackURLs = trackURLs
     }
+}
+
+struct LyricLine: Identifiable, Equatable {
+    let id = UUID()
+    let time: TimeInterval
+    let text: String
 }
