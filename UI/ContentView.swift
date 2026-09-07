@@ -65,9 +65,22 @@ struct ContentView: View {
 
                     if audioManager.currentTrack != nil {
                         MiniPlayerView()
+                             .contentShape(Rectangle())
                             .onTapGesture {
-                                showNowPlaying = true // Triggers slide-up naturally
+                                withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                                showNowPlaying = true
+                                }
                             }
+                             .gesture(
+                                DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                                    .onEnded { value in
+                                        if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
+                                            withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                                                showNowPlaying = true
+                                            }
+                                        }
+                                    }
+                            )
                             .padding(.bottom, 12)
                     }
                 }
