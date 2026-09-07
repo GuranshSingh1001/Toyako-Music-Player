@@ -120,12 +120,21 @@ class LocalLibrary: ObservableObject {
         savePlaylists()
     }
 
-    func addTrackToPlaylist(playlistID: UUID, track: LocalTrack) {
+    func addTracksToPlaylist(playlistID: UUID, trackURLs: [URL]) {
         if let idx = playlists.firstIndex(where: { $0.id == playlistID }) {
-            if !playlists[idx].trackURLs.contains(track.url) {
-                playlists[idx].trackURLs.append(track.url)
-                savePlaylists()
+            for url in trackURLs {
+                if !playlists[idx].trackURLs.contains(url) {
+                    playlists[idx].trackURLs.append(url)
+                }
             }
+            savePlaylists()
+        }
+    }
+
+    func removeTrackFromPlaylist(playlistID: UUID, trackURL: URL) {
+        if let idx = playlists.firstIndex(where: { $0.id == playlistID }) {
+            playlists[idx].trackURLs.removeAll { $0 == trackURL }
+            savePlaylists()
         }
     }
 
