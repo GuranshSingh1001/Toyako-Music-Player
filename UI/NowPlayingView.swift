@@ -10,7 +10,7 @@ struct NowPlayingView: View {
             let isLandscape = geo.size.width > geo.size.height
 
             ZStack {
-                appleMusicBleedBackground(size: geo.size)
+                appleMusicBrightBleedBackground(size: geo.size)
 
                 if isLandscape {
                     HStack(spacing: geo.size.width * 0.05) {
@@ -39,26 +39,26 @@ struct NowPlayingView: View {
                 }
             }
             .offset(y: max(0, dragOffset))
-            // Interactive swipe-down-from-anywhere gesture
+            // High-responsiveness interactive swipe-down gesture
             .gesture(
-                DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                DragGesture(coordinateSpace: .local)
                     .updating($dragOffset) { value, state, _ in
                         if value.translation.height > 0 {
                             state = value.translation.height
                         }
                     }
                     .onEnded { value in
-                        if value.translation.height > 120 || value.predictedEndTranslation.height > 250 {
+                        if value.translation.height > 60 || value.predictedEndTranslation.height > 120 {
                             dismiss()
                         }
                     }
             )
-            .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.8), value: dragOffset)
+            .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.85), value: dragOffset)
         }
     }
 
-    // MARK: - Vibrant Apple Music Ambient Bleed
-    private func appleMusicBleedBackground(size: CGSize) -> some View {
+    // MARK: - Extra Bright & Vibrant Apple Music Background
+    private func appleMusicBrightBleedBackground(size: CGSize) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
@@ -67,16 +67,16 @@ struct NowPlayingView: View {
                     .resizable()
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
-                    .scaleEffect(1.35)
+                    .scaleEffect(1.4)
                     .clipped()
-                    .blur(radius: 55)
-                    .saturation(1.5)
-                    .contrast(1.05)
-                    .opacity(0.95)
+                    .blur(radius: 50)
+                    .saturation(1.6)
+                    .contrast(1.1)
+                    .opacity(0.98)
 
-                // High-pass illumination to preserve luminous pastel colors
-                Color.white.opacity(0.08)
-                Color.black.opacity(0.10)
+                // Luminous warm tint to make the background feel brighter
+                Color.white.opacity(0.12)
+                Color.black.opacity(0.05)
             } else {
                 Color.black
             }
@@ -181,7 +181,7 @@ struct NowPlayingView: View {
         }
     }
 
-    // MARK: - Lyrics Pane
+    // MARK: - Large Apple Music Scale Lyrics Pane
     private var lyricsPane: some View {
         let lyrics = audioManager.currentLyrics
         let activeId = activeLineId()
@@ -199,29 +199,30 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: 36) {
                         ForEach(lyrics) { line in
                             let isActive = line.id == activeId
 
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 8) {
                                 if line.text.trimmingCharacters(in: .whitespaces).isEmpty {
                                     HStack(spacing: 8) {
-                                        Circle().frame(width: 8, height: 8)
-                                        Circle().frame(width: 8, height: 8)
-                                        Circle().frame(width: 8, height: 8)
+                                        Circle().frame(width: 9, height: 9)
+                                        Circle().frame(width: 9, height: 9)
+                                        Circle().frame(width: 9, height: 9)
                                     }
                                     .foregroundColor(.white)
                                     .opacity(isActive ? 0.95 : 0.25)
-                                    .padding(.vertical, 8)
+                                    .padding(.vertical, 10)
                                 } else {
+                                    // Scaled up to 38pt matching Apple Music iPad lyrics size
                                     Text(line.text)
-                                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                                        .font(.system(size: 38, weight: .bold, design: .rounded))
                                         .foregroundColor(.white)
                                         .opacity(isActive ? 1.0 : 0.35)
 
                                     if let romaji = line.romanized, !romaji.isEmpty {
                                         Text(romaji)
-                                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                                            .font(.system(size: 18, weight: .medium, design: .rounded))
                                             .foregroundColor(.white)
                                             .opacity(isActive ? 0.8 : 0.25)
                                     }
@@ -235,7 +236,7 @@ struct NowPlayingView: View {
                             .animation(.easeInOut(duration: 0.3), value: isActive)
                         }
                     }
-                    .padding(.vertical, 200)
+                    .padding(.vertical, 220)
                     .padding(.horizontal, 16)
                 }
                 .mask(
