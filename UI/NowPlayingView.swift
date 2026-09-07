@@ -91,7 +91,7 @@ struct NowPlayingView: View {
                     .blur(radius: isBright ? 45 : 65)
                     .opacity(isBright ? 0.65 : 0.92)
 
-                Color.black.opacity(isBright ? 0.35 : 0.20)
+                Color.black.opacity(isBright ? 0.25 : 0.20)
             } else {
                 Color.black
             }
