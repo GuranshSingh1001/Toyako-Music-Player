@@ -119,18 +119,11 @@ struct ContentView: View {
             if let pl = library.playlists.first(where: { $0.id == id }) {
                 let pTracks = library.tracks.filter { pl.trackURLs.contains($0.url) }
                 VStack(spacing: 0) {
-                    HStack {
-                        Button {
-                            playlistToEdit = pl
-                        } label: {
-                            Label("Add Songs", systemImage: "plus.circle.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-
+                    PlaylistHeaderView(
+                        playlist: pl,
+                        tracks: pTracks,
+                        onAddSongs: { playlistToEdit = pl }
+                    )
                     SongListView(tracks: pTracks, allTracks: pTracks, library: library, playlistID: pl.id)
                 }
             }
@@ -171,6 +164,115 @@ struct ContentView: View {
     }
 }
 
+struct PlaylistHeaderView: View {
+    let playlist: Playlist
+    let tracks: [LocalTrack]
+    let onAddSongs: () -> Void
+    @EnvironmentObject var audioManager: AudioEngineManager
+
+    var body: some View {
+        HStack(spacing: 24) {
+            playlistArtwork
+                .frame(width: 140, height: 140)
+                .cornerRadius(16)
+                .liquidGlass(cornerRadius: 16, opacity: 0.3)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("PLAYLIST")
+                    .font(.caption.bold())
+                    .foregroundColor(.secondary)
+
+                Text(playlist.name)
+                    .font(.title.bold())
+                    .lineLimit(1)
+
+                Text("\(tracks.count) Songs • \(totalDurationString)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 12) {
+                    Button {
+                        if !tracks.isEmpty {
+                            audioManager.startQueue(tracks: tracks, startIndex: 0)
+                        }
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                            .font(.subheadline.bold())
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        if !tracks.isEmpty {
+                            if !audioManager.isShuffle {
+                                audioManager.toggleShuffle()
+                            }
+                            audioManager.startQueue(tracks: tracks, startIndex: 0)
+                        }
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                            .font(.subheadline.bold())
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button(action: onAddSongs) {
+                        Label("Add Songs", systemImage: "plus.circle")
+                            .font(.subheadline.bold())
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.top, 4)
+            }
+            Spacer()
+        }
+        .padding(20)
+    }
+
+    @ViewBuilder
+    private var playlistArtwork: some View {
+        let arts = tracks.compactMap { $0.artworkData }
+        if arts.count >= 4 {
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    artSquare(data: arts[0])
+                    artSquare(data: arts[1])
+                }
+                HStack(spacing: 0) {
+                    artSquare(data: arts[2])
+                    artSquare(data: arts[3])
+                }
+            }
+        } else if let first = arts.first {
+            artSquare(data: first)
+        } else {
+            Rectangle()
+                .fill(Color.gray.opacity(0.2))
+                .overlay(
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 40))
+                        .foregroundColor(.secondary)
+                )
+        }
+    }
+
+    private func artSquare(data: Data) -> some View {
+        Group {
+            if let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Color.gray.opacity(0.3)
+            }
+        }
+    }
+
+    private var totalDurationString: String {
+        let total = tracks.reduce(0) { $0 + $1.duration }
+        let mins = Int(total) / 60
+        return "\(mins) mins"
+    }
+}
+
 struct PlaylistAddSongsSheet: View {
     let playlist: Playlist
     let library: LocalLibrary
@@ -199,7 +301,7 @@ struct PlaylistAddSongsSheet: View {
                     }
                 }
             }
-            .navigationTitle("Add to \(playlist.name)")
+            .navigationTitle("Add Songs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
