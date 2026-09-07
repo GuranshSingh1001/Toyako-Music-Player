@@ -94,7 +94,7 @@ struct NowPlayingView: View {
                 .padding(.horizontal, 40)
                 .padding(.vertical, 200) // Padding to allow scrolling to center
             }
-            .onChange(of: activeLyricID) { newID in
+            .onChange(of: activeLyricID) { oldID, newID in
                 withAnimation(.spring()) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
