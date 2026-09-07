@@ -6,15 +6,17 @@ struct NowPlayingView: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var isVisible: Bool = false
+    @State private var isBackgroundBright: Bool = false // Cached background thread calculation
 
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
             
-            // Ultra-responsive, interactive swipe-to-dismiss gesture
+            // Ultra-responsive 1:1 gesture without animation latency
             let dismissGesture = DragGesture(minimumDistance: 5, coordinateSpace: .local)
                 .onChanged { value in
                     if value.translation.height > 0 {
+                        // Instant update, no animation wrapper
                         dragOffset = value.translation.height
                     }
                 }
@@ -23,7 +25,10 @@ struct NowPlayingView: View {
                     if value.translation.height > 100 || velocity > 200 {
                         closePlayer(geoHeight: geo.size.height)
                     } else {
-                        dragOffset = 0 // Animation modifier naturally snaps it back
+                        // Only animate the snap-back
+                        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
                     }
                 }
 
@@ -73,22 +78,46 @@ struct NowPlayingView: View {
                         .padding(24)
                 }
             }
-            // State-driven offsets with dedicated spring physics for perfect fluidity
+            // Move view via offset based on visibility & drag
             .offset(y: isVisible ? max(0, dragOffset) : geo.size.height)
-            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: dragOffset)
+            // ONLY animate the initial slide up to prevent drag gesture lag
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isVisible)
             .onAppear {
                 isVisible = true
+                calculateBrightness(for: audioManager.currentTrack)
+            }
+            .onChange(of: audioManager.currentTrack) { _, newTrack in
+                calculateBrightness(for: newTrack)
             }
         }
         .ignoresSafeArea()
     }
 
     private func closePlayer(geoHeight: CGFloat) {
-        dragOffset = 0
-        isVisible = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.9)) {
+            dragOffset = geoHeight
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isVisible = false
             isPresented = false
+        }
+    }
+    
+    // MARK: - Asynchronous Brightness Calculation (60FPS Fix)
+    private func calculateBrightness(for track: LocalTrack?) {
+        guard let data = track?.artworkData, let img = UIImage(data: data) else {
+            isBackgroundBright = false
+            return
+        }
+        
+        // Push heavy pixel calculation to a background thread to prevent UI stutter
+        DispatchQueue.global(qos: .userInitiated).async {
+            let isBright = img.isImageTooBright()
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    self.isBackgroundBright = isBright
+                }
+            }
         }
     }
 
@@ -96,18 +125,16 @@ struct NowPlayingView: View {
     private func appleMusicSmartBleedBackground(size: CGSize) -> some View {
         ZStack {
             if let data = audioManager.currentTrack?.artworkData, let img = UIImage(data: data) {
-                let isBright = img.isImageTooBright()
-
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
                     .scaleEffect(1.35)
                     .clipped()
-                    .brightness(isBright ? -0.15 : -0.05)
-                    .saturation(isBright ? 0.8 : 1.45)
-                    .blur(radius: isBright ? 45 : 65)
-                    .opacity(isBright ? 0.65 : 0.92)
+                    .brightness(isBackgroundBright ? -0.15 : -0.05)
+                    .saturation(isBackgroundBright ? 0.8 : 1.45)
+                    .blur(radius: isBackgroundBright ? 45 : 65)
+                    .opacity(isBackgroundBright ? 0.65 : 0.92)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -265,7 +292,8 @@ struct NowPlayingView: View {
                             .onTapGesture {
                                 audioManager.seek(to: line.time)
                             }
-                            .animation(.easeInOut(duration: 0.3), value: isActive)
+                            // Snappier transition when lyric states change
+                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isActive)
                         }
                     }
                     .padding(.vertical, 240)
@@ -283,10 +311,10 @@ struct NowPlayingView: View {
                         endPoint: .bottom
                     )
                 )
-                // FIX: Only trigger auto-scroll when the active line ID explicitly changes
                 .onChange(of: activeId) { _, newId in
                     if let newId = newId {
-                        withAnimation(.easeOut(duration: 0.6)) {
+                        // Spring physics makes the scrolling fluid and organic, matching native scrolling
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
                             proxy.scrollTo(newId, anchor: .center)
                         }
                     }
