@@ -86,7 +86,7 @@ struct NowPlayingView: View {
                     .frame(width: size.width, height: size.height)
                     .scaleEffect(1.35)
                     .clipped()
-                    .brightness(isBright ? -0.35 : -0.05)
+                    .brightness(isBright ? -0.25 : -0.05)
                     .saturation(isBright ? 0.8 : 1.45)
                     .blur(radius: isBright ? 45 : 65)
                     .opacity(isBright ? 0.65 : 0.92)
