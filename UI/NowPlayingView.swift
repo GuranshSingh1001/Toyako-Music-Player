@@ -33,6 +33,8 @@ struct NowPlayingView: View {
                     .padding(24)
                 }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped() // Fixes the bloom: Strictly chops off any blur bleeding out of the view bounds
             .overlay(alignment: .topLeading) {
                 Button {
                     closePlayer(geoHeight: geo.size.height)
@@ -98,10 +100,10 @@ struct NowPlayingView: View {
                     .saturation(isBright ? 0.8 : 1.45)
                     .blur(radius: isBright ? 45 : 65)
                     .opacity(isBright ? 0.65 : 0.92)
-
-                // Color.black.opacity(isBright ? 0.45 : 0.20)
             }
         }
+        .frame(width: size.width, height: size.height)
+        .clipped() // Double protection ensuring the blurred edges don't escape the container
         .ignoresSafeArea()
     }
 
@@ -236,14 +238,14 @@ struct NowPlayingView: View {
                                     .padding(.vertical, 10)
                                 } else {
                                     Text(line.text)
-                                        .font(.system(size: 50, weight: .bold, design: .rounded))
+                                        .font(.system(size: 50, weight: .bold, design: .rounded)) // 50pt Lyrics
                                         .foregroundColor(.white)
                                         .opacity(isActive ? 1.0 : 0.3)
-                                        .blur(radius: isActive ? 0.0 : 1.5)
+                                        .blur(radius: isActive ? 0.0 : 1.5) // 1.5pt Inactive Blur
 
                                     if let romaji = line.romanized, !romaji.isEmpty {
                                         Text(romaji)
-                                            .font(.system(size: 22, weight: .medium, design: .rounded))
+                                            .font(.system(size: 22, weight: .medium, design: .rounded)) // 22pt Romaji
                                             .foregroundColor(.white)
                                             .opacity(isActive ? 0.8 : 0.2)
                                             .blur(radius: isActive ? 0.0 : 1.0)
