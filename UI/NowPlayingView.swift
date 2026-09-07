@@ -16,7 +16,7 @@ struct NowPlayingView: View {
 
                 if isLandscape {
                     HStack(spacing: geo.size.width * 0.035) {
-                        artworkPane(maxHeight: geo.size.height * 0.49)
+                        artworkPane(maxHeight: geo.size.height * 0.52)
                             .frame(width: geo.size.width * 0.35)
 
                         lyricsPane
