@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var showNewPlaylistAlert = false
     @State private var newPlaylistName = ""
     @State private var searchText = ""
+    @State private var playlistToEdit: Playlist?
 
     var body: some View {
         NavigationSplitView {
@@ -32,7 +33,7 @@ struct ContentView: View {
                         Label("Artists", systemImage: "music.mic")
                     }
                 }
-                
+
                 Section("Playlists") {
                     ForEach(library.playlists) { pl in
                         NavigationLink(value: LibraryCategory.playlist(pl.id)) {
@@ -86,6 +87,9 @@ struct ContentView: View {
                 library.importExternalURLs(urls)
             }
         }
+        .sheet(item: $playlistToEdit) { playlist in
+            PlaylistAddSongsSheet(playlist: playlist, library: library)
+        }
         .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
             TextField("Playlist Name", text: $newPlaylistName)
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
@@ -114,7 +118,21 @@ struct ContentView: View {
         case .playlist(let id):
             if let pl = library.playlists.first(where: { $0.id == id }) {
                 let pTracks = library.tracks.filter { pl.trackURLs.contains($0.url) }
-                SongListView(tracks: pTracks, allTracks: pTracks, library: library)
+                VStack(spacing: 0) {
+                    HStack {
+                        Button {
+                            playlistToEdit = pl
+                        } label: {
+                            Label("Add Multiple Songs", systemImage: "text.badge.plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    SongListView(tracks: pTracks, allTracks: pTracks, library: library, playlistID: pl.id)
+                }
             }
         }
     }
@@ -153,10 +171,59 @@ struct ContentView: View {
     }
 }
 
+struct PlaylistAddSongsSheet: View {
+    let playlist: Playlist
+    let library: LocalLibrary
+    @Environment(\.dismiss) var dismiss
+    @State private var selectedURLs: Set<URL> = []
+
+    var body: some View {
+        NavigationStack {
+            List(library.tracks) { track in
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(track.title).font(.headline)
+                        Text(track.artist).font(.subheadline).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: selectedURLs.contains(track.url) ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(selectedURLs.contains(track.url) ? .blue : .gray)
+                        .font(.title3)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if selectedURLs.contains(track.url) {
+                        selectedURLs.remove(track.url)
+                    } else {
+                        selectedURLs.insert(track.url)
+                    }
+                }
+            }
+            .navigationTitle("Add to \(playlist.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        library.addTracksToPlaylist(playlistID: playlist.id, trackURLs: Array(selectedURLs))
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                selectedURLs = Set(playlist.trackURLs)
+            }
+        }
+    }
+}
+
 struct SongListView: View {
     let tracks: [LocalTrack]
     let allTracks: [LocalTrack]
     let library: LocalLibrary
+    var playlistID: UUID? = nil
     @EnvironmentObject var audioManager: AudioEngineManager
 
     var body: some View {
@@ -195,10 +262,17 @@ struct SongListView: View {
                     audioManager.startQueue(tracks: allTracks, startIndex: index)
                 }
                 .contextMenu {
+                    if let pID = playlistID {
+                        Button(role: .destructive) {
+                            library.removeTrackFromPlaylist(playlistID: pID, trackURL: track.url)
+                        } label: {
+                            Label("Remove from Playlist", systemImage: "trash")
+                        }
+                    }
                     Menu("Add to Playlist") {
                         ForEach(library.playlists) { pl in
                             Button(pl.name) {
-                                library.addTrackToPlaylist(playlistID: pl.id, track: track)
+                                library.addTracksToPlaylist(playlistID: pl.id, trackURLs: [track.url])
                             }
                         }
                     }
