@@ -1,74 +1,45 @@
 import SwiftUI
+import UIKit
 
 struct NowPlayingView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var audioManager: AudioEngineManager
 
-    @State private var dragOffset: CGFloat = 0
-    @State private var opacityVal: Double = 1.0
-
     var body: some View {
-        GeometryReader { geo in
-            let isLandscape = geo.size.width > geo.size.height
+        NowPlayingContainerView(dismissAction: dismiss) {
+            GeometryReader { geo in
+                let isLandscape = geo.size.width > geo.size.height
 
-            ZStack {
-                appleMusicSmartBleedBackground(size: geo.size)
+                ZStack {
+                    appleMusicSmartBleedBackground(size: geo.size)
 
-                if isLandscape {
-                    HStack(spacing: geo.size.width * 0.035) {
-                        artworkPane(maxHeight: geo.size.height * 0.48)
-                            .frame(width: geo.size.width * 0.35)
+                    if isLandscape {
+                        HStack(spacing: geo.size.width * 0.035) { 
+                            artworkPane(maxHeight: geo.size.height * 0.48)
+                                .frame(width: geo.size.width * 0.35)
 
-                        lyricsPane
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                    .padding(.horizontal, 48)
-                    .padding(.vertical, 24)
-                } else {
-                    VStack(spacing: 20) {
-                        artworkPane(maxHeight: geo.size.height * 0.38)
-                        lyricsPane
-                    }
-                    .padding(24)
-                }
-            }
-            .overlay(alignment: .topLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white.opacity(0.85))
+                            lyricsPane
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .padding(.horizontal, 48)
+                        .padding(.vertical, 24)
+                    } else {
+                        VStack(spacing: 20) {
+                            artworkPane(maxHeight: geo.size.height * 0.38)
+                            lyricsPane
+                        }
                         .padding(24)
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(24)
+                    }
                 }
             }
-            .offset(y: max(0, dragOffset))
-            .opacity(opacityVal)
-            // Buttery-smooth, instant responsive swipe-down gesture from anywhere
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10, coordinateSpace: .local)
-                    .onChanged { value in
-                        if value.translation.height > 0 {
-                            dragOffset = value.translation.height
-                            // Fade out gracefully as user drags down
-                            opacityVal = max(0.3, 1.0 - (value.translation.height / 350.0))
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 80 || value.predictedEndTranslation.height > 150 {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                dragOffset = geo.size.height
-                                opacityVal = 0.0
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                dismiss()
-                            }
-                        } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                dragOffset = 0
-                                opacityVal = 1.0
-                            }
-                        }
-                    }
-            )
         }
     }
 
@@ -91,7 +62,7 @@ struct NowPlayingView: View {
                     .blur(radius: isBright ? 45 : 65)
                     .opacity(isBright ? 0.65 : 0.92)
 
-                Color.black.opacity(0.0)
+                //Color.black.opacity(isBright ? 0.45 : 0.20)
             } else {
                 Color.black
             }
@@ -237,7 +208,7 @@ struct NowPlayingView: View {
 
                                     if let romaji = line.romanized, !romaji.isEmpty {
                                         Text(romaji)
-                                            .font(.system(size: 19, weight: .medium, design: .rounded))
+                                            .font(.system(size: 22, weight: .medium, design: .rounded))
                                             .foregroundColor(.white)
                                             .opacity(isActive ? 0.8 : 0.2)
                                             .blur(radius: isActive ? 0.0 : 1.0)
@@ -293,6 +264,75 @@ struct NowPlayingView: View {
         let mins = Int(duration) / 60
         let secs = Int(duration) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+// MARK: - Native UIKit Interactive Dismissal Container
+struct NowPlayingContainerView<Content: View>: UIViewControllerRepresentable {
+    let dismissAction: () -> Void
+    let content: Content
+
+    func makeUIViewController(context: Context) -> NowPlayingHostingController<Content> {
+        let vc = NowPlayingHostingController(rootView: content)
+        vc.dismissAction = dismissAction
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: NowPlayingHostingController<Content>, context: Context) {
+        uiViewController.rootView = content
+    }
+}
+
+class NowPlayingHostingController<Content: View>: UIHostingController<Content> {
+    var dismissAction: (() -> Void)?
+    private var panGesture: UIPanGestureRecognizer!
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        modalPresentationStyle = .overFullScreen
+        modalTransitionStyle = .coverVertical
+
+        panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.delegate = self
+        view.addGestureRecognizer(panGesture)
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
+
+        switch gesture.state {
+        case .changed:
+            if translation.y > 0 {
+                view.transform = CGAffineTransform(translationX: 0, y: translation.y)
+                view.alpha = max(0.2, 1.0 - (translation.y / 400.0))
+            }
+        case .ended, .cancelled:
+            if translation.y > 90 || velocity.y > 500 {
+                UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
+                    self.view.transform = CGAffineTransform(translationX: 0, y: self.view.bounds.height)
+                    self.view.alpha = 0.0
+                } completion: { _ in
+                    self.dismissAction?()
+                }
+            } else {
+                UIView.animate(withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0.5) {
+                    self.view.transform = .identity
+                    self.view.alpha = 1.0
+                }
+            }
+        default:
+            break
+        }
+    }
+}
+
+extension NowPlayingHostingController: UIGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+        let velocity = pan.velocity(in: view)
+        return velocity.y > abs(velocity.x)
     }
 }
 
