@@ -15,9 +15,9 @@ struct NowPlayingView: View {
                 appleMusicSmartBleedBackground(size: geo.size)
 
                 if isLandscape {
-                    HStack(spacing: geo.size.width * 0.03) {
-                        artworkPane(maxHeight: geo.size.height * 0.46)
-                            .frame(width: geo.size.width * 0.30)
+                    HStack(spacing: geo.size.width * 0.035) {
+                        artworkPane(maxHeight: geo.size.height * 0.49)
+                            .frame(width: geo.size.width * 0.35)
 
                         lyricsPane
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
