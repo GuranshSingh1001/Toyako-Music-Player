@@ -1,0 +1,22 @@
+name: OfflineMusic
+options:
+  bundleIdPrefix: com.local
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  SWIFT_VERSION: "5.9"
+  TARGETED_DEVICE_FAMILY: "2" # 2 = iPad only
+targets:
+  OfflineMusic:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Audio
+      - path: Models
+      - path: UI
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.local.OfflineMusic
+      INFOPLIST_KEY_CFBundleDisplayName: "Music"
+      INFOPLIST_KEY_UIBackgroundModes: "audio"
+      INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
