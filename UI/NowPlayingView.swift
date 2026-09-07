@@ -11,27 +11,26 @@ struct NowPlayingView: View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
             
-            // Define the swipe-to-dismiss gesture
-            let dismissGesture = DragGesture(minimumDistance: 10, coordinateSpace: .local)
+            // Ultra-responsive, interactive swipe-to-dismiss gesture
+            let dismissGesture = DragGesture(minimumDistance: 5, coordinateSpace: .local)
                 .onChanged { value in
                     if value.translation.height > 0 {
                         dragOffset = value.translation.height
                     }
                 }
                 .onEnded { value in
-                    if value.translation.height > 100 || value.predictedEndTranslation.height > 200 {
+                    let velocity = value.predictedEndTranslation.height - value.translation.height
+                    if value.translation.height > 100 || velocity > 200 {
                         closePlayer(geoHeight: geo.size.height)
                     } else {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            dragOffset = 0
-                        }
+                        dragOffset = 0 // Animation modifier naturally snaps it back
                     }
                 }
 
             ZStack {
                 Color.black.ignoresSafeArea()
                 
-                // 1. Gesture attached to the background (empty space)
+                // 1. Gesture attached to the background
                 appleMusicSmartBleedBackground(size: geo.size)
                     .contentShape(Rectangle())
                     .simultaneousGesture(dismissGesture)
@@ -39,13 +38,13 @@ struct NowPlayingView: View {
                 if isLandscape {
                     HStack(spacing: geo.size.width * 0.035) {
                         
-                        // 2. Gesture attached to the Artwork Pane side
+                        // 2. Gesture attached to the Artwork Pane
                         artworkPane(maxHeight: geo.size.height * 0.48)
-                            .frame(width: geo.size.width * 0.35) // 35:65 ratio for wider lyrics
+                            .frame(width: geo.size.width * 0.35)
                             .contentShape(Rectangle())
                             .simultaneousGesture(dismissGesture)
 
-                        // 3. NO gesture attached to the lyrics; allows normal vertical scrolling
+                        // 3. NO gesture on lyrics; allows buttery smooth vertical scrolling
                         lyricsPane
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -74,21 +73,21 @@ struct NowPlayingView: View {
                         .padding(24)
                 }
             }
+            // State-driven offsets with dedicated spring physics for perfect fluidity
             .offset(y: isVisible ? max(0, dragOffset) : geo.size.height)
+            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: dragOffset)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isVisible)
             .onAppear {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    isVisible = true
-                }
+                isVisible = true
             }
         }
         .ignoresSafeArea()
     }
 
     private func closePlayer(geoHeight: CGFloat) {
-        withAnimation(.easeIn(duration: 0.25)) {
-            dragOffset = geoHeight
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        dragOffset = 0
+        isVisible = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             isPresented = false
         }
     }
@@ -109,8 +108,6 @@ struct NowPlayingView: View {
                     .saturation(isBright ? 0.8 : 1.45)
                     .blur(radius: isBright ? 45 : 65)
                     .opacity(isBright ? 0.65 : 0.92)
-                    
-                // Color.black.opacity(isBright ? 0.45 : 0.20)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -249,14 +246,14 @@ struct NowPlayingView: View {
                                     .padding(.vertical, 10)
                                 } else {
                                     Text(line.text)
-                                        .font(.system(size: 50, weight: .bold, design: .rounded)) // 50pt Lyrics
+                                        .font(.system(size: 50, weight: .bold, design: .rounded))
                                         .foregroundColor(.white)
                                         .opacity(isActive ? 1.0 : 0.3)
-                                        .blur(radius: isActive ? 0.0 : 1.5) // 1.5pt Inactive Blur
+                                        .blur(radius: isActive ? 0.0 : 1.5)
 
                                     if let romaji = line.romanized, !romaji.isEmpty {
                                         Text(romaji)
-                                            .font(.system(size: 22, weight: .medium, design: .rounded)) // 22pt Romaji
+                                            .font(.system(size: 22, weight: .medium, design: .rounded))
                                             .foregroundColor(.white)
                                             .opacity(isActive ? 0.8 : 0.2)
                                             .blur(radius: isActive ? 0.0 : 1.0)
@@ -286,10 +283,11 @@ struct NowPlayingView: View {
                         endPoint: .bottom
                     )
                 )
-                .onChange(of: audioManager.currentTime) { _, _ in
-                    if let activeId = activeId {
-                        withAnimation(.easeInOut(duration: 0.45)) {
-                            proxy.scrollTo(activeId, anchor: .center)
+                // FIX: Only trigger auto-scroll when the active line ID explicitly changes
+                .onChange(of: activeId) { _, newId in
+                    if let newId = newId {
+                        withAnimation(.easeOut(duration: 0.6)) {
+                            proxy.scrollTo(newId, anchor: .center)
                         }
                     }
                 }
