@@ -6,27 +6,33 @@ struct NowPlayingView: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var isVisible: Bool = false
-    @State private var isBackgroundBright: Bool = false // Cached background thread calculation
 
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
             
-            // Ultra-responsive 1:1 gesture without animation latency
-            let dismissGesture = DragGesture(minimumDistance: 5, coordinateSpace: .local)
+            // 1:1 hardware-accelerated DragGesture
+            let dismissGesture = DragGesture(minimumDistance: 5, coordinateSpace: .global)
                 .onChanged { value in
-                    if value.translation.height > 0 {
-                        // Instant update, no animation wrapper
-                        dragOffset = value.translation.height
+                    let y = value.translation.height
+                    if y > 0 {
+                        // Instant assignment without animation wrapper for zero-latency tracking
+                        dragOffset = y
                     }
                 }
                 .onEnded { value in
-                    let velocity = value.predictedEndTranslation.height - value.translation.height
-                    if value.translation.height > 100 || velocity > 200 {
-                        closePlayer(geoHeight: geo.size.height)
+                    let y = value.translation.height
+                    let predicted = value.predictedEndTranslation.height
+                    // Lowered threshold makes flicking it down feel effortless
+                    if y > 100 || (predicted - y) > 200 {
+                        withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                            dragOffset = geo.size.height
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            isPresented = false
+                        }
                     } else {
-                        // Only animate the snap-back
-                        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) {
                             dragOffset = 0
                         }
                     }
@@ -35,21 +41,21 @@ struct NowPlayingView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 
-                // 1. Gesture attached to the background
-                appleMusicSmartBleedBackground(size: geo.size)
+                // 1. Gesture attached ONLY to the background
+                OptimizedBackgroundBleed(artworkData: audioManager.currentTrack?.artworkData)
                     .contentShape(Rectangle())
-                    .simultaneousGesture(dismissGesture)
+                    .gesture(dismissGesture)
+                    .ignoresSafeArea()
 
                 if isLandscape {
                     HStack(spacing: geo.size.width * 0.035) {
-                        
-                        // 2. Gesture attached to the Artwork Pane
+                        // 2. Gesture attached ONLY to the Artwork Pane
                         artworkPane(maxHeight: geo.size.height * 0.48)
                             .frame(width: geo.size.width * 0.35)
                             .contentShape(Rectangle())
-                            .simultaneousGesture(dismissGesture)
+                            .gesture(dismissGesture)
 
-                        // 3. NO gesture on lyrics; allows buttery smooth vertical scrolling
+                        // 3. NO gesture on lyrics; allows butter-smooth native vertical scrolling
                         lyricsPane
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -59,7 +65,7 @@ struct NowPlayingView: View {
                     VStack(spacing: 20) {
                         artworkPane(maxHeight: geo.size.height * 0.38)
                             .contentShape(Rectangle())
-                            .simultaneousGesture(dismissGesture)
+                            .gesture(dismissGesture)
                         
                         lyricsPane
                     }
@@ -70,7 +76,12 @@ struct NowPlayingView: View {
             .clipped()
             .overlay(alignment: .topLeading) {
                 Button {
-                    closePlayer(geoHeight: geo.size.height)
+                    withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                        dragOffset = geo.size.height
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        isPresented = false
+                    }
                 } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 18, weight: .bold))
@@ -78,67 +89,15 @@ struct NowPlayingView: View {
                         .padding(24)
                 }
             }
-            // Move view via offset based on visibility & drag
-            .offset(y: isVisible ? max(0, dragOffset) : geo.size.height)
-            // ONLY animate the initial slide up to prevent drag gesture lag
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isVisible)
+            // Move the entire flattened view via offset
+            .offset(y: isVisible ? dragOffset : geo.size.height)
             .onAppear {
-                isVisible = true
-                calculateBrightness(for: audioManager.currentTrack)
-            }
-            .onChange(of: audioManager.currentTrack) { _, newTrack in
-                calculateBrightness(for: newTrack)
-            }
-        }
-        .ignoresSafeArea()
-    }
-
-    private func closePlayer(geoHeight: CGFloat) {
-        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.9)) {
-            dragOffset = geoHeight
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            isVisible = false
-            isPresented = false
-        }
-    }
-    
-    // MARK: - Asynchronous Brightness Calculation (60FPS Fix)
-    private func calculateBrightness(for track: LocalTrack?) {
-        guard let data = track?.artworkData, let img = UIImage(data: data) else {
-            isBackgroundBright = false
-            return
-        }
-        
-        // Push heavy pixel calculation to a background thread to prevent UI stutter
-        DispatchQueue.global(qos: .userInitiated).async {
-            let isBright = img.isImageTooBright()
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    self.isBackgroundBright = isBright
+                // Crisp, fast entrance
+                withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                    isVisible = true
                 }
             }
         }
-    }
-
-    // MARK: - Smart Luminance-Adaptive Background Bleed
-    private func appleMusicSmartBleedBackground(size: CGSize) -> some View {
-        ZStack {
-            if let data = audioManager.currentTrack?.artworkData, let img = UIImage(data: data) {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size.width, height: size.height)
-                    .scaleEffect(1.35)
-                    .clipped()
-                    .brightness(isBackgroundBright ? -0.15 : -0.05)
-                    .saturation(isBackgroundBright ? 0.8 : 1.45)
-                    .blur(radius: isBackgroundBright ? 45 : 65)
-                    .opacity(isBackgroundBright ? 0.65 : 0.92)
-            }
-        }
-        .frame(width: size.width, height: size.height)
-        .clipped()
         .ignoresSafeArea()
     }
 
@@ -292,13 +251,13 @@ struct NowPlayingView: View {
                             .onTapGesture {
                                 audioManager.seek(to: line.time)
                             }
-                            // Snappier transition when lyric states change
-                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isActive)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isActive)
                         }
                     }
                     .padding(.vertical, 240)
                     .padding(.horizontal, 16)
                 }
+                .compositingGroup() // Flattens scroll content for 60fps mask rendering
                 .mask(
                     LinearGradient(
                         gradient: Gradient(stops: [
@@ -311,10 +270,11 @@ struct NowPlayingView: View {
                         endPoint: .bottom
                     )
                 )
+                // Ensures we only trigger the scroll engine exactly when the line changes
                 .onChange(of: activeId) { _, newId in
                     if let newId = newId {
-                        // Spring physics makes the scrolling fluid and organic, matching native scrolling
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                        // High damping prevents bouncy jitter; keeps it completely fluid
+                        withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
                             proxy.scrollTo(newId, anchor: .center)
                         }
                     }
@@ -338,6 +298,49 @@ struct NowPlayingView: View {
         let mins = Int(duration) / 60
         let secs = Int(duration) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+// MARK: - Dedicated Hardware-Accelerated Background View
+/// Isolating this into a separate struct and using .drawingGroup() stops SwiftUI
+/// from recalculating the heavy 65pt Gaussian blur during 60fps swiping animations.
+struct OptimizedBackgroundBleed: View {
+    let artworkData: Data?
+    @State private var isBright: Bool = false
+
+    var body: some View {
+        ZStack {
+            if let data = artworkData, let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(1.35)
+                    .clipped()
+                    .brightness(isBright ? -0.15 : -0.05)
+                    .saturation(isBright ? 0.8 : 1.45)
+                    .blur(radius: isBright ? 45 : 65, opaque: true)
+                    .opacity(isBright ? 0.65 : 0.92)
+            } else {
+                Color.black
+            }
+        }
+        // MAGICAL PERFORMANCE FIX: Forces rendering to a single offscreen GPU Metal texture
+        .drawingGroup()
+        .onAppear { calculateBrightness() }
+        .onChange(of: artworkData) { _, _ in calculateBrightness() }
+    }
+
+    private func calculateBrightness() {
+        guard let data = artworkData, let img = UIImage(data: data) else { return }
+        // Push the heavy pixel scanning to the background so the UI thread doesn't stutter
+        DispatchQueue.global(qos: .userInitiated).async {
+            let bright = img.isImageTooBright()
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    self.isBright = bright
+                }
+            }
+        }
     }
 }
 
