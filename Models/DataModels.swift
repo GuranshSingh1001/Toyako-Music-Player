@@ -1,6 +1,12 @@
 import Foundation
 import UIKit
 
+enum RepeatMode: String, CaseIterable, Codable {
+    case off
+    case all
+    case one
+}
+
 struct LocalTrack: Identifiable, Hashable {
     let id: UUID
     let url: URL
