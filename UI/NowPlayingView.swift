@@ -3,6 +3,7 @@ import SwiftUI
 struct NowPlayingView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var audioManager: AudioEngineManager
+    @GestureState private var dragOffset: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -37,10 +38,26 @@ struct NowPlayingView: View {
                         .padding(24)
                 }
             }
+            .offset(y: max(0, dragOffset))
+            // Interactive swipe-down-from-anywhere gesture
+            .gesture(
+                DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                    .updating($dragOffset) { value, state, _ in
+                        if value.translation.height > 0 {
+                            state = value.translation.height
+                        }
+                    }
+                    .onEnded { value in
+                        if value.translation.height > 120 || value.predictedEndTranslation.height > 250 {
+                            dismiss()
+                        }
+                    }
+            )
+            .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.8), value: dragOffset)
         }
     }
 
-    // MARK: - Authentic Apple Music Ambient Bleed
+    // MARK: - Vibrant Apple Music Ambient Bleed
     private func appleMusicBleedBackground(size: CGSize) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -50,14 +67,16 @@ struct NowPlayingView: View {
                     .resizable()
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
-                    .scaleEffect(1.3)
+                    .scaleEffect(1.35)
                     .clipped()
-                    .blur(radius: 65)
-                    .saturation(1.35)
-                    .opacity(0.85)
+                    .blur(radius: 55)
+                    .saturation(1.5)
+                    .contrast(1.05)
+                    .opacity(0.95)
 
-                // Soft lighting layer that maintains vibrancy without turning muddy
-                Color.black.opacity(0.2)
+                // High-pass illumination to preserve luminous pastel colors
+                Color.white.opacity(0.08)
+                Color.black.opacity(0.10)
             } else {
                 Color.black
             }
@@ -76,7 +95,7 @@ struct NowPlayingView: View {
                     .scaledToFit()
                     .frame(maxHeight: maxHeight)
                     .cornerRadius(12)
-                    .shadow(color: .black.opacity(0.4), radius: 24, y: 12)
+                    .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
             } else {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.white.opacity(0.08))
@@ -96,7 +115,7 @@ struct NowPlayingView: View {
 
                 Text(audioManager.currentTrack?.artist ?? "Unknown Artist")
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(.white.opacity(0.65))
+                    .foregroundColor(.white.opacity(0.7))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,7 +133,7 @@ struct NowPlayingView: View {
                     ),
                     in: 0.0...1.0
                 )
-                .tint(.white.opacity(0.85))
+                .tint(.white)
 
                 HStack {
                     Text(formatTime(audioManager.currentTime))
@@ -122,7 +141,7 @@ struct NowPlayingView: View {
                     Text("-" + formatTime(max(0, (audioManager.currentTrack?.duration ?? 0) - audioManager.currentTime)))
                 }
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.55))
+                .foregroundColor(.white.opacity(0.65))
             }
             .padding(.horizontal, 4)
 
@@ -180,22 +199,32 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 30) {
+                    VStack(alignment: .leading, spacing: 32) {
                         ForEach(lyrics) { line in
                             let isActive = line.id == activeId
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(line.text)
-                                    .font(.system(size: isActive ? 34 : 26, weight: .bold, design: .rounded))
+                            VStack(alignment: .leading, spacing: 6) {
+                                if line.text.trimmingCharacters(in: .whitespaces).isEmpty {
+                                    HStack(spacing: 8) {
+                                        Circle().frame(width: 8, height: 8)
+                                        Circle().frame(width: 8, height: 8)
+                                        Circle().frame(width: 8, height: 8)
+                                    }
                                     .foregroundColor(.white)
-                                    .opacity(isActive ? 1.0 : 0.3)
-                                    .scaleEffect(isActive ? 1.02 : 1.0, anchor: .leading)
-
-                                if let romaji = line.romanized, !romaji.isEmpty {
-                                    Text(romaji)
-                                        .font(.system(size: isActive ? 16 : 13, weight: .medium, design: .rounded))
+                                    .opacity(isActive ? 0.95 : 0.25)
+                                    .padding(.vertical, 8)
+                                } else {
+                                    Text(line.text)
+                                        .font(.system(size: 30, weight: .bold, design: .rounded))
                                         .foregroundColor(.white)
-                                        .opacity(isActive ? 0.7 : 0.22)
+                                        .opacity(isActive ? 1.0 : 0.35)
+
+                                    if let romaji = line.romanized, !romaji.isEmpty {
+                                        Text(romaji)
+                                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                                            .foregroundColor(.white)
+                                            .opacity(isActive ? 0.8 : 0.25)
+                                    }
                                 }
                             }
                             .id(line.id)
@@ -203,18 +232,18 @@ struct NowPlayingView: View {
                             .onTapGesture {
                                 audioManager.seek(to: line.time)
                             }
-                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isActive)
+                            .animation(.easeInOut(duration: 0.3), value: isActive)
                         }
                     }
-                    .padding(.vertical, 160)
+                    .padding(.vertical, 200)
                     .padding(.horizontal, 16)
                 }
                 .mask(
                     LinearGradient(
                         gradient: Gradient(stops: [
                             .init(color: .clear, location: 0.0),
-                            .init(color: .black, location: 0.12),
-                            .init(color: .black, location: 0.88),
+                            .init(color: .black, location: 0.15),
+                            .init(color: .black, location: 0.85),
                             .init(color: .clear, location: 1.0)
                         ]),
                         startPoint: .top,
@@ -223,7 +252,7 @@ struct NowPlayingView: View {
                 )
                 .onChange(of: audioManager.currentTime) { _, _ in
                     if let activeId = activeId {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(.easeInOut(duration: 0.45)) {
                             proxy.scrollTo(activeId, anchor: .center)
                         }
                     }
