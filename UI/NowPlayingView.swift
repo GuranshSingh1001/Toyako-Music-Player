@@ -4,18 +4,15 @@ struct NowPlayingView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var audioManager: AudioEngineManager
     
-    // Mock lyrics for demonstration; in production, this binds to LyricSynchronizer
     let lyrics: [LyricLine] = [
-        LyricLine(time: 10.0, text: "Welcome to the offline player"),
-        LyricLine(time: 14.5, text: "Running entirely on your iPad"),
-        LyricLine(time: 18.2, text: "No servers required.")
+        LyricLine(time: 10.0, text: "Playing offline track"),
+        LyricLine(time: 14.5, text: "Directly from your local files"),
+        LyricLine(time: 18.2, text: "No network connection required")
     ]
     @State private var activeLyricID: UUID?
 
     var body: some View {
         GeometryReader { geo in
-            let isLandscape = geo.size.width > geo.size.height
-            
             ViewThatFits {
                 HStack(spacing: 0) {
                     artworkPane
@@ -44,7 +41,6 @@ struct NowPlayingView: View {
     private var artworkPane: some View {
         VStack {
             Spacer()
-            // Placeholder for MeshGradient and CIImage color extraction
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.gray.opacity(0.3))
                 .aspectRatio(1, contentMode: .fit)
@@ -52,8 +48,12 @@ struct NowPlayingView: View {
                 .shadow(color: .white.opacity(0.1), radius: 20)
             
             if let track = audioManager.currentTrack {
-                Text(track.title).font(.title.bold()).foregroundColor(.white)
-                Text(track.artistName).font(.title3).foregroundColor(.gray)
+                Text(track.title)
+                    .font(.title.bold())
+                    .foregroundColor(.white)
+                Text(track.artist)
+                    .font(.title3)
+                    .foregroundColor(.gray)
             }
             
             ProgressView(value: audioManager.playbackProgress)
@@ -85,14 +85,13 @@ struct NowPlayingView: View {
                             .foregroundColor(activeLyricID == line.id ? .white : .white.opacity(0.3))
                             .id(line.id)
                             .onTapGesture {
-                                // Seek audioManager to line.time
                                 activeLyricID = line.id
                             }
                             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: activeLyricID)
                     }
                 }
                 .padding(.horizontal, 40)
-                .padding(.vertical, 200) // Padding to allow scrolling to center
+                .padding(.vertical, 200)
             }
             .onChange(of: activeLyricID) { oldID, newID in
                 withAnimation(.spring()) {
