@@ -63,18 +63,18 @@ struct NowPlayingView: View {
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
                     .clipped()
-                    .blur(radius: 60)
-                    .opacity(0.45)
-                    .overlay(Color.black.opacity(0.4))
+                    .blur(radius: 65)
+                    .saturation(1.4)
+                    .opacity(0.85)
+                    .overlay(Color.black.opacity(0.15))
             } else {
                 LinearGradient(
-                    colors: [Color(red: 0.1, green: 0.1, blue: 0.18), Color.black],
+                    colors: [Color(red: 0.15, green: 0.15, blue: 0.3), Color.black],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             }
         }
-        .drawingGroup()
         .ignoresSafeArea()
     }
 
