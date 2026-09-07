@@ -16,6 +16,7 @@ targets:
       - path: Models
       - path: UI
     settings:
+      GENERATE_INFOPLIST_FILE: "YES"
       PRODUCT_BUNDLE_IDENTIFIER: com.local.OfflineMusic
       INFOPLIST_KEY_CFBundleDisplayName: "Music"
       INFOPLIST_KEY_UIBackgroundModes: "audio"
