@@ -22,106 +22,113 @@ struct ContentView: View {
     @State private var playlistToEdit: Playlist?
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selectedCategory) {
-                Section("Library") {
-                    NavigationLink(value: LibraryCategory.songs) {
-                        Label("Songs", systemImage: "music.note")
-                    }
-                    NavigationLink(value: LibraryCategory.albums) {
-                        Label("Albums", systemImage: "square.stack")
-                    }
-                    NavigationLink(value: LibraryCategory.artists) {
-                        Label("Artists", systemImage: "music.mic")
-                    }
-                }
-
-                Section("Playlists") {
-                    ForEach(library.playlists) { pl in
-                        NavigationLink(value: LibraryCategory.playlist(pl.id)) {
-                            Label(pl.name, systemImage: "music.note.list")
+        // 1. Wrap the entire app in a ZStack for seamless overlay
+        ZStack {
+            NavigationSplitView {
+                List(selection: $selectedCategory) {
+                    Section("Library") {
+                        NavigationLink(value: LibraryCategory.songs) {
+                            Label("Songs", systemImage: "music.note")
+                        }
+                        NavigationLink(value: LibraryCategory.albums) {
+                            Label("Albums", systemImage: "square.stack")
+                        }
+                        NavigationLink(value: LibraryCategory.artists) {
+                            Label("Artists", systemImage: "music.mic")
                         }
                     }
-                    Button {
-                        showNewPlaylistAlert = true
-                    } label: {
-                        Label("New Playlist...", systemImage: "plus")
-                    }
-                }
 
-                Section("Status") {
-                    Text(library.statusMessage)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .navigationTitle("Library")
-        } detail: {
-            ZStack(alignment: .bottom) {
-                detailContent
-                    .searchable(text: $searchText, prompt: "Search songs, albums, artists")
-
-                if audioManager.currentTrack != nil {
-                    MiniPlayerView()
-                        .onTapGesture { showNowPlaying = true }
-                        .padding(.bottom, 12)
-                }
-            }
-            .navigationTitle(titleForCategory())
-            .toolbar {
-                // Navigation / Search back button
-                if !searchText.isEmpty {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                Text("Back")
+                    Section("Playlists") {
+                        ForEach(library.playlists) { pl in
+                            NavigationLink(value: LibraryCategory.playlist(pl.id)) {
+                                Label(pl.name, systemImage: "music.note.list")
                             }
-                            .font(.body.weight(.medium))
+                        }
+                        Button {
+                            showNewPlaylistAlert = true
+                        } label: {
+                            Label("New Playlist...", systemImage: "plus")
                         }
                     }
-                }
 
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showFilePicker = true } label: {
-                        Image(systemName: "plus")
+                    Section("Status") {
+                        Text(library.statusMessage)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
                     }
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if searchText.isEmpty {
-                        Button { library.reloadFiles() } label: {
-                            Image(systemName: "arrow.clockwise")
+                .navigationTitle("Library")
+            } detail: {
+                ZStack(alignment: .bottom) {
+                    detailContent
+                        .searchable(text: $searchText, prompt: "Search songs, albums, artists")
+
+                    if audioManager.currentTrack != nil {
+                        MiniPlayerView()
+                            .onTapGesture {
+                                showNowPlaying = true // Triggers slide-up naturally
+                            }
+                            .padding(.bottom, 12)
+                    }
+                }
+                .navigationTitle(titleForCategory())
+                .toolbar {
+                    if !searchText.isEmpty {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                    Text("Back")
+                                }
+                                .font(.body.weight(.medium))
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { showFilePicker = true } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        if searchText.isEmpty {
+                            Button { library.reloadFiles() } label: {
+                                Image(systemName: "arrow.clockwise")
+                            }
                         }
                     }
                 }
             }
-        }
-        .fullScreenCover(isPresented: $showNowPlaying) {
-            NowPlayingView()
-        }
-        .sheet(isPresented: $showFilePicker) {
-            DocumentPicker { urls in
-                library.importExternalURLs(urls)
-            }
-        }
-        .sheet(item: $playlistToEdit) { playlist in
-            PlaylistAddSongsSheet(playlist: playlist, library: library)
-        }
-        .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
-            TextField("Playlist Name", text: $newPlaylistName)
-            Button("Cancel", role: .cancel) { newPlaylistName = "" }
-            Button("Create") {
-                if !newPlaylistName.isEmpty {
-                    library.createPlaylist(name: newPlaylistName)
-                    newPlaylistName = ""
+            .sheet(isPresented: $showFilePicker) {
+                DocumentPicker { urls in
+                    library.importExternalURLs(urls)
                 }
             }
-        }
-        .keyboardShortcut(" ", modifiers: [])
-        .onAppear {
-            library.reloadFiles()
+            .sheet(item: $playlistToEdit) { playlist in
+                PlaylistAddSongsSheet(playlist: playlist, library: library)
+            }
+            .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
+                TextField("Playlist Name", text: $newPlaylistName)
+                Button("Cancel", role: .cancel) { newPlaylistName = "" }
+                Button("Create") {
+                    if !newPlaylistName.isEmpty {
+                        library.createPlaylist(name: newPlaylistName)
+                        newPlaylistName = ""
+                    }
+                }
+            }
+            .keyboardShortcut(" ", modifiers: [])
+            .onAppear {
+                library.reloadFiles()
+            }
+            
+            // 2. Direct ZStack Overlay (Replaces .fullScreenCover)
+            if showNowPlaying {
+                NowPlayingView(isPresented: $showNowPlaying)
+                    .zIndex(2) // Ensures it sits perfectly on top without system transition glitches
+            }
         }
     }
 
@@ -190,6 +197,8 @@ struct ContentView: View {
         }
     }
 }
+
+// MARK: - Playlists & Utility Views
 
 struct PlaylistHeaderView: View {
     let playlist: Playlist
@@ -521,9 +530,7 @@ struct FolderBrowserView: View {
     private var breadcrumbPath: String {
         let rootPath = rootURL.standardizedFileURL.path
         let currPath = currentURL.standardizedFileURL.path
-        if currPath == rootPath {
-            return "Documents"
-        }
+        if currPath == rootPath { return "Documents" }
         let relative = currPath.replacingOccurrences(of: rootPath, with: "")
         return "Documents" + relative.replacingOccurrences(of: "/", with: " / ")
     }
