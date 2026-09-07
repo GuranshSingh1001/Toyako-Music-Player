@@ -10,12 +10,12 @@ struct MiniPlayerView: View {
                     Image(uiImage: img)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 48, height: 48)
+                        .frame(width: 46, height: 46)
                         .cornerRadius(8)
                 } else {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.3))
-                        .frame(width: 48, height: 48)
+                        .frame(width: 46, height: 46)
                         .overlay(Image(systemName: "music.note").foregroundColor(.gray))
                 }
 
@@ -51,9 +51,7 @@ struct MiniPlayerView: View {
             }
         }
         .padding(10)
-        .background(.ultraThinMaterial)
-        .cornerRadius(14)
-        .shadow(color: .black.opacity(0.12), radius: 10, y: 5)
+        .liquidGlass(cornerRadius: 16, opacity: 0.65)
         .padding(.horizontal, 16)
     }
 }
