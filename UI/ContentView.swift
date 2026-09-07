@@ -59,7 +59,7 @@ struct ContentView: View {
         } detail: {
             ZStack(alignment: .bottom) {
                 detailContent
-                    .searchable(text: $searchText, prompt: "Search tracks, albums, artists")
+                    .searchable(text: $searchText, prompt: "Search songs, albums, artists")
 
                 if audioManager.currentTrack != nil {
                     MiniPlayerView()
@@ -69,14 +69,31 @@ struct ContentView: View {
             }
             .navigationTitle(titleForCategory())
             .toolbar {
+                // Navigation / Search back button
+                if !searchText.isEmpty {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("Back")
+                            }
+                            .font(.body.weight(.medium))
+                        }
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button { showFilePicker = true } label: {
                         Image(systemName: "plus")
                     }
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button { library.reloadFiles() } label: {
-                        Image(systemName: "arrow.clockwise")
+                    if searchText.isEmpty {
+                        Button { library.reloadFiles() } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
                 }
             }
@@ -120,13 +137,17 @@ struct ContentView: View {
         case .playlist(let id):
             if let pl = library.playlists.first(where: { $0.id == id }) {
                 let pTracks = library.tracks.filter { pl.trackURLs.contains($0.url) }
+                let displayedPlaylistTracks = filterTracks(pTracks)
+
                 VStack(spacing: 0) {
-                    PlaylistHeaderView(
-                        playlist: pl,
-                        tracks: pTracks,
-                        onAddSongs: { playlistToEdit = pl }
-                    )
-                    SongListView(tracks: pTracks, allTracks: pTracks, library: library, playlistID: pl.id)
+                    if searchText.isEmpty {
+                        PlaylistHeaderView(
+                            playlist: pl,
+                            tracks: pTracks,
+                            onAddSongs: { playlistToEdit = pl }
+                        )
+                    }
+                    SongListView(tracks: displayedPlaylistTracks, allTracks: pTracks, library: library, playlistID: pl.id)
                 }
             }
         }
@@ -141,13 +162,17 @@ struct ContentView: View {
         }
     }
 
-    private var filteredTracks: [LocalTrack] {
-        if searchText.isEmpty { return library.tracks }
-        return library.tracks.filter {
+    private func filterTracks(_ source: [LocalTrack]) -> [LocalTrack] {
+        if searchText.isEmpty { return source }
+        return source.filter {
             $0.title.localizedCaseInsensitiveContains(searchText) ||
             $0.artist.localizedCaseInsensitiveContains(searchText) ||
             $0.album.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    private var filteredTracks: [LocalTrack] {
+        filterTracks(library.tracks)
     }
 
     private var filteredAlbums: [AlbumGroup] {
