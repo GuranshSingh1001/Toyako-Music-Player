@@ -12,6 +12,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
       - name: Build Unsigned Archive
         run: |
           xcodebuild archive \
@@ -27,7 +33,7 @@ jobs:
       - name: Package into IPA
         run: |
           cd $RUNNER_TEMP
-          mkdir Payload
+          mkdir -p Payload
           cp -r OfflineMusic.xcarchive/Products/Applications/OfflineMusic.app Payload/
           zip -r OfflineMusic.ipa Payload
 
