@@ -65,15 +65,16 @@ struct ContentView: View {
 
                     if audioManager.currentTrack != nil {
                         MiniPlayerView()
-                             .contentShape(Rectangle())
+                            .contentShape(Rectangle())
                             .onTapGesture {
                                 withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                                showNowPlaying = true
+                                    showNowPlaying = true
                                 }
                             }
-                             .gesture(
+                            .gesture(
                                 DragGesture(minimumDistance: 10, coordinateSpace: .local)
                                     .onEnded { value in
+                                        // Detect an upward swipe
                                         if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
                                             withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
                                                 showNowPlaying = true
@@ -140,8 +141,8 @@ struct ContentView: View {
             // 2. Direct ZStack Overlay (Replaces .fullScreenCover)
             if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
-                    .transition(.identity)
-                    .zIndex(2) // Ensures it sits perfectly on top without system transition glitches
+                    .transition(.identity) // Smooth transition handled entirely by drag/spring offset
+                    .zIndex(2) // Ensures it sits perfectly on top
             }
         }
     }
@@ -160,16 +161,19 @@ struct ContentView: View {
                 let pTracks = library.tracks.filter { pl.trackURLs.contains($0.url) }
                 let displayedPlaylistTracks = filterTracks(pTracks)
 
-                VStack(spacing: 0) {
-                    if searchText.isEmpty {
+                SongListView(
+                    tracks: displayedPlaylistTracks,
+                    allTracks: pTracks,
+                    library: library,
+                    playlistID: pl.id,
+                    headerView: searchText.isEmpty ? AnyView(
                         PlaylistHeaderView(
                             playlist: pl,
                             tracks: pTracks,
                             onAddSongs: { playlistToEdit = pl }
                         )
-                    }
-                    SongListView(tracks: displayedPlaylistTracks, allTracks: pTracks, library: library, playlistID: pl.id)
-                }
+                    ) : nil
+                )
             }
         }
     }
@@ -221,35 +225,36 @@ struct PlaylistHeaderView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
 
     var body: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 20) {
             playlistArtwork
-                .frame(width: 130, height: 130)
-                .cornerRadius(12)
-                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+                .frame(width: 120, height: 120)
+                .cornerRadius(10)
+                .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("PLAYLIST")
-                    .font(.caption.bold())
+                    .font(.caption2.bold())
                     .foregroundColor(.secondary)
 
                 Text(playlist.name)
-                    .font(.title.bold())
+                    .font(.title2.bold())
                     .lineLimit(1)
 
                 Text("\(tracks.count) Songs • \(totalDurationString)")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(.secondary)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button {
                         if !tracks.isEmpty {
                             audioManager.startQueue(tracks: tracks, startIndex: 0)
                         }
                     } label: {
                         Label("Play", systemImage: "play.fill")
-                            .font(.subheadline.bold())
+                            .font(.caption.bold())
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
 
                     Button {
                         if !tracks.isEmpty {
@@ -260,21 +265,26 @@ struct PlaylistHeaderView: View {
                         }
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
-                            .font(.subheadline.bold())
+                            .font(.caption.bold())
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
 
                     Button(action: onAddSongs) {
-                        Label("Add Songs", systemImage: "plus.circle")
-                            .font(.subheadline.bold())
+                        Image(systemName: "plus")
+                            .font(.caption.bold())
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
                 .padding(.top, 4)
             }
             Spacer()
         }
-        .padding(20)
+        .padding(.vertical, 8)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     @ViewBuilder
@@ -298,7 +308,7 @@ struct PlaylistHeaderView: View {
                 .fill(Color.gray.opacity(0.2))
                 .overlay(
                     Image(systemName: "music.note.list")
-                        .font(.system(size: 40))
+                        .font(.system(size: 32))
                         .foregroundColor(.secondary)
                 )
         }
@@ -644,10 +654,16 @@ struct SongListView: View {
     let allTracks: [LocalTrack]
     let library: LocalLibrary
     var playlistID: UUID? = nil
+    var headerView: AnyView? = nil
     @EnvironmentObject var audioManager: AudioEngineManager
 
     var body: some View {
         List {
+            // Embeds the hero artwork and title into the scroll flow
+            if let header = headerView {
+                header
+            }
+
             ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                 HStack(spacing: 12) {
                     if let data = track.artworkData, let uiImage = UIImage(data: data) {
@@ -704,6 +720,7 @@ struct SongListView: View {
                     .listRowBackground(Color.clear)
             }
         }
+        .listStyle(.plain)
     }
 
     private func formatTime(_ duration: TimeInterval) -> String {
