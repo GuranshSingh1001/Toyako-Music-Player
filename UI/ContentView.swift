@@ -37,7 +37,7 @@ struct ContentView: View {
             NowPlayingView()
         }
         .keyboardShortcut(" ", modifiers: []) // Space to play/pause globally
-        .onChange(of: selectedCategory) { _ in
+        .onChange(of: selectedCategory) { oldValue, newValue in
             // Handle category switching
         }
     }
