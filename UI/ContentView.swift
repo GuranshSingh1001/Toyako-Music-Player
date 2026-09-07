@@ -247,8 +247,11 @@ struct PlaylistHeaderView: View {
                             audioManager.startQueue(tracks: tracks, startIndex: 0)
                         }
                     } label: {
-                        Label("Play", systemImage: "play.fill")
-                            .font(.subheadline.bold())
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                            Text("Play")
+                        }
+                        .font(.subheadline.bold())
                     }
                     .buttonStyle(.borderedProminent)
 
