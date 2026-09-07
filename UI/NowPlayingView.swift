@@ -1,82 +1,70 @@
 import SwiftUI
+import UIKit
 
 struct NowPlayingView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var audioManager: AudioEngineManager
-    @GestureState private var dragOffset: CGFloat = 0
 
     var body: some View {
-        GeometryReader { geo in
-            let isLandscape = geo.size.width > geo.size.height
+        NowPlayingContainerView(dismissAction: dismiss) {
+            GeometryReader { geo in
+                let isLandscape = geo.size.width > geo.size.height
 
-            ZStack {
-                appleMusicBrightBleedBackground(size: geo.size)
+                ZStack {
+                    appleMusicSmartBleedBackground(size: geo.size)
 
-                if isLandscape {
-                    HStack(spacing: geo.size.width * 0.05) {
-                        artworkPane(maxHeight: geo.size.height * 0.52)
-                            .frame(width: geo.size.width * 0.44)
+                    if isLandscape {
+                        HStack(spacing: geo.size.width * 0.05) {
+                            artworkPane(maxHeight: geo.size.height * 0.52)
+                                .frame(width: geo.size.width * 0.44)
 
-                        lyricsPane
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                    .padding(.horizontal, 48)
-                    .padding(.vertical, 24)
-                } else {
-                    VStack(spacing: 20) {
-                        artworkPane(maxHeight: geo.size.height * 0.38)
-                        lyricsPane
-                    }
-                    .padding(24)
-                }
-            }
-            .overlay(alignment: .topLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white.opacity(0.85))
+                            lyricsPane
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .padding(.horizontal, 48)
+                        .padding(.vertical, 24)
+                    } else {
+                        VStack(spacing: 20) {
+                            artworkPane(maxHeight: geo.size.height * 0.38)
+                            lyricsPane
+                        }
                         .padding(24)
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(24)
+                    }
                 }
             }
-            .offset(y: max(0, dragOffset))
-            // High-responsiveness interactive swipe-down gesture
-            .gesture(
-                DragGesture(coordinateSpace: .local)
-                    .updating($dragOffset) { value, state, _ in
-                        if value.translation.height > 0 {
-                            state = value.translation.height
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 60 || value.predictedEndTranslation.height > 120 {
-                            dismiss()
-                        }
-                    }
-            )
-            .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.85), value: dragOffset)
         }
     }
 
-    // MARK: - Extra Bright & Vibrant Apple Music Background
-    private func appleMusicBrightBleedBackground(size: CGSize) -> some View {
+    // MARK: - Smart Luminance-Adaptive Background Bleed
+    private func appleMusicSmartBleedBackground(size: CGSize) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             if let data = audioManager.currentTrack?.artworkData, let img = UIImage(data: data) {
+                let isBright = img.isImageTooBright()
+
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
-                    .scaleEffect(1.4)
+                    .scaleEffect(1.35)
                     .clipped()
-                    .blur(radius: 50)
-                    .saturation(1.6)
-                    .contrast(1.1)
-                    .opacity(0.98)
+                    // Reduce brightness and saturation automatically if cover art is white/light
+                    .brightness(isBright ? -0.35 : -0.05)
+                    .saturation(isBright ? 0.8 : 1.4)
+                    .blur(radius: isBright ? 45 : 65)
+                    .opacity(isBright ? 0.65 : 0.90)
 
-                // Luminous warm tint to make the background feel brighter
-                Color.white.opacity(0.12)
-                Color.black.opacity(0.05)
+                // Adaptive contrast scrim
+                Color.black.opacity(isBright ? 0.45 : 0.20)
             } else {
                 Color.black
             }
@@ -181,7 +169,7 @@ struct NowPlayingView: View {
         }
     }
 
-    // MARK: - Large Apple Music Scale Lyrics Pane
+    // MARK: - Massive Apple Music Lyrics Pane with Inactive Blur
     private var lyricsPane: some View {
         let lyrics = audioManager.currentLyrics
         let activeId = activeLineId()
@@ -199,32 +187,34 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 36) {
+                    VStack(alignment: .leading, spacing: 38) {
                         ForEach(lyrics) { line in
                             let isActive = line.id == activeId
 
                             VStack(alignment: .leading, spacing: 8) {
                                 if line.text.trimmingCharacters(in: .whitespaces).isEmpty {
                                     HStack(spacing: 8) {
-                                        Circle().frame(width: 9, height: 9)
-                                        Circle().frame(width: 9, height: 9)
-                                        Circle().frame(width: 9, height: 9)
+                                        Circle().frame(width: 10, height: 10)
+                                        Circle().frame(width: 10, height: 10)
+                                        Circle().frame(width: 10, height: 10)
                                     }
                                     .foregroundColor(.white)
                                     .opacity(isActive ? 0.95 : 0.25)
                                     .padding(.vertical, 10)
                                 } else {
-                                    // Scaled up to 38pt matching Apple Music iPad lyrics size
+                                    // 42pt massive Apple Music lyric sizing
                                     Text(line.text)
-                                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                                        .font(.system(size: 42, weight: .bold, design: .rounded))
                                         .foregroundColor(.white)
-                                        .opacity(isActive ? 1.0 : 0.35)
+                                        .opacity(isActive ? 1.0 : 0.3)
+                                        .blur(radius: isActive ? 0.0 : 1.5) // Subtle blur on non-main lines
 
                                     if let romaji = line.romanized, !romaji.isEmpty {
                                         Text(romaji)
-                                            .font(.system(size: 18, weight: .medium, design: .rounded))
+                                            .font(.system(size: 20, weight: .medium, design: .rounded))
                                             .foregroundColor(.white)
-                                            .opacity(isActive ? 0.8 : 0.25)
+                                            .opacity(isActive ? 0.8 : 0.2)
+                                            .blur(radius: isActive ? 0.0 : 1.0)
                                     }
                                 }
                             }
@@ -236,7 +226,7 @@ struct NowPlayingView: View {
                             .animation(.easeInOut(duration: 0.3), value: isActive)
                         }
                     }
-                    .padding(.vertical, 220)
+                    .padding(.vertical, 240)
                     .padding(.horizontal, 16)
                 }
                 .mask(
@@ -277,5 +267,115 @@ struct NowPlayingView: View {
         let mins = Int(duration) / 60
         let secs = Int(duration) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+// MARK: - Native UIKit Interactive Pan Dismissal Container
+struct NowPlayingContainerView<Content: View>: UIViewControllerRepresentable {
+    let dismissAction: () -> Void
+    let content: Content
+
+    init(dismissAction: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.dismissAction = dismissAction
+        self.content = content()
+    }
+
+    func makeUIViewController(context: Context) -> NowPlayingHostingController<Content> {
+        let vc = NowPlayingHostingController(rootView: content)
+        vc.dismissAction = dismissAction
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: NowPlayingHostingController<Content>, context: Context) {
+        uiViewController.rootView = content
+    }
+}
+
+class NowPlayingHostingController<Content: View>: UIHostingController<Content> {
+    var dismissAction: (() -> Void)?
+    private var panGesture: UIPanGestureRecognizer!
+    private var initialTouchY: CGFloat = 0
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+
+        panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.delegate = self
+        view.addGestureRecognizer(panGesture)
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
+
+        switch gesture.state {
+        case .began:
+            initialTouchY = translation.y
+        case .changed:
+            if translation.y > 0 {
+                view.transform = CGAffineTransform(translationX: 0, y: translation.y)
+            }
+        case .ended, .cancelled:
+            if translation.y > 100 || velocity.y > 600 {
+                UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseOut) {
+                    self.view.transform = CGAffineTransform(translationX: 0, y: self.view.bounds.height)
+                } completion: { _ in
+                    self.dismissAction?()
+                }
+            } else {
+                UIView.animate(withDuration: 0.3, usingSpringWithDamping: 0.8, initialSpringVelocity: 0.5) {
+                    self.view.transform = .identity
+                }
+            }
+        default:
+            break
+        }
+    }
+}
+
+extension NowPlayingHostingController: UIGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as pS? else { return true } // fallback check
+        let velocity = pan.velocity(in: view)
+        return velocity.y > abs(velocity.x)
+    }
+}
+
+// MARK: - Artwork Brightness Analyzer Extension
+extension UIImage {
+    func isImageTooBright() -> Bool {
+        guard let cgImage = self.cgImage else { return false }
+        let width = 32
+        let height = 32
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        var rawData = [UInt8](repeating: 0, count: width * height * 4)
+        
+        guard let context = CGContext(
+            data: &rawData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.prematureLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        ) else { return false }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var totalLuminance: CGFloat = 0
+        let totalPixels = CGFloat(width * height)
+
+        for i in stride(from: 0, to: rawData.count, by: 4) {
+            let r = CGFloat(rawData[i]) / 255.0
+            let g = CGFloat(rawData[i+1]) / 255.0
+            let b = CGFloat(rawData[i+2]) / 255.0
+            // Perceived luminance formula
+            let luminance = (0.299 * r) + (0.587 * g) + (0.114 * b)
+            totalLuminance += luminance
+        }
+
+        let averageLuminance = totalLuminance / totalPixels
+        return averageLuminance > 0.60 // Returns true if the cover art is predominantly white/light
     }
 }
