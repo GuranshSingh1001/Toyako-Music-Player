@@ -13,7 +13,7 @@ struct ContentView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @StateObject private var library = LocalLibrary()
 
-    @State private var selectedCategory: LibraryCategory = .songs
+    @State private var selectedCategory: LibraryCategory? = .songs
     @State private var showFilePicker = false
     @State private var showNowPlaying = false
     @State private var showNewPlaylistAlert = false
@@ -23,96 +23,67 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // 1. iPadOS 18 Adaptable Sidebar / Tab Bar
-            TabView(selection: $selectedCategory) {
-                Tab("Songs", systemImage: "music.note", value: .songs) {
-                    tabContent(for: .songs)
-                }
-                
-                Tab("Albums", systemImage: "square.stack", value: .albums) {
-                    tabContent(for: .albums)
-                }
-                
-                Tab("Artists", systemImage: "music.mic", value: .artists) {
-                    tabContent(for: .artists)
-                }
-                
-                TabSection("Playlists") {
-                    ForEach(library.playlists) { pl in
-                        Tab(pl.name, systemImage: "music.note.list", value: .playlist(pl.id)) {
-                            tabContent(for: .playlist(pl.id))
+            NavigationSplitView {
+                List(selection: $selectedCategory) {
+                    Section("Library") {
+                        NavigationLink(value: LibraryCategory.songs) {
+                            Label("Songs", systemImage: "music.note")
+                        }
+                        NavigationLink(value: LibraryCategory.albums) {
+                            Label("Albums", systemImage: "square.stack")
+                        }
+                        NavigationLink(value: LibraryCategory.artists) {
+                            Label("Artists", systemImage: "music.mic")
                         }
                     }
-                }
-            }
-            .tabViewStyle(.sidebarAdaptable)
-            
-            // 2. Global MiniPlayer Overlay
-            VStack {
-                Spacer()
-                if audioManager.currentTrack != nil {
-                    MiniPlayerView()
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                                showNowPlaying = true
+
+                    Section("Playlists") {
+                        ForEach(library.playlists) { pl in
+                            NavigationLink(value: LibraryCategory.playlist(pl.id)) {
+                                Label(pl.name, systemImage: "music.note.list")
                             }
                         }
-                        .gesture(
-                            DragGesture(minimumDistance: 10, coordinateSpace: .local)
-                                .onEnded { value in
-                                    if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
-                                        withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                                            showNowPlaying = true
+                        Button {
+                            showNewPlaylistAlert = true
+                        } label: {
+                            Label("New Playlist...", systemImage: "plus")
+                        }
+                    }
+
+                    Section("Status") {
+                        Text(library.statusMessage)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .navigationTitle("Library")
+            } detail: {
+                ZStack(alignment: .bottom) {
+                    detailContent
+                        .searchable(text: $searchText, prompt: "Search songs, albums, artists")
+
+                    if audioManager.currentTrack != nil {
+                        MiniPlayerView()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                                    showNowPlaying = true
+                                }
+                            }
+                            .gesture(
+                                DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                                    .onEnded { value in
+                                        if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
+                                            withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                                                showNowPlaying = true
+                                            }
                                         }
                                     }
-                                }
-                        )
-                        .padding(.bottom, 12)
+                            )
+                            .padding(.bottom, 12)
+                    }
                 }
-            }
-
-            // 3. NowPlaying overlay with smooth .identity offset physics
-            if showNowPlaying {
-                NowPlayingView(isPresented: $showNowPlaying)
-                    .transition(.identity) 
-                    .zIndex(2) 
-            }
-        }
-        .sheet(isPresented: $showFilePicker) {
-            DocumentPicker { urls in
-                library.importExternalURLs(urls)
-            }
-        }
-        .sheet(item: $playlistToEdit) { playlist in
-            PlaylistAddSongsSheet(playlist: playlist, library: library)
-        }
-        .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
-            TextField("Playlist Name", text: $newPlaylistName)
-            Button("Cancel", role: .cancel) { newPlaylistName = "" }
-            Button("Create") {
-                if !newPlaylistName.isEmpty {
-                    library.createPlaylist(name: newPlaylistName)
-                    newPlaylistName = ""
-                }
-            }
-        }
-        .keyboardShortcut(" ", modifiers: [])
-        .onAppear {
-            library.reloadFiles()
-        }
-    }
-
-    // MARK: - Reusable Tab Content Wrapper
-    @ViewBuilder
-    private func tabContent(for category: LibraryCategory) -> some View {
-        NavigationStack {
-            detailContent(for: category)
-                .searchable(text: $searchText, prompt: "Search library")
-                .navigationTitle(titleForCategory(category))
-                .safeAreaInset(edge: .bottom) {
-                    Color.clear.frame(height: audioManager.currentTrack != nil ? 90 : 0)
-                }
+                .navigationTitle(titleForCategory())
                 .toolbar {
                     if !searchText.isEmpty {
                         ToolbarItem(placement: .navigationBarLeading) {
@@ -129,14 +100,7 @@ struct ContentView: View {
                     }
 
                     ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Button { showFilePicker = true } label: {
-                                Label("Import Audio", systemImage: "folder.badge.plus")
-                            }
-                            Button { showNewPlaylistAlert = true } label: {
-                                Label("New Playlist", systemImage: "plus.rectangle.on.rectangle")
-                            }
-                        } label: {
+                        Button { showFilePicker = true } label: {
                             Image(systemName: "plus")
                         }
                     }
@@ -148,13 +112,42 @@ struct ContentView: View {
                         }
                     }
                 }
+            }
+            .sheet(isPresented: $showFilePicker) {
+                DocumentPicker { urls in
+                    library.importExternalURLs(urls)
+                }
+            }
+            .sheet(item: $playlistToEdit) { playlist in
+                PlaylistAddSongsSheet(playlist: playlist, library: library)
+            }
+            .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
+                TextField("Playlist Name", text: $newPlaylistName)
+                Button("Cancel", role: .cancel) { newPlaylistName = "" }
+                Button("Create") {
+                    if !newPlaylistName.isEmpty {
+                        library.createPlaylist(name: newPlaylistName)
+                        newPlaylistName = ""
+                    }
+                }
+            }
+            .keyboardShortcut(" ", modifiers: [])
+            .onAppear {
+                library.reloadFiles()
+            }
+            
+            if showNowPlaying {
+                NowPlayingView(isPresented: $showNowPlaying)
+                    .transition(.identity) 
+                    .zIndex(2) 
+            }
         }
     }
 
     @ViewBuilder
-    private func detailContent(for category: LibraryCategory) -> some View {
-        switch category {
-        case .songs:
+    private var detailContent: some View {
+        switch selectedCategory {
+        case .songs, .none:
             SongListView(tracks: filteredTracks, allTracks: library.tracks, library: library)
         case .albums:
             AlbumGridView(albums: filteredAlbums, library: library)
@@ -182,9 +175,9 @@ struct ContentView: View {
         }
     }
 
-    private func titleForCategory(_ category: LibraryCategory) -> String {
-        switch category {
-        case .songs: return "Songs"
+    private func titleForCategory() -> String {
+        switch selectedCategory {
+        case .songs, .none: return "Songs"
         case .albums: return "Albums"
         case .artists: return "Artists"
         case .playlist(let id): return library.playlists.first(where: { $0.id == id })?.name ?? "Playlist"
@@ -715,6 +708,11 @@ struct SongListView: View {
                     }
                 }
             }
+
+            if audioManager.currentTrack != nil {
+                Spacer(minLength: 70)
+                    .listRowBackground(Color.clear)
+            }
         }
         .listStyle(.plain)
     }
@@ -766,6 +764,7 @@ struct AlbumGridView: View {
                 }
             }
             .padding()
+            .padding(.bottom, audioManager.currentTrack != nil ? 70 : 0)
         }
     }
 }
@@ -797,6 +796,11 @@ struct ArtistListView: View {
                         .padding(.leading, 6)
                     }
                 }
+            }
+
+            if audioManager.currentTrack != nil {
+                Spacer(minLength: 70)
+                    .listRowBackground(Color.clear)
             }
         }
     }
