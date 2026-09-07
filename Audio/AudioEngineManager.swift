@@ -3,8 +3,9 @@ import MediaPlayer
 import Combine
 
 class AudioEngineManager: ObservableObject {
-    private var player: AVPlayer?
+    private let player = AVPlayer()
     private var timeObserverToken: Any?
+    private var endObserverToken: Any?
 
     @Published var currentTrack: LocalTrack?
     @Published var isPlaying: Bool = false
@@ -31,23 +32,31 @@ class AudioEngineManager: ObservableObject {
         currentTrack = track
         loadLyrics(for: track)
         
+        // Detach previous observers on the same player instance before swapping items
+        detachTimeObserver()
+        if let token = endObserverToken {
+            NotificationCenter.default.removeObserver(token)
+            endObserverToken = nil
+        }
+
         let playerItem = AVPlayerItem(url: track.url)
-        player?.pause()
-        player = AVPlayer(playerItem: playerItem)
-        player?.play()
+        player.replaceCurrentItem(with: playerItem)
+        player.play()
         isPlaying = true
 
         updateNowPlaying(track: track)
         attachTimeObserver(duration: track.duration)
         
-        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: playerItem, queue: .main) { [weak self] _ in
+        endObserverToken = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { [weak self] _ in
             self?.forward()
         }
     }
 
     func togglePlayPause() {
-        guard let player = player else { return }
         if isPlaying {
             player.pause()
         } else {
@@ -77,7 +86,7 @@ class AudioEngineManager: ObservableObject {
 
     func seek(to time: TimeInterval) {
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
-        player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         currentTime = time
         if let duration = currentTrack?.duration, duration > 0 {
             playbackProgress = time / duration
@@ -93,19 +102,22 @@ class AudioEngineManager: ObservableObject {
         }
     }
 
-    private func attachTimeObserver(duration: TimeInterval) {
+    private func detachTimeObserver() {
         if let token = timeObserverToken {
-            player?.removeTimeObserver(token)
+            player.removeTimeObserver(token)
             timeObserverToken = nil
         }
+    }
+
+    private func attachTimeObserver(duration: TimeInterval) {
+        guard duration > 0 else { return }
+        
         let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
-        timeObserverToken = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
             let seconds = CMTimeGetSeconds(time)
             self.currentTime = seconds
-            if duration > 0 {
-                self.playbackProgress = seconds / duration
-            }
+            self.playbackProgress = seconds / duration
         }
     }
 
@@ -139,7 +151,7 @@ class AudioEngineManager: ObservableObject {
                   let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
             if type == .began {
-                self?.player?.pause()
+                self?.player.pause()
                 self?.isPlaying = false
             }
         }
@@ -165,5 +177,12 @@ class AudioEngineManager: ObservableObject {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    deinit {
+        detachTimeObserver()
+        if let token = endObserverToken {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 }
