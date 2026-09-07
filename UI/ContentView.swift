@@ -140,6 +140,7 @@ struct ContentView: View {
             // 2. Direct ZStack Overlay (Replaces .fullScreenCover)
             if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
+                    .transition(.identity)
                     .zIndex(2) // Ensures it sits perfectly on top without system transition glitches
             }
         }
