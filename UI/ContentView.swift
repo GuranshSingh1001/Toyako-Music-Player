@@ -173,9 +173,9 @@ struct PlaylistHeaderView: View {
     var body: some View {
         HStack(spacing: 24) {
             playlistArtwork
-                .frame(width: 140, height: 140)
-                .cornerRadius(16)
-                .liquidGlass(cornerRadius: 16, opacity: 0.3)
+                .frame(width: 130, height: 130)
+                .cornerRadius(12)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("PLAYLIST")
@@ -380,6 +380,11 @@ struct SongListView: View {
                     }
                 }
             }
+
+            if audioManager.currentTrack != nil {
+                Spacer(minLength: 70)
+                    .listRowBackground(Color.clear)
+            }
         }
     }
 
@@ -430,6 +435,7 @@ struct AlbumGridView: View {
                 }
             }
             .padding()
+            .padding(.bottom, audioManager.currentTrack != nil ? 70 : 0)
         }
     }
 }
@@ -437,27 +443,35 @@ struct AlbumGridView: View {
 struct ArtistListView: View {
     let artists: [ArtistGroup]
     let library: LocalLibrary
+    @EnvironmentObject var audioManager: AudioEngineManager
 
     var body: some View {
-        List(artists) { artist in
-            NavigationLink {
-                SongListView(tracks: artist.tracks, allTracks: artist.tracks, library: library)
-                    .navigationTitle(artist.name)
-            } label: {
-                HStack {
-                    Circle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 48, height: 48)
-                        .overlay(Image(systemName: "person.fill").foregroundColor(.secondary))
-                    VStack(alignment: .leading) {
-                        Text(artist.name)
-                            .font(.headline)
-                        Text("\(artist.tracks.count) Songs")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+        List {
+            ForEach(artists) { artist in
+                NavigationLink {
+                    SongListView(tracks: artist.tracks, allTracks: artist.tracks, library: library)
+                        .navigationTitle(artist.name)
+                } label: {
+                    HStack {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 48, height: 48)
+                            .overlay(Image(systemName: "person.fill").foregroundColor(.secondary))
+                        VStack(alignment: .leading) {
+                            Text(artist.name)
+                                .font(.headline)
+                            Text("\(artist.tracks.count) Songs")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.leading, 6)
                     }
-                    .padding(.leading, 6)
                 }
+            }
+
+            if audioManager.currentTrack != nil {
+                Spacer(minLength: 70)
+                    .listRowBackground(Color.clear)
             }
         }
     }
