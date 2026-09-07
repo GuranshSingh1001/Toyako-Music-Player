@@ -10,32 +10,32 @@ struct NowPlayingView: View {
             let isLandscape = geo.size.width > geo.size.height
 
             ZStack {
-                ambientBackground(size: geo.size)
+                appleMusicBackground(size: geo.size)
 
                 if isLandscape {
-                    HStack(spacing: 40) {
-                        artworkPane(maxHeight: geo.size.height * 0.46)
+                    HStack(spacing: 48) {
+                        artworkPane(maxHeight: geo.size.height * 0.48)
                             .frame(width: geo.size.width * 0.44)
                         
                         rightPane
                             .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 40)
+                    .padding(.horizontal, 48)
                     .padding(.vertical, 24)
                 } else {
-                    VStack(spacing: 16) {
-                        artworkPane(maxHeight: geo.size.height * 0.38)
+                    VStack(spacing: 20) {
+                        artworkPane(maxHeight: geo.size.height * 0.40)
                         rightPane
                     }
-                    .padding(20)
+                    .padding(24)
                 }
             }
             .overlay(alignment: .topLeading) {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white.opacity(0.85))
-                        .frame(width: 44, height: 44)
+                        .foregroundColor(.white.opacity(0.8))
+                        .frame(width: 40, height: 40)
                         .background(Circle().fill(Color.white.opacity(0.12)))
                         .padding(20)
                 }
@@ -44,8 +44,8 @@ struct NowPlayingView: View {
                 Button { showingQueue.toggle() } label: {
                     Image(systemName: showingQueue ? "quote.bubble.fill" : "list.bullet")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white.opacity(0.85))
-                        .frame(width: 44, height: 44)
+                        .foregroundColor(.white.opacity(0.8))
+                        .frame(width: 40, height: 40)
                         .background(Circle().fill(Color.white.opacity(0.12)))
                         .padding(20)
                 }
@@ -53,7 +53,7 @@ struct NowPlayingView: View {
         }
     }
 
-    private func ambientBackground(size: CGSize) -> some View {
+    private func appleMusicBackground(size: CGSize) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
@@ -63,23 +63,25 @@ struct NowPlayingView: View {
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
                     .clipped()
-                    .blur(radius: 65)
-                    .saturation(1.4)
-                    .opacity(0.85)
-                    .overlay(Color.black.opacity(0.15))
-            } else {
-                LinearGradient(
-                    colors: [Color(red: 0.15, green: 0.15, blue: 0.3), Color.black],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    .blur(radius: 80)
+                    .opacity(0.65)
             }
+
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.3),
+                    Color.black.opacity(0.6),
+                    Color.black.opacity(0.85)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
         .ignoresSafeArea()
     }
 
     private func artworkPane(maxHeight: CGFloat) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 18) {
             Spacer(minLength: 8)
 
             if let data = audioManager.currentTrack?.artworkData, let img = UIImage(data: data) {
@@ -87,10 +89,10 @@ struct NowPlayingView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: maxHeight)
-                    .cornerRadius(18)
-                    .shadow(color: .black.opacity(0.6), radius: 24, y: 12)
+                    .cornerRadius(16)
+                    .shadow(color: .black.opacity(0.5), radius: 25, y: 12)
             } else {
-                RoundedRectangle(cornerRadius: 18)
+                RoundedRectangle(cornerRadius: 16)
                     .fill(Color.white.opacity(0.08))
                     .frame(width: maxHeight, height: maxHeight)
                     .overlay(
@@ -102,13 +104,13 @@ struct NowPlayingView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(audioManager.currentTrack?.title ?? "Unknown Title")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
 
                 Text("\(audioManager.currentTrack?.artist ?? "Unknown Artist") — \(audioManager.currentTrack?.album ?? "Unknown Album")")
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .foregroundColor(.white.opacity(0.65))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.6))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,7 +136,7 @@ struct NowPlayingView: View {
                     Text(formatTime(audioManager.currentTrack?.duration ?? 0))
                 }
                 .font(.caption2.monospacedDigit())
-                .foregroundColor(.white.opacity(0.55))
+                .foregroundColor(.white.opacity(0.5))
             }
             .padding(.horizontal, 4)
 
@@ -142,7 +144,7 @@ struct NowPlayingView: View {
                 Button { audioManager.toggleShuffle() } label: {
                     Image(systemName: "shuffle")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(audioManager.isShuffle ? .white : .white.opacity(0.3))
+                        .foregroundColor(audioManager.isShuffle ? .white : .white.opacity(0.35))
                 }
 
                 Button { audioManager.backward() } label: {
@@ -152,7 +154,7 @@ struct NowPlayingView: View {
 
                 Button { audioManager.togglePlayPause() } label: {
                     Image(systemName: audioManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 56))
+                        .font(.system(size: 58))
                 }
 
                 Button { audioManager.forward() } label: {
@@ -163,7 +165,7 @@ struct NowPlayingView: View {
                 Button { audioManager.toggleRepeat() } label: {
                     Image(systemName: repeatIcon())
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(audioManager.repeatMode != .off ? .white : .white.opacity(0.3))
+                        .foregroundColor(audioManager.repeatMode != .off ? .white : .white.opacity(0.35))
                 }
             }
             .foregroundColor(.white)
@@ -180,7 +182,6 @@ struct NowPlayingView: View {
                 lyricsPane
             }
         }
-        .padding(.vertical, 8)
     }
 
     private var lyricsPane: some View {
@@ -190,7 +191,7 @@ struct NowPlayingView: View {
         return ScrollViewReader { proxy in
             if lyrics.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "text.bubble")
+                    Image(systemName: "quote.bubble")
                         .font(.system(size: 42))
                         .foregroundColor(.white.opacity(0.2))
                     Text("Lyrics Unavailable")
@@ -200,20 +201,21 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 32) {
                         ForEach(lyrics) { line in
                             let isActive = line.id == activeId
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(line.text)
-                                    .font(.system(size: isActive ? 32 : 24, weight: .bold, design: .rounded))
-                                    .foregroundColor(isActive ? .white : .white.opacity(0.25))
-                                    .blur(radius: isActive ? 0 : 0.6)
-                                    .scaleEffect(isActive ? 1.02 : 0.98, anchor: .leading)
+                                    .font(.system(size: isActive ? 34 : 26, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .opacity(isActive ? 1.0 : 0.35)
+                                    .scaleEffect(isActive ? 1.03 : 1.0, anchor: .leading)
 
                                 if let romaji = line.romanized, !romaji.isEmpty {
                                     Text(romaji)
                                         .font(.system(size: isActive ? 15 : 12, weight: .medium, design: .rounded))
-                                        .foregroundColor(isActive ? .white.opacity(0.85) : .white.opacity(0.2))
+                                        .foregroundColor(.white)
+                                        .opacity(isActive ? 0.75 : 0.25)
                                 }
                             }
                             .id(line.id)
@@ -221,11 +223,11 @@ struct NowPlayingView: View {
                             .onTapGesture {
                                 audioManager.seek(to: line.time)
                             }
-                            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isActive)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isActive)
                         }
                     }
-                    .padding(.vertical, 160)
-                    .padding(.horizontal, 20)
+                    .padding(.vertical, 180)
+                    .padding(.horizontal, 16)
                 }
                 .mask(
                     LinearGradient(
@@ -288,7 +290,7 @@ struct NowPlayingView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
         }
-        .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.08)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.08)))
     }
 
     private func repeatIcon() -> String {
