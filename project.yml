@@ -3,7 +3,6 @@ options:
   bundleIdPrefix: com.local
   deploymentTarget:
     iOS: "17.0"
-  projectFormat: Xcode15
 settings:
   SWIFT_VERSION: "5.9"
   TARGETED_DEVICE_FAMILY: "2"
