@@ -1,66 +1,68 @@
-import SwiftData
-import AVFoundation
 import Foundation
+import AVFoundation
+
+struct LocalTrack: Identifiable, Hashable {
+    let id = UUID()
+    let url: URL
+    let title: String
+    let artist: String
+    let duration: TimeInterval
+}
 
 @MainActor
-struct MusicImporter {
-    static func importAudioFiles(from urls: [URL], into context: ModelContext) {
-        Task {
-            let fileManager = FileManager.default
-            let documentDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-            
-            for url in urls {
-                let isSecurityScoped = url.startAccessingSecurityScopedResource()
-                let destinationURL = documentDirectory.appendingPathComponent(url.lastPathComponent)
-                
-                if !fileManager.fileExists(atPath: destinationURL.path) {
-                    try? fileManager.copyItem(at: url, to: destinationURL)
-                }
-                if isSecurityScoped { url.stopAccessingSecurityScopedResource() }
-                
-                await processAndInsert(url: destinationURL, context: context)
-            }
-            try? context.save() // Forces UI to update
+class LocalLibrary: ObservableObject {
+    @Published var tracks: [LocalTrack] = []
+    @Published var statusMessage: String = "No songs loaded"
+
+    func reloadFiles() {
+        let fileManager = FileManager.default
+        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            statusMessage = "Cannot access Documents folder"
+            return
         }
-    }
-    
-    static func scanDocumentsDirectory(into context: ModelContext, existingTracks: [Track]) {
-        Task {
-            let fileManager = FileManager.default
-            let documentDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-            
-            guard let urls = try? fileManager.contentsOfDirectory(at: documentDirectory, includingPropertiesForKeys: nil) else { return }
-            
-            let audioExtensions = ["mp3", "m4a", "wav", "aiff", "alac", "flac"]
-            let existingURLs = Set(existingTracks.map { $0.fileURL.lastPathComponent })
-            
-            for url in urls where audioExtensions.contains(url.pathExtension.lowercased()) {
-                if !existingURLs.contains(url.lastPathComponent) {
-                    await processAndInsert(url: url, context: context)
-                }
-            }
-            try? context.save()
-        }
-    }
-    
-    private static func processAndInsert(url: URL, context: ModelContext) async {
-        let asset = AVURLAsset(url: url)
+
         do {
-            let duration = try await asset.load(.duration).seconds
-            let metadata = try await asset.load(.commonMetadata)
-            
-            var title = url.deletingPathExtension().lastPathComponent
-            var artist = "Unknown Artist"
-            
-            for item in metadata {
-                if item.commonKey?.rawValue == "title", let value = try await item.load(.stringValue) { title = value }
-                if item.commonKey?.rawValue == "artist", let value = try await item.load(.stringValue) { artist = value }
+            let files = try fileManager.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil)
+            let audioExtensions = ["mp3", "m4a", "wav", "flac", "aac", "aiff"]
+            let matchedFiles = files.filter { audioExtensions.contains($0.pathExtension.lowercased()) }
+
+            if matchedFiles.isEmpty {
+                statusMessage = "Folder is empty: \(docs.path)"
+                tracks = []
+                return
             }
-            
-            let track = Track(fileURL: url, title: title, artistName: artist, albumTitle: "Unknown Album", duration: duration)
-            context.insert(track)
+
+            var loaded: [LocalTrack] = []
+            for file in matchedFiles {
+                let asset = AVURLAsset(url: file)
+                let duration = CMTimeGetSeconds(asset.duration)
+                let title = file.deletingPathExtension().lastPathComponent
+                loaded.append(LocalTrack(url: file, title: title, artist: "Local File", duration: duration.isNaN ? 0 : duration))
+            }
+
+            self.tracks = loaded
+            self.statusMessage = "Loaded \(loaded.count) songs"
         } catch {
-            print("Failed to load metadata for \(url)")
+            statusMessage = "Error reading files: \(error.localizedDescription)"
         }
+    }
+
+    func importExternalURLs(_ urls: [URL]) {
+        let fileManager = FileManager.default
+        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+
+        for url in urls {
+            let canAccess = url.startAccessingSecurityScopedResource()
+            let dest = docs.appendingPathComponent(url.lastPathComponent)
+
+            if !fileManager.fileExists(atPath: dest.path) {
+                try? fileManager.copyItem(at: url, to: dest)
+            }
+
+            if canAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        reloadFiles()
     }
 }
