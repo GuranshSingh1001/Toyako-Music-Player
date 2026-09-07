@@ -10,10 +10,10 @@ struct NowPlayingView: View {
             let isLandscape = geo.size.width > geo.size.height
 
             ZStack {
-                optimizedAmbientBackground(size: geo.size)
+                ambientBackground(size: geo.size)
 
                 if isLandscape {
-                    HStack(spacing: 36) {
+                    HStack(spacing: 40) {
                         artworkPane(maxHeight: geo.size.height * 0.46)
                             .frame(width: geo.size.width * 0.44)
                         
@@ -34,9 +34,9 @@ struct NowPlayingView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
+                        .foregroundColor(.white.opacity(0.85))
                         .frame(width: 44, height: 44)
-                        .liquidGlass(cornerRadius: 22, opacity: 0.6)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
                         .padding(20)
                 }
             }
@@ -44,16 +44,16 @@ struct NowPlayingView: View {
                 Button { showingQueue.toggle() } label: {
                     Image(systemName: showingQueue ? "quote.bubble.fill" : "list.bullet")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
+                        .foregroundColor(.white.opacity(0.85))
                         .frame(width: 44, height: 44)
-                        .liquidGlass(cornerRadius: 22, opacity: 0.6)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
                         .padding(20)
                 }
             }
         }
     }
 
-    private func optimizedAmbientBackground(size: CGSize) -> some View {
+    private func ambientBackground(size: CGSize) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
@@ -63,12 +63,12 @@ struct NowPlayingView: View {
                     .scaledToFill()
                     .frame(width: size.width, height: size.height)
                     .clipped()
-                    .blur(radius: 50)
-                    .opacity(0.48)
-                    .overlay(Color.black.opacity(0.35))
+                    .blur(radius: 60)
+                    .opacity(0.45)
+                    .overlay(Color.black.opacity(0.4))
             } else {
                 LinearGradient(
-                    colors: [Color(red: 0.12, green: 0.12, blue: 0.2), Color.black],
+                    colors: [Color(red: 0.1, green: 0.1, blue: 0.18), Color.black],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -87,14 +87,10 @@ struct NowPlayingView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: maxHeight)
-                    .cornerRadius(20)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                    )
-                    .shadow(color: .black.opacity(0.55), radius: 24, y: 12)
+                    .cornerRadius(18)
+                    .shadow(color: .black.opacity(0.6), radius: 24, y: 12)
             } else {
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 18)
                     .fill(Color.white.opacity(0.08))
                     .frame(width: maxHeight, height: maxHeight)
                     .overlay(
@@ -102,13 +98,9 @@ struct NowPlayingView: View {
                             .font(.system(size: 54))
                             .foregroundColor(.white.opacity(0.35))
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(audioManager.currentTrack?.title ?? "Unknown Title")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -146,7 +138,7 @@ struct NowPlayingView: View {
             }
             .padding(.horizontal, 4)
 
-            HStack(spacing: 32) {
+            HStack(spacing: 36) {
                 Button { audioManager.toggleShuffle() } label: {
                     Image(systemName: "shuffle")
                         .font(.system(size: 18, weight: .semibold))
@@ -175,9 +167,6 @@ struct NowPlayingView: View {
                 }
             }
             .foregroundColor(.white)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 16)
-            .liquidGlass(cornerRadius: 30, opacity: 0.35)
 
             Spacer(minLength: 8)
         }
@@ -214,13 +203,12 @@ struct NowPlayingView: View {
                     VStack(alignment: .leading, spacing: 28) {
                         ForEach(lyrics) { line in
                             let isActive = line.id == activeId
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text(line.text)
                                     .font(.system(size: isActive ? 32 : 24, weight: .bold, design: .rounded))
                                     .foregroundColor(isActive ? .white : .white.opacity(0.25))
                                     .blur(radius: isActive ? 0 : 0.6)
                                     .scaleEffect(isActive ? 1.02 : 0.98, anchor: .leading)
-                                    .shadow(color: isActive ? .white.opacity(0.35) : .clear, radius: 10)
 
                                 if let romaji = line.romanized, !romaji.isEmpty {
                                     Text(romaji)
@@ -300,7 +288,7 @@ struct NowPlayingView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
         }
-        .liquidGlass(cornerRadius: 24, opacity: 0.4)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.08)))
     }
 
     private func repeatIcon() -> String {
