@@ -12,14 +12,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
-
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate Xcode Project
-        run: xcodegen generate
+      - name: Generate Xcode Project (Xcode 15 Compatible)
+        run: xcodegen generate --project-format Xcode15
 
       - name: Build Unsigned Archive
         run: |
