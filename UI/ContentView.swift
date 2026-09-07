@@ -123,7 +123,7 @@ struct ContentView: View {
                         Button {
                             playlistToEdit = pl
                         } label: {
-                            Label("Add Multiple Songs", systemImage: "text.badge.plus")
+                            Label("Add Songs", systemImage: "plus.circle.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         Spacer()
