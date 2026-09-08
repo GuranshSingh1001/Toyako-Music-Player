@@ -45,17 +45,17 @@ jobs:
 
       - name: Verify Generated Project
         run: |
-          echo "=== PROJECT FILES ==="
-          ls -la
+          echo "=== GENERATED PROJECT ==="
+          find . -maxdepth 3 -name "*.xcodeproj" -print
 
-          echo "=== XCODE PROJECT ==="
-          find . -maxdepth 2 -name "*.xcodeproj" -print
+          echo "=== ASSET CATALOG ==="
+          find App/Assets.xcassets -maxdepth 3 -type f -print
 
-          echo "=== SCHEMES ==="
+          echo "=== SCHEME ==="
           xcodebuild \
             -project Toyako.xcodeproj \
             -list
-
+            
       - name: Verify App Icon Source
         run: |
           echo "=== ASSET CATALOG ==="
@@ -70,6 +70,23 @@ jobs:
           echo "=== ICON SIZE ==="
           sips -g pixelWidth -g pixelHeight \
             Assets.xcassets/AppIcon.appiconset/Toyako.png
+
+      - name: Check Asset Catalog
+        run: |
+          echo "Checking AppIcon..."
+
+          test -f "App/Assets.xcassets/AppIcon.appiconset/Contents.json"
+
+          test -f "App/Assets.xcassets/AppIcon.appiconset/Toyako.png"
+
+          echo "AppIcon source files found."
+
+          file "App/Assets.xcassets/AppIcon.appiconset/Toyako.png"
+
+          sips \
+            -g pixelWidth \
+            -g pixelHeight \
+            "App/Assets.xcassets/AppIcon.appiconset/Toyako.png"
 
       - name: Build Unsigned Archive
         run: |
