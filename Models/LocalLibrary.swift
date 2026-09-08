@@ -85,15 +85,24 @@ class LocalLibrary: ObservableObject {
         let fileManager = FileManager.default
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
 
-        for url in urls {
-            let hasAccess = url.startAccessingSecurityScopedResource()
-            let dest = docs.appendingPathComponent(url.lastPathComponent)
-            try? fileManager.removeItem(at: dest)
-            try? fileManager.copyItem(at: url, to: dest)
-            if hasAccess { url.stopAccessingSecurityScopedResource() }
+        // Push the file copying to the background so the UI doesn't freeze
+        Task.detached(priority: .userInitiated) {
+            for url in urls {
+                let hasAccess = url.startAccessingSecurityScopedResource()
+                let dest = docs.appendingPathComponent(url.lastPathComponent)
+                
+                if !fileManager.fileExists(atPath: dest.path) {
+                    try? fileManager.copyItem(at: url, to: dest)
+                }
+                
+                if hasAccess { url.stopAccessingSecurityScopedResource() }
+            }
+            
+            // Refresh library once copying completes
+            await self.reloadFiles()
         }
-        reloadFiles()
     }
+
 
     private func parseAsset(at url: URL) async -> LocalTrack {
         let asset = AVURLAsset(url: url)
