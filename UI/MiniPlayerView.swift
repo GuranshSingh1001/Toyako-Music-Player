@@ -3,99 +3,120 @@ import SwiftUI
 struct MiniPlayerView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
 
+    let onOpenNowPlaying: () -> Void
+
     @State private var playPausePressed = false
-    @State private var nextPressed = false
     @State private var previousPressed = false
+    @State private var nextPressed = false
+
+    init(
+        onOpenNowPlaying: @escaping () -> Void = {}
+    ) {
+        self.onOpenNowPlaying = onOpenNowPlaying
+    }
 
     var body: some View {
         HStack(spacing: 12) {
 
-            // MARK: Artwork
+            // MARK: Artwork + Track Information
 
-            if let track = audioManager.currentTrack,
-               let data = track.artworkData,
-               let uiImage = UIImage(data: data) {
+            Button {
+                onOpenNowPlaying()
+            } label: {
+                HStack(spacing: 12) {
+                    if let track =
+                        audioManager.currentTrack,
+                       let data =
+                        track.artworkData,
+                       let uiImage =
+                        UIImage(data: data) {
 
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(
-                        contentMode: .fill
-                    )
-                    .frame(
-                        width: 44,
-                        height: 44
-                    )
-                    .clipShape(
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(
+                                contentMode: .fill
+                            )
+                            .frame(
+                                width: 44,
+                                height: 44
+                            )
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius: 8
+                                )
+                            )
+                            .shadow(
+                                color:
+                                    .black.opacity(0.2),
+                                radius: 4,
+                                y: 2
+                            )
+                            .id(track.id)
+                            .transition(
+                                .opacity
+                                    .combined(
+                                        with:
+                                            .scale(
+                                                scale: 0.92
+                                            )
+                                    )
+                            )
+
+                    } else {
                         RoundedRectangle(
                             cornerRadius: 8
                         )
-                    )
-                    .shadow(
-                        color: .black.opacity(0.2),
-                        radius: 4,
-                        y: 2
-                    )
-                    .id(track.id)
-                    .transition(
-                        .opacity
-                        .combined(
-                            with: .scale(scale: 0.92)
+                        .fill(
+                            Color.gray.opacity(0.3)
                         )
-                    )
+                        .frame(
+                            width: 44,
+                            height: 44
+                        )
+                        .overlay {
+                            Image(
+                                systemName:
+                                    "music.note"
+                            )
+                            .foregroundColor(
+                                .white.opacity(0.8)
+                            )
+                        }
+                    }
 
-            } else {
-                RoundedRectangle(
-                    cornerRadius: 8
-                )
-                .fill(
-                    Color.gray.opacity(0.3)
-                )
-                .frame(
-                    width: 44,
-                    height: 44
-                )
-                .overlay {
-                    Image(
-                        systemName: "music.note"
-                    )
-                    .foregroundColor(
-                        .white.opacity(0.8)
+                    VStack(
+                        alignment: .leading,
+                        spacing: 2
+                    ) {
+                        Text(
+                            audioManager.currentTrack?.title
+                            ?? "Not Playing"
+                        )
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+
+                        Text(
+                            audioManager.currentTrack?.artist
+                            ?? "Unknown Artist"
+                        )
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
                     )
                 }
             }
-
-            // MARK: Track Information
-
-            VStack(
-                alignment: .leading,
-                spacing: 2
-            ) {
-                Text(
-                    audioManager.currentTrack?.title
-                    ?? "Not Playing"
-                )
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-
-                Text(
-                    audioManager.currentTrack?.artist
-                    ?? "Unknown Artist"
-                )
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-            }
-            .frame(
-                maxWidth: .infinity,
-                alignment: .leading
-            )
+            .buttonStyle(.plain)
 
             Spacer(minLength: 0)
 
-            // MARK: Controls
+            // MARK: Playback Controls
 
-            HStack(spacing: 18) {
+            HStack(spacing: 16) {
 
                 Button {
                     previousPressed = true
@@ -109,7 +130,8 @@ struct MiniPlayerView: View {
                     }
                 } label: {
                     Image(
-                        systemName: "backward.fill"
+                        systemName:
+                            "backward.fill"
                     )
                     .font(
                         .system(
@@ -119,8 +141,14 @@ struct MiniPlayerView: View {
                     )
                     .scaleEffect(
                         previousPressed
-                            ? 0.75
+                            ? 0.72
                             : 1.0
+                    )
+                    .offset(
+                        x:
+                            previousPressed
+                            ? -2
+                            : 0
                     )
                 }
 
@@ -173,7 +201,8 @@ struct MiniPlayerView: View {
                     }
                 } label: {
                     Image(
-                        systemName: "forward.fill"
+                        systemName:
+                            "forward.fill"
                     )
                     .font(
                         .system(
@@ -183,8 +212,14 @@ struct MiniPlayerView: View {
                     )
                     .scaleEffect(
                         nextPressed
-                            ? 0.75
+                            ? 0.72
                             : 1.0
+                    )
+                    .offset(
+                        x:
+                            nextPressed
+                            ? 2
+                            : 0
                     )
                 }
             }
@@ -195,7 +230,8 @@ struct MiniPlayerView: View {
         .padding(.horizontal, 10)
         .animation(
             .easeInOut(duration: 0.2),
-            value: audioManager.currentTrack?.id
+            value:
+                audioManager.currentTrack?.id
         )
     }
 }
