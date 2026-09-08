@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import AVFoundation
 
+@MainActor
 class LocalLibrary: ObservableObject {
     @Published var tracks: [LocalTrack] = []
     @Published var albums: [AlbumGroup] = []
@@ -9,7 +10,6 @@ class LocalLibrary: ObservableObject {
     @Published var playlists: [Playlist] = []
     @Published var statusMessage: String = "Scanning..."
 
-    // Use physical files instead of UserDefaults to bypass size limits
     private var playlistsCacheURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("playlists_cache.json")
     }
@@ -58,12 +58,10 @@ class LocalLibrary: ObservableObject {
 
             discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             
-            DispatchQueue.main.async {
-                self.tracks = discovered
-                self.rebuildGroups()
-                self.statusMessage = "Indexed \(discovered.count) songs"
-                self.saveTracksToCache()
-            }
+            self.tracks = discovered
+            self.rebuildGroups()
+            self.statusMessage = "Indexed \(discovered.count) songs"
+            self.saveTracksToCache()
         }
     }
     
@@ -105,7 +103,10 @@ class LocalLibrary: ObservableObject {
                 }
                 if hasAccess { url.stopAccessingSecurityScopedResource() }
             }
-            await self.reloadFiles()
+            
+            await MainActor.run {
+                self.reloadFiles()
+            }
         }
     }
 
@@ -190,9 +191,10 @@ class LocalLibrary: ObservableObject {
     }
 
     private func saveTracksToCache() {
-        // Run on a background thread to prevent lag
+        // Create an immutable copy to safely pass to the background thread
+        let currentTracks = self.tracks
         DispatchQueue.global(qos: .background).async {
-            if let encoded = try? JSONEncoder().encode(self.tracks) {
+            if let encoded = try? JSONEncoder().encode(currentTracks) {
                 try? encoded.write(to: self.tracksCacheURL)
             }
         }
