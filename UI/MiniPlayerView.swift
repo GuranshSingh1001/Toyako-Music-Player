@@ -27,15 +27,15 @@ struct MiniPlayerView: View {
     var body: some View {
         HStack(spacing: 10) {
 
-            // IMPORTANT:
-            // Only this area opens Now Playing.
-            // The playback controls below do not.
+            // MARK: - Artwork + Track Information
+            //
+            // This area opens Now Playing.
+            // Playback buttons below remain independent.
+
             Button {
                 onOpenNowPlaying()
             } label: {
-                HStack(
-                    spacing: 10
-                ) {
+                HStack(spacing: 10) {
                     artwork
 
                     VStack(
@@ -60,10 +60,8 @@ struct MiniPlayerView: View {
                                 .artist
                                 ?? "Unknown Artist"
                         )
-                        .font(
-                            .caption
-                        )
-                        .foregroundColor(
+                        .font(.caption)
+                        .foregroundStyle(
                             .secondary
                         )
                         .lineLimit(1)
@@ -73,12 +71,11 @@ struct MiniPlayerView: View {
                     maxWidth: .infinity,
                     alignment: .leading
                 )
+                .contentShape(Rectangle())
             }
-            .buttonStyle(
-                .plain
-            )
+            .buttonStyle(.plain)
 
-            // MARK: - Playback Controls
+            // MARK: - Previous
 
             Button {
                 previousPressed = true
@@ -86,8 +83,7 @@ struct MiniPlayerView: View {
                 audioManager.backward()
 
                 DispatchQueue.main.asyncAfter(
-                    deadline:
-                        .now() + 0.14
+                    deadline: .now() + 0.14
                 ) {
                     previousPressed = false
                 }
@@ -108,23 +104,29 @@ struct MiniPlayerView: View {
                 )
                 .scaleEffect(
                     previousPressed
-                        ? 0.78
-                        : 1.0
+                    ? 0.78
+                    : 1.0
+                )
+                .animation(
+                    .spring(
+                        response: 0.20,
+                        dampingFraction: 0.58
+                    ),
+                    value:
+                        previousPressed
                 )
             }
-            .buttonStyle(
-                .plain
-            )
+            .buttonStyle(.plain)
+
+            // MARK: - Play / Pause
 
             Button {
                 playPausePressed = true
 
-                audioManager
-                    .togglePlayPause()
+                audioManager.togglePlayPause()
 
                 DispatchQueue.main.asyncAfter(
-                    deadline:
-                        .now() + 0.14
+                    deadline: .now() + 0.14
                 ) {
                     playPausePressed = false
                 }
@@ -147,18 +149,24 @@ struct MiniPlayerView: View {
                 )
                 .scaleEffect(
                     playPausePressed
-                        ? 0.76
-                        : 1.0
+                    ? 0.76
+                    : 1.0
                 )
                 .contentTransition(
-                    .symbolEffect(
-                        .replace
-                    )
+                    .symbolEffect(.replace)
+                )
+                .animation(
+                    .spring(
+                        response: 0.20,
+                        dampingFraction: 0.58
+                    ),
+                    value:
+                        playPausePressed
                 )
             }
-            .buttonStyle(
-                .plain
-            )
+            .buttonStyle(.plain)
+
+            // MARK: - Next
 
             Button {
                 nextPressed = true
@@ -166,8 +174,7 @@ struct MiniPlayerView: View {
                 audioManager.forward()
 
                 DispatchQueue.main.asyncAfter(
-                    deadline:
-                        .now() + 0.14
+                    deadline: .now() + 0.14
                 ) {
                     nextPressed = false
                 }
@@ -188,13 +195,19 @@ struct MiniPlayerView: View {
                 )
                 .scaleEffect(
                     nextPressed
-                        ? 0.78
-                        : 1.0
+                    ? 0.78
+                    : 1.0
+                )
+                .animation(
+                    .spring(
+                        response: 0.20,
+                        dampingFraction: 0.58
+                    ),
+                    value:
+                        nextPressed
                 )
             }
-            .buttonStyle(
-                .plain
-            )
+            .buttonStyle(.plain)
         }
         .padding(
             .vertical,
@@ -208,9 +221,26 @@ struct MiniPlayerView: View {
             .trailing,
             5
         )
-        .foregroundColor(
-            .primary
+        .foregroundStyle(.primary)
+
+        // This makes the mini-player's complete
+        // visual area a deliberate hit-test region.
+        .contentShape(Rectangle())
+
+        // IMPORTANT:
+        // Use simultaneousGesture so the playback
+        // buttons retain priority and don't accidentally
+        // trigger Now Playing.
+        .simultaneousGesture(
+            TapGesture()
+                .onEnded {
+                    // The individual Button controls consume
+                    // their own taps. A tap on the remaining
+                    // mini-player surface opens Now Playing.
+                    onOpenNowPlaying()
+                }
         )
+
         .animation(
             .easeInOut(
                 duration: 0.18
@@ -222,6 +252,8 @@ struct MiniPlayerView: View {
         )
     }
 
+    // MARK: - Artwork
+
     private var artwork: some View {
         Group {
             if let track =
@@ -232,8 +264,7 @@ struct MiniPlayerView: View {
                 UIImage(data: data) {
 
                 Image(
-                    uiImage:
-                        image
+                    uiImage: image
                 )
                 .resizable()
                 .scaledToFill()
@@ -247,9 +278,7 @@ struct MiniPlayerView: View {
                         style: .continuous
                     )
                 )
-                .id(
-                    track.id
-                )
+                .id(track.id)
                 .transition(
                     .opacity
                         .combined(
@@ -279,7 +308,7 @@ struct MiniPlayerView: View {
                         systemName:
                             "music.note"
                     )
-                    .foregroundColor(
+                    .foregroundStyle(
                         .secondary
                     )
                 }
