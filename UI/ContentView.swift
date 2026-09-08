@@ -134,7 +134,7 @@ struct ContentView: View {
         case .artists:
             ArtistListView(artists: filteredArtists, library: library)
         case .allPlaylists:
-            AllPlaylistGridView(playlists: library.playlists, library: library, selectedCategory: $selectedCategory)
+            AllPlaylistsGridView(playlists: library.playlists, library: library, selectedCategory: $selectedCategory)
         case .playlist(let id):
             if let pl = library.playlists.first(where: { $0.id == id }) {
                 let pTracks = library.tracks.filter { pl.trackURLs.contains($0.url) }
