@@ -89,6 +89,7 @@ struct NowPlayingView: View {
                     }
                     .padding(.horizontal, 48)
                     .padding(.vertical, 24)
+
                 } else {
                     VStack(spacing: 20) {
                         artworkPane(
@@ -132,6 +133,29 @@ struct NowPlayingView: View {
                     : geo.size.height
             )
             .onAppear {
+                isVisible = isPresented
+                dragOffset = 0
+
+                if isPresented {
+                    withAnimation(
+                        .interpolatingSpring(
+                            stiffness: 250,
+                            damping: 25
+                        )
+                    ) {
+                        isVisible = true
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea()
+
+        // IMPORTANT:
+        // NowPlayingView remains mounted by ContentView.
+        // Therefore we must explicitly reset its internal
+        // presentation state whenever it is opened again.
+        .onChange(of: isPresented) { _, presented in
+            if presented {
                 dragOffset = 0
 
                 withAnimation(
@@ -142,15 +166,7 @@ struct NowPlayingView: View {
                 ) {
                     isVisible = true
                 }
-            }
-        }
-        .ignoresSafeArea()
 
-        // Fixes second-opening bug.
-        .onChange(of: isPresented) { _, presented in
-            if presented {
-                dragOffset = 0
-                isVisible = true
             } else {
                 dragOffset = 0
                 isVisible = false
@@ -160,7 +176,9 @@ struct NowPlayingView: View {
 
     // MARK: - Dismiss
 
-    private func dismissNowPlaying(height: CGFloat) {
+    private func dismissNowPlaying(
+        height: CGFloat
+    ) {
         withAnimation(
             .interpolatingSpring(
                 stiffness: 250,
@@ -185,20 +203,26 @@ struct NowPlayingView: View {
         VStack(spacing: 18) {
             Spacer(minLength: 8)
 
-            if let data = audioManager.currentTrack?.artworkData,
-               let img = UIImage(data: data) {
+            if let data =
+                audioManager.currentTrack?.artworkData,
+               let img =
+                UIImage(data: data) {
 
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxHeight: maxHeight)
+                    .frame(
+                        maxHeight: maxHeight
+                    )
                     .cornerRadius(12)
                     .shadow(
                         color: .black.opacity(0.35),
                         radius: 24,
                         y: 12
                     )
-                    .id(audioManager.currentTrack?.id)
+                    .id(
+                        audioManager.currentTrack?.id
+                    )
 
             } else {
                 RoundedRectangle(
@@ -212,15 +236,15 @@ struct NowPlayingView: View {
                     height: maxHeight
                 )
                 .overlay {
-                    Image(systemName: "music.note")
-                        .font(
-                            .system(
-                                size: 54
-                            )
-                        )
-                        .foregroundColor(
-                            .white.opacity(0.35)
-                        )
+                    Image(
+                        systemName: "music.note"
+                    )
+                    .font(
+                        .system(size: 54)
+                    )
+                    .foregroundColor(
+                        .white.opacity(0.35)
+                    )
                 }
             }
 
@@ -262,12 +286,18 @@ struct NowPlayingView: View {
             )
             .padding(.horizontal, 4)
 
+            // MARK: Apple Music Style Scrubber
+
             AppleMusicScrubberBar(
-                progress: audioManager.playbackProgress,
+                progress:
+                    audioManager.playbackProgress,
                 duration:
-                    audioManager.currentTrack?.duration ?? 0,
-                currentTime: audioManager.currentTime,
+                    audioManager.currentTrack?.duration
+                    ?? 0,
+                currentTime:
+                    audioManager.currentTime,
                 onSeek: { newProgress in
+
                     guard let duration =
                         audioManager.currentTrack?.duration,
                           duration > 0
@@ -289,26 +319,25 @@ struct NowPlayingView: View {
                 Button {
                     audioManager.toggleShuffle()
                 } label: {
-                    Image(systemName: "shuffle")
-                        .font(
-                            .system(
-                                size: 18,
-                                weight: .semibold
-                            )
+                    Image(
+                        systemName: "shuffle"
+                    )
+                    .font(
+                        .system(
+                            size: 18,
+                            weight: .semibold
                         )
-                        .foregroundColor(
-                            audioManager.isShuffle
-                                ? .white
-                                : .white.opacity(0.35)
-                        )
-                        .symbolEffect(
-                            .bounce,
-                            value: audioManager.isShuffle
-                        )
+                    )
+                    .foregroundColor(
+                        audioManager.isShuffle
+                            ? .white
+                            : .white.opacity(0.35)
+                    )
                 }
 
                 Button {
                     previousPressed = true
+
                     audioManager.backward()
 
                     DispatchQueue.main.asyncAfter(
@@ -317,27 +346,30 @@ struct NowPlayingView: View {
                         previousPressed = false
                     }
                 } label: {
-                    Image(systemName: "backward.fill")
-                        .font(
-                            .system(
-                                size: 26,
-                                weight: .semibold
-                            )
+                    Image(
+                        systemName: "backward.fill"
+                    )
+                    .font(
+                        .system(
+                            size: 26,
+                            weight: .semibold
                         )
-                        .scaleEffect(
-                            previousPressed
-                                ? 0.76
-                                : 1.0
-                        )
-                        .offset(
-                            x: previousPressed
-                                ? -2
-                                : 0
-                        )
+                    )
+                    .scaleEffect(
+                        previousPressed
+                            ? 0.76
+                            : 1.0
+                    )
+                    .offset(
+                        x: previousPressed
+                            ? -2
+                            : 0
+                    )
                 }
 
                 Button {
                     playPausePressed = true
+
                     audioManager.togglePlayPause()
 
                     DispatchQueue.main.asyncAfter(
@@ -359,8 +391,8 @@ struct NowPlayingView: View {
                         )
                     )
                     .frame(
-                        width: 52,
-                        height: 52
+                        width: 48,
+                        height: 48
                     )
                     .scaleEffect(
                         playPausePressed
@@ -374,6 +406,7 @@ struct NowPlayingView: View {
 
                 Button {
                     nextPressed = true
+
                     audioManager.forward()
 
                     DispatchQueue.main.asyncAfter(
@@ -382,23 +415,25 @@ struct NowPlayingView: View {
                         nextPressed = false
                     }
                 } label: {
-                    Image(systemName: "forward.fill")
-                        .font(
-                            .system(
-                                size: 26,
-                                weight: .semibold
-                            )
+                    Image(
+                        systemName: "forward.fill"
+                    )
+                    .font(
+                        .system(
+                            size: 26,
+                            weight: .semibold
                         )
-                        .scaleEffect(
-                            nextPressed
-                                ? 0.76
-                                : 1.0
-                        )
-                        .offset(
-                            x: nextPressed
-                                ? 2
-                                : 0
-                        )
+                    )
+                    .scaleEffect(
+                        nextPressed
+                            ? 0.76
+                            : 1.0
+                    )
+                    .offset(
+                        x: nextPressed
+                            ? 2
+                            : 0
+                    )
                 }
 
                 Button {
@@ -434,17 +469,24 @@ struct NowPlayingView: View {
     // MARK: - Lyrics
 
     private var lyricsPane: some View {
-        let lyrics = audioManager.currentLyrics
-        let activeId = activeLineId()
+        let lyrics =
+            audioManager.currentLyrics
+
+        let activeId =
+            activeLineId()
 
         return ScrollViewReader { proxy in
             if lyrics.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "quote.bubble")
-                        .font(.system(size: 42))
-                        .foregroundColor(
-                            .white.opacity(0.2)
-                        )
+                    Image(
+                        systemName: "quote.bubble"
+                    )
+                    .font(
+                        .system(size: 42)
+                    )
+                    .foregroundColor(
+                        .white.opacity(0.2)
+                    )
 
                     Text("Lyrics Unavailable")
                         .font(.headline)
@@ -456,6 +498,7 @@ struct NowPlayingView: View {
                     maxWidth: .infinity,
                     maxHeight: .infinity
                 )
+
             } else {
                 ScrollView(
                     showsIndicators: false
@@ -509,7 +552,6 @@ struct NowPlayingView: View {
                                     )
 
                                 } else {
-
                                     Text(line.text)
                                         .font(
                                             .system(
@@ -644,7 +686,7 @@ struct NowPlayingView: View {
     }
 }
 
-// MARK: - Apple Music Scrubber
+// MARK: - Apple Music Interactive Scrubber
 
 struct AppleMusicScrubberBar: View {
     let progress: Double
@@ -719,7 +761,8 @@ struct AppleMusicScrubberBar: View {
                                 : 0
                         )
                         .shadow(
-                            color: .black.opacity(0.2),
+                            color:
+                                .black.opacity(0.25),
                             radius: 3,
                             y: 1
                         )
@@ -734,7 +777,8 @@ struct AppleMusicScrubberBar: View {
                                         )
                                 )
                             ),
-                            y: geo.size.height / 2
+                            y:
+                                geo.size.height / 2
                         )
                         .opacity(
                             isDragging
@@ -759,13 +803,14 @@ struct AppleMusicScrubberBar: View {
                             value.location.x
                             / geo.size.width
 
-                        dragProgress = max(
-                            0,
-                            min(
-                                1,
-                                Double(position)
+                        dragProgress =
+                            max(
+                                0,
+                                min(
+                                    1,
+                                    Double(position)
+                                )
                             )
-                        )
                     }
                     .onEnded { value in
                         let position =
@@ -781,9 +826,12 @@ struct AppleMusicScrubberBar: View {
                                 )
                             )
 
-                        dragProgress = finalProgress
+                        dragProgress =
+                            finalProgress
 
-                        onSeek(finalProgress)
+                        onSeek(
+                            finalProgress
+                        )
 
                         withAnimation(
                             .spring(
@@ -828,7 +876,9 @@ struct AppleMusicScrubberBar: View {
                     )
 
                 Text(
-                    "-" + formatTime(remaining)
+                    "-" + formatTime(
+                        remaining
+                    )
                 )
             }
             .font(
@@ -868,7 +918,7 @@ struct AppleMusicScrubberBar: View {
     }
 }
 
-// MARK: - Animated Apple Music Bleed Engine
+// MARK: - Animated Apple Music Bleed Background
 
 struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
@@ -898,10 +948,14 @@ struct AppleMusicMovingBleedBackground: View {
                     )
                     .clipped()
                     .brightness(
-                        isBright ? -0.15 : -0.05
+                        isBright
+                            ? -0.15
+                            : -0.05
                     )
                     .saturation(
-                        isBright ? 0.8 : 1.45
+                        isBright
+                            ? 0.8
+                            : 1.45
                     )
                     .blur(
                         radius: 60,
@@ -926,18 +980,26 @@ struct AppleMusicMovingBleedBackground: View {
                     )
                     .clipped()
                     .brightness(
-                        isBright ? -0.15 : -0.05
+                        isBright
+                            ? -0.15
+                            : -0.05
                     )
                     .saturation(
-                        isBright ? 0.85 : 1.5
+                        isBright
+                            ? 0.85
+                            : 1.5
                     )
                     .blur(
                         radius:
-                            isBright ? 45 : 65,
+                            isBright
+                            ? 45
+                            : 65,
                         opaque: true
                     )
                     .opacity(
-                        isBright ? 0.65 : 0.92
+                        isBright
+                            ? 0.65
+                            : 0.92
                     )
 
             } else {
@@ -949,10 +1011,12 @@ struct AppleMusicMovingBleedBackground: View {
             calculateBrightness()
 
             withAnimation(
-                .easeInOut(duration: 18)
-                    .repeatForever(
-                        autoreverses: true
-                    )
+                .easeInOut(
+                    duration: 18
+                )
+                .repeatForever(
+                    autoreverses: true
+                )
             ) {
                 phase.toggle()
             }
