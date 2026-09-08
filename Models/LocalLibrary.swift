@@ -201,3 +201,10 @@ class LocalLibrary: ObservableObject {
         }
     }
 }
+
+    func renamePlaylist(id: UUID, newName: String) {
+        if let idx = playlists.firstIndex(where: { $0.id == id }) {
+            playlists[idx].name = newName
+            savePlaylists()
+        }
+    }
