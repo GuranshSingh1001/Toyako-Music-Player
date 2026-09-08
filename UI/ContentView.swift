@@ -35,25 +35,28 @@ struct ContentView: View {
                 tabContent(for: .artists)
             }
             
-            TabSection("Playlists") {
-                Tab("All Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists as LibraryCategory) {
-                    tabContent(for: .allPlaylists)
-                }
-                
+            // 1. Declared as a primary Tab so it appears in the top floating pill
+            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
+                tabContent(for: .allPlaylists)
+            }
+            
+            // 2. Sidebar-only grouping for individual playlists
+            TabSection("My Playlists") {
                 ForEach(library.playlists) { pl in
-                    Tab(pl.name, systemImage: "music.note.list", value: LibraryCategory.playlist(pl.id) as LibraryCategory) {
+                    Tab(pl.name, systemImage: "music.note.list", value: LibraryCategory.playlist(pl.id)) {
                         tabContent(for: .playlist(pl.id))
                     }
                 }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        // 1. Highly optimized sliding animation using GeometryReader
         .overlay {
             GeometryReader { proxy in
                 NowPlayingView(isPresented: $showNowPlaying)
                     .offset(y: showNowPlaying ? 0 : proxy.size.height)
                     .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
+                    // 3. Prevents the invisible overlay from blocking touches
+                    .allowsHitTesting(showNowPlaying)
             }
             .ignoresSafeArea()
         }
@@ -98,18 +101,19 @@ struct ContentView: View {
                     }
                 }
         }
-        // 2. Safely attaching MiniPlayer to the NavigationStack prevents overlap
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
-                MiniPlayerView()
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        showNowPlaying = true
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                // 4. Wrapped in a native Button to guarantee tap responsiveness
+                Button {
+                    showNowPlaying = true
+                } label: {
+                    MiniPlayerView()
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
             }
         }
     }
