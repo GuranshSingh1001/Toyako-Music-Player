@@ -112,18 +112,15 @@ struct ContentView: View {
                     if !searchText.isEmpty {
                         ToolbarItem(placement: .navigationBarLeading) {
                             Button {
-                                //searchText = ""
+                                searchText = ""
                             } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "play.fill")
-                                    Text("play")
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                    Text("Back")
                                 }
-                                .font(.subheadline.bold())
+                                .font(.body.weight(.medium))
                             }
-                        }   .buttonStyle(.plain)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .glassEffect(.clear.tint(.blue))
+                        }
                     }
 
                     ToolbarItem(placement: .primaryAction) {
