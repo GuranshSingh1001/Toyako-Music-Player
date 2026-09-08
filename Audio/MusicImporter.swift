@@ -32,7 +32,7 @@ class LocalLibrary: ObservableObject {
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) {
-                for case let fileURL as URL in enumerator {
+                while let fileURL = enumerator.nextObject() as? URL {
                     if audioExts.contains(fileURL.pathExtension.lowercased()) {
                         discoveredURLs.append(fileURL)
                     }
