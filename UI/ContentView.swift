@@ -40,14 +40,14 @@ struct ContentView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .overlay {
-            GeometryReader { proxy in
+            if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
-                    .offset(y: showNowPlaying ? 0 : proxy.size.height)
-                    .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
-                    .allowsHitTesting(showNowPlaying)
+                    .transition(.move(edge: .bottom))
+                    .ignoresSafeArea()
+                    .zIndex(2)
             }
-            .ignoresSafeArea()
         }
+        .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
         .sheet(isPresented: $showFilePicker) {
             DocumentPicker { urls in
                 library.importExternalURLs(urls)
@@ -95,10 +95,11 @@ struct ContentView: View {
                     showNowPlaying = true
                 } label: {
                     MiniPlayerView()
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                        .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
                 }
                 .buttonStyle(.plain)
+                .background(.ultraThinMaterial, in: Capsule())
+                .environment(\.colorScheme, .dark)
+                .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
             }
