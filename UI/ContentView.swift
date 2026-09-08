@@ -48,12 +48,14 @@ struct ContentView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        // 1. Highly optimized sliding animation using GeometryReader
         .overlay {
-            if showNowPlaying {
+            GeometryReader { proxy in
                 NowPlayingView(isPresented: $showNowPlaying)
-                    .transition(.identity) 
-                    .zIndex(2) 
+                    .offset(y: showNowPlaying ? 0 : proxy.size.height)
+                    .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
             }
+            .ignoresSafeArea()
         }
         .sheet(isPresented: $showFilePicker) {
             DocumentPicker { urls in
@@ -74,9 +76,6 @@ struct ContentView: View {
             }
         }
         .keyboardShortcut(" ", modifiers: [])
-        .onAppear {
-            library.reloadFiles()
-        }
     }
 
     @ViewBuilder
@@ -88,25 +87,18 @@ struct ContentView: View {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
-                            Button { showFilePicker = true } label: {
-                                Label("Import Audio", systemImage: "folder.badge.plus")
-                            }
-                            Button { showNewPlaylistAlert = true } label: {
-                                Label("New Playlist", systemImage: "plus.rectangle.on.rectangle")
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                        }
+                            Button { showFilePicker = true } label: { Label("Import Audio", systemImage: "folder.badge.plus") }
+                            Button { showNewPlaylistAlert = true } label: { Label("New Playlist", systemImage: "plus.rectangle.on.rectangle") }
+                        } label: { Image(systemName: "plus") }
                     }
                     ToolbarItem(placement: .navigationBarLeading) {
                         if searchText.isEmpty {
-                            Button { library.reloadFiles() } label: {
-                                Image(systemName: "arrow.clockwise")
-                            }
+                            Button { library.reloadFiles() } label: { Image(systemName: "arrow.clockwise") }
                         }
                     }
                 }
         }
+        // 2. Safely attaching MiniPlayer to the NavigationStack prevents overlap
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
                 MiniPlayerView()
@@ -114,9 +106,7 @@ struct ContentView: View {
                     .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                            showNowPlaying = true
-                        }
+                        showNowPlaying = true
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
@@ -177,15 +167,10 @@ struct ContentView: View {
     }
 
     private var filteredTracks: [LocalTrack] { filterTracks(library.tracks) }
-    
     private var filteredAlbums: [AlbumGroup] {
         if searchText.isEmpty { return library.albums }
-        return library.albums.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText) ||
-            $0.artist.localizedCaseInsensitiveContains(searchText)
-        }
+        return library.albums.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.artist.localizedCaseInsensitiveContains(searchText) }
     }
-
     private var filteredArtists: [ArtistGroup] {
         if searchText.isEmpty { return library.artists }
         return library.artists.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
