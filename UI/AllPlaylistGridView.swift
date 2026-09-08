@@ -11,7 +11,6 @@ struct AllPlaylistsGridView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 24) {
                 ForEach(playlists) { playlist in
-                    // 1. Uses NavigationLink to push the detail view over the grid with a Back button
                     NavigationLink {
                         let pTracks = library.tracks.filter { playlist.trackURLs.contains($0.url) }
                         SongListView(
@@ -30,14 +29,10 @@ struct AllPlaylistsGridView: View {
                         .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.gray.opacity(0.2))
+                            AbstractPlaylistCover(playlistID: playlist.id)
                                 .frame(width: 160, height: 160)
-                                .overlay(
-                                    Image(systemName: "music.note.list")
-                                        .font(.largeTitle)
-                                        .foregroundColor(.gray)
-                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
                             
                             Text(playlist.name)
                                 .font(.headline)
