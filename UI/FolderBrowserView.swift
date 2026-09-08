@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct FolderBrowserView: View {
     let currentURL: URL
     let rootURL: URL
@@ -75,36 +76,39 @@ struct FolderBrowserView: View {
     private func loadContents() {
         guard !isLoaded else { return }
         
-        // Extract safely on main thread to avoid strict concurrency crashes
         let currentTracks = library.tracks 
         let path = currentURL.standardizedFileURL.path
+        let url = currentURL
         
-        DispatchQueue.global(qos: .userInitiated).async {
-            let tracksInFolder = currentTracks.filter {
-                $0.url.deletingLastPathComponent().standardizedFileURL.path == path
-            }
-            
-            var folderCounts: [URL: Int] = [:]
-            for track in currentTracks {
-                let trackDir = track.url.deletingLastPathComponent().standardizedFileURL.path
-                if trackDir.hasPrefix(path) && trackDir != path {
-                    let relativePath = trackDir.replacingOccurrences(of: path + "/", with: "")
-                    let firstComponent = relativePath.components(separatedBy: "/").first ?? ""
-                    if !firstComponent.isEmpty {
-                        let subfolderURL = currentURL.appendingPathComponent(firstComponent)
-                        folderCounts[subfolderURL, default: 0] += 1
-                    }
+        Task {
+            let result = await computeFolders(tracks: currentTracks, path: path, url: url)
+            self.localTracks = result.0
+            self.subfolders = result.1
+            self.isLoaded = true
+        }
+    }
+    
+    nonisolated private func computeFolders(tracks: [LocalTrack], path: String, url: URL) async -> ([LocalTrack], [(url: URL, count: Int)]) {
+        let tracksInFolder = tracks.filter {
+            $0.url.deletingLastPathComponent().standardizedFileURL.path == path
+        }
+        
+        var folderCounts: [URL: Int] = [:]
+        for track in tracks {
+            let trackDir = track.url.deletingLastPathComponent().standardizedFileURL.path
+            if trackDir.hasPrefix(path) && trackDir != path {
+                let relativePath = trackDir.replacingOccurrences(of: path + "/", with: "")
+                let firstComponent = relativePath.components(separatedBy: "/").first ?? ""
+                if !firstComponent.isEmpty {
+                    let subfolderURL = url.appendingPathComponent(firstComponent)
+                    folderCounts[subfolderURL, default: 0] += 1
                 }
             }
-            
-            let sortedSubfolders = folderCounts.map { (url: $0.key, count: $0.value) }
-                .sorted { $0.url.lastPathComponent < $1.url.lastPathComponent }
-            
-            DispatchQueue.main.async {
-                self.localTracks = tracksInFolder.sorted { $0.title < $1.title }
-                self.subfolders = sortedSubfolders
-                self.isLoaded = true
-            }
         }
+        
+        let sortedSubfolders = folderCounts.map { (url: $0.key, count: $0.value) }
+            .sorted { $0.url.lastPathComponent < $1.url.lastPathComponent }
+        
+        return (tracksInFolder.sorted { $0.title < $1.title }, sortedSubfolders)
     }
 }
