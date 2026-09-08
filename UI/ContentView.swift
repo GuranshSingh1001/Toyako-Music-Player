@@ -46,7 +46,7 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             if audioManager.currentTrack != nil {
                 MiniPlayerView()
-                    .glassEffect(.regular.interactive(8, in: .rect(cornerRadius: 16))
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
                     .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -118,7 +118,7 @@ struct ContentView: View {
                                     Image(systemName: "play.fill")
                                     Text("play")
                                 }
-                                .font(.subheadline.bold(())
+                                .font(.subheadline.bold())
                             }
                         }   .buttonStyle(.plain)
                             .padding(.horizontal, 16)
