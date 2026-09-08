@@ -2,15 +2,27 @@ name: Build Unsigned IPA
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-15
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Show available Xcodes
+        run: |
+          ls -la /Applications | grep Xcode || true
+          xcodebuild -version
+
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -24,7 +36,7 @@ jobs:
             -project OfflineMusic.xcodeproj \
             -scheme OfflineMusic \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/OfflineMusic.xcarchive \
+            -archivePath "$RUNNER_TEMP/OfflineMusic.xcarchive" \
             -destination "generic/platform=iOS" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -32,7 +44,7 @@ jobs:
 
       - name: Package into IPA
         run: |
-          cd $RUNNER_TEMP
+          cd "$RUNNER_TEMP"
           mkdir -p Payload
           cp -r OfflineMusic.xcarchive/Products/Applications/OfflineMusic.app Payload/
           zip -r OfflineMusic.ipa Payload
