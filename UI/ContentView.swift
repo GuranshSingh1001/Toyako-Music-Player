@@ -13,7 +13,7 @@ struct ContentView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @StateObject private var library = LocalLibrary()
 
-    // Made Optional to satisfy TabSection generic type inference (V?)
+    // Optional to satisfy TabSection generic type inference
     @State private var selectedCategory: LibraryCategory? = .songs
     @State private var showFilePicker = false
     @State private var showNowPlaying = false
@@ -23,60 +23,59 @@ struct ContentView: View {
     @State private var playlistToEdit: Playlist?
 
     var body: some View {
-        ZStack {
-            // iOS 18+ Adaptable Sidebar / Tab Bar
-            TabView(selection: $selectedCategory) {
-                Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) {
-                    tabContent(for: .songs)
-                }
-                
-                Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
-                    tabContent(for: .albums)
-                }
-                
-                Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
-                    tabContent(for: .artists)
-                }
-                
-                TabSection("Playlists") {
-                    ForEach(library.playlists) { pl in
-                        // Explicitly cast to LibraryCategory to force compiler inference
-                        Tab(pl.name, systemImage: "music.note.list", value: LibraryCategory.playlist(pl.id) as LibraryCategory) {
-                            tabContent(for: .playlist(pl.id))
-                        }
+        // TabView MUST be the absolute root for the iPad floating pill to render
+        TabView(selection: $selectedCategory) {
+            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) {
+                tabContent(for: .songs)
+            }
+            
+            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
+                tabContent(for: .albums)
+            }
+            
+            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
+                tabContent(for: .artists)
+            }
+            
+            TabSection("Playlists") {
+                ForEach(library.playlists) { pl in
+                    // Explicitly cast to LibraryCategory to force compiler inference
+                    Tab(pl.name, systemImage: "music.note.list", value: LibraryCategory.playlist(pl.id) as LibraryCategory) {
+                        tabContent(for: .playlist(pl.id))
                     }
                 }
             }
-            .tabViewStyle(.sidebarAdaptable)
-            
-            // Global MiniPlayer Overlay with Liquid Glass
-            VStack {
-                Spacer()
-                if audioManager.currentTrack != nil {
-                    MiniPlayerView()
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                        .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                                showNowPlaying = true
-                            }
+        }
+        .tabViewStyle(.sidebarAdaptable)
+        .overlay(alignment: .bottom) {
+            // Global MiniPlayer Overlay with iOS 26 Liquid Glass
+            if audioManager.currentTrack != nil {
+                MiniPlayerView()
+                    .glassEffect()
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                            showNowPlaying = true
                         }
-                        .gesture(
-                            DragGesture(minimumDistance: 10, coordinateSpace: .local)
-                                .onEnded { value in
-                                    if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
-                                        withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
-                                            showNowPlaying = true
-                                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                            .onEnded { value in
+                                if value.translation.height < -30 || value.predictedEndTranslation.height < -60 {
+                                    withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
+                                        showNowPlaying = true
                                     }
                                 }
-                        )
-                        .padding(.bottom, 12)
-                        .padding(.horizontal, 16)
-                }
+                            }
+                    )
+                    .padding(.bottom, 12)
+                    .padding(.horizontal, 16)
             }
-
+        }
+        .overlay {
+            // NowPlaying overlay with smooth .identity offset physics
             if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
                     .transition(.identity) 
@@ -107,6 +106,7 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Reusable Tab Content Wrapper
     @ViewBuilder
     private func tabContent(for category: LibraryCategory) -> some View {
         NavigationStack {
