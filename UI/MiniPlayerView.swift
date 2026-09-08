@@ -5,7 +5,6 @@ struct MiniPlayerView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Artwork
             if let track = audioManager.currentTrack,
                let data = track.artworkData,
                let uiImage = UIImage(data: data) {
@@ -25,7 +24,6 @@ struct MiniPlayerView: View {
                     )
             }
 
-            // Track Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(audioManager.currentTrack?.title ?? "Not Playing")
                     .font(.subheadline)
@@ -40,7 +38,6 @@ struct MiniPlayerView: View {
 
             Spacer(minLength: 0)
 
-            // Controls
             HStack(spacing: 20) {
                 Button {
                     audioManager.togglePlayPause()
@@ -51,7 +48,8 @@ struct MiniPlayerView: View {
                 }
                 
                 Button {
-                    audioManager.playNext()
+                    // REPLACE THIS with your actual method name if it differs (e.g., skipForward(), nextTrack())
+                    audioManager.playNextTrack() 
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
@@ -63,6 +61,5 @@ struct MiniPlayerView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
-        // IMPORTANT: No background modifier here. The container in ContentView handles the glass effect.
     }
 }
