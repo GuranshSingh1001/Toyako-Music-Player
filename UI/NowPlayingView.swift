@@ -306,8 +306,15 @@ struct AppleMusicScrubberBar: View {
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
                 .contentShape(Rectangle())
+                // 1. Instantly jump to position on tap (without expanding)
+                .onTapGesture(coordinateSpace: .local) { location in
+                    let computed = Double(location.x / geo.size.width)
+                    let finalVal = max(0.0, min(1.0, computed))
+                    onSeek(finalVal)
+                }
+                // 2. Expand and scrub ONLY when actively dragging
                 .gesture(
-                    DragGesture(minimumDistance: 0)
+                    DragGesture(minimumDistance: 5)
                         .onChanged { value in
                             isDragging = true
                             let computed = Double(value.location.x / geo.size.width)
@@ -342,6 +349,7 @@ struct AppleMusicScrubberBar: View {
         return String(format: "%d:%02d", mins, secs)
     }
 }
+
 
 // MARK: - Animated Apple Music Bleed Engine
 struct AppleMusicMovingBleedBackground: View {
