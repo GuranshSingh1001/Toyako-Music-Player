@@ -5,57 +5,64 @@ struct MiniPlayerView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let track = audioManager.currentTrack {
-                if let data = track.artworkData, let img = UIImage(data: data) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .cornerRadius(8)
-                } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 48, height: 48)
-                        .overlay(Image(systemName: "music.note").foregroundColor(.gray))
-                }
+            // Artwork
+            if let track = audioManager.currentTrack,
+               let data = track.artworkData,
+               let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .foregroundColor(.white.opacity(0.8))
+                    )
+            }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text("\(track.artist) — \(track.album)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
+            // Track Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(audioManager.currentTrack?.title ?? "Not Playing")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                
+                Text(audioManager.currentTrack?.artist ?? "Unknown Artist")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
 
-                Spacer()
+            Spacer(minLength: 0)
 
+            // Controls
+            HStack(spacing: 20) {
                 Button {
                     audioManager.togglePlayPause()
                 } label: {
                     Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title2)
-                        .foregroundColor(.primary)
-                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-
+                
                 Button {
-                    audioManager.forward()
+                    audioManager.playNext()
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
-                        .foregroundColor(.primary)
-                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
             }
+            .foregroundColor(.primary)
+            .padding(.trailing, 8)
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(red: 0.14, green: 0.14, blue: 0.16))
-                .shadow(color: .black.opacity(0.4), radius: 14, y: 6)
-        )
-        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        // IMPORTANT: No background modifier here. The container in ContentView handles the glass effect.
     }
 }
