@@ -9,78 +9,116 @@ enum LibraryCategory: Hashable {
 }
 
 struct ContentView: View {
-    @EnvironmentObject var audioManager: AudioEngineManager
-    @StateObject private var library = LocalLibrary()
+    @EnvironmentObject var audioManager:
+        AudioEngineManager
 
-    @State private var selectedCategory: LibraryCategory? = .songs
-    @State private var showFilePicker = false
-    @State private var showNowPlaying = false
-    @State private var showNewPlaylistAlert = false
-    @State private var newPlaylistName = ""
-    @State private var searchText = ""
+    @StateObject private var library =
+        LocalLibrary()
 
-    @State private var playlistToEdit: Playlist?
-    @State private var playlistToRename: Playlist?
-    @State private var renameText = ""
+    @State private var
+        selectedCategory:
+            LibraryCategory? = .songs
+
+    @State private var
+        showFilePicker = false
+
+    @State private var
+        showNowPlaying = false
+
+    @State private var
+        showNewPlaylistAlert = false
+
+    @State private var
+        newPlaylistName = ""
+
+    @State private var
+        searchText = ""
+
+    @State private var
+        playlistToEdit:
+            Playlist?
+
+    @State private var
+        playlistToRename:
+            Playlist?
+
+    @State private var
+        renameText = ""
 
     var body: some View {
-        TabView(selection: $selectedCategory) {
+        TabView(
+            selection:
+                $selectedCategory
+        ) {
+
             Tab(
                 "Songs",
-                systemImage: "music.note",
-                value: LibraryCategory.songs
+                systemImage:
+                    "music.note",
+                value:
+                    LibraryCategory.songs
             ) {
-                tabContent(for: .songs)
+                tabContent(
+                    for: .songs
+                )
             }
 
             Tab(
                 "Albums",
-                systemImage: "square.stack",
-                value: LibraryCategory.albums
+                systemImage:
+                    "square.stack",
+                value:
+                    LibraryCategory.albums
             ) {
-                tabContent(for: .albums)
+                tabContent(
+                    for: .albums
+                )
             }
 
             Tab(
                 "Artists",
-                systemImage: "music.mic",
-                value: LibraryCategory.artists
+                systemImage:
+                    "music.mic",
+                value:
+                    LibraryCategory.artists
             ) {
-                tabContent(for: .artists)
+                tabContent(
+                    for: .artists
+                )
             }
 
             Tab(
                 "Playlists",
-                systemImage: "square.grid.2x2",
-                value: LibraryCategory.allPlaylists
+                systemImage:
+                    "square.grid.2x2",
+                value:
+                    LibraryCategory.allPlaylists
             ) {
-                tabContent(for: .allPlaylists)
+                tabContent(
+                    for: .allPlaylists
+                )
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
+        .tabViewStyle(
+            .sidebarAdaptable
+        )
 
-        // MARK: - Now Playing Overlay
+        // MARK: - Now Playing
 
         .overlay {
             NowPlayingView(
                 isPresented:
                     $showNowPlaying
             )
-            .offset(
-                y:
-                    showNowPlaying
-                    ? 0
-                    : UIScreen.main.bounds.height + 200
-            )
-            .animation(
-                .easeOut(duration: 0.3),
-                value: showNowPlaying
-            )
             .allowsHitTesting(
                 showNowPlaying
             )
-            .ignoresSafeArea(.all)
+            .ignoresSafeArea(
+                .all
+            )
         }
+
+        // MARK: - Import
 
         .sheet(
             isPresented:
@@ -93,13 +131,17 @@ struct ContentView: View {
             }
         }
 
+        // MARK: - Playlist Editing
+
         .sheet(
             item:
                 $playlistToEdit
         ) { playlist in
             PlaylistAddSongsSheet(
-                playlist: playlist,
-                library: library
+                playlist:
+                    playlist,
+                library:
+                    library
             )
         }
 
@@ -116,20 +158,33 @@ struct ContentView: View {
 
             Button(
                 "Cancel",
-                role: .cancel
+                role:
+                    .cancel
             ) {
-                newPlaylistName = ""
+                newPlaylistName =
+                    ""
             }
 
             Button("Create") {
-                if !newPlaylistName.isEmpty {
-                    library.createPlaylist(
-                        name:
-                            newPlaylistName
-                    )
+                let name =
+                    newPlaylistName
+                        .trimmingCharacters(
+                            in:
+                                .whitespacesAndNewlines
+                        )
 
-                    newPlaylistName = ""
+                guard !name.isEmpty
+                else {
+                    return
                 }
+
+                library.createPlaylist(
+                    name:
+                        name
+                )
+
+                newPlaylistName =
+                    ""
             }
         }
 
@@ -138,11 +193,13 @@ struct ContentView: View {
             isPresented:
                 Binding(
                     get: {
-                        playlistToRename != nil
+                        playlistToRename
+                            != nil
                     },
                     set: {
                         if !$0 {
-                            playlistToRename = nil
+                            playlistToRename =
+                                nil
                         }
                     }
                 )
@@ -155,35 +212,40 @@ struct ContentView: View {
 
             Button(
                 "Cancel",
-                role: .cancel
+                role:
+                    .cancel
             ) {
-                playlistToRename = nil
+                playlistToRename =
+                    nil
             }
 
             Button("Save") {
-                if let pl =
+                let name =
+                    renameText
+                        .trimmingCharacters(
+                            in:
+                                .whitespacesAndNewlines
+                        )
+
+                if let playlist =
                     playlistToRename,
-                   !renameText.isEmpty {
+                   !name.isEmpty {
 
                     library.renamePlaylist(
                         id:
-                            pl.id,
+                            playlist.id,
                         newName:
-                            renameText
+                            name
                     )
                 }
 
-                playlistToRename = nil
+                playlistToRename =
+                    nil
             }
         }
-
-        .keyboardShortcut(
-            " ",
-            modifiers: []
-        )
     }
 
-    // MARK: - Tab Content
+    // MARK: - Tab
 
     @ViewBuilder
     private func tabContent(
@@ -193,7 +255,8 @@ struct ContentView: View {
 
         NavigationStack {
             detailContent(
-                for: category
+                for:
+                    category
             )
             .searchable(
                 text:
@@ -265,22 +328,30 @@ struct ContentView: View {
         // MARK: - Mini Player
 
         .safeAreaInset(
-            edge: .bottom
+            edge:
+                .bottom
         ) {
-            if audioManager.currentTrack != nil {
+            if audioManager.currentTrack
+                != nil {
 
                 MiniPlayerView {
-                    showNowPlaying = true
+                    showNowPlaying =
+                        true
                 }
                 .glassEffect(
                     .regular.interactive(),
-                    in: .capsule
+                    in:
+                        .capsule
                 )
                 .shadow(
                     color:
-                        .black.opacity(0.15),
-                    radius: 15,
-                    y: 8
+                        .black.opacity(
+                            0.15
+                        ),
+                    radius:
+                        15,
+                    y:
+                        8
                 )
                 .padding(
                     .horizontal,
@@ -336,23 +407,20 @@ struct ContentView: View {
                     library.playlists,
                 library:
                     library,
-
-                onAddSongs: { pl in
-                    playlistToEdit = pl
+                onAddSongs: {
+                    playlistToEdit =
+                        $0
                 },
-
-                onRename: { pl in
+                onRename: {
                     renameText =
-                        pl.name
+                        $0.name
 
                     playlistToRename =
-                        pl
+                        $0
                 }
             )
         }
     }
-
-    // MARK: - Titles
 
     private func titleForCategory(
         _ category:
@@ -382,7 +450,8 @@ struct ContentView: View {
             [LocalTrack]
     ) -> [LocalTrack] {
 
-        if searchText.isEmpty {
+        guard !searchText.isEmpty
+        else {
             return source
         }
 
@@ -406,7 +475,6 @@ struct ContentView: View {
 
     private var filteredTracks:
         [LocalTrack] {
-
         filterTracks(
             library.tracks
         )
@@ -415,7 +483,8 @@ struct ContentView: View {
     private var filteredAlbums:
         [AlbumGroup] {
 
-        if searchText.isEmpty {
+        guard !searchText.isEmpty
+        else {
             return library.albums
         }
 
@@ -435,7 +504,8 @@ struct ContentView: View {
     private var filteredArtists:
         [ArtistGroup] {
 
-        if searchText.isEmpty {
+        guard !searchText.isEmpty
+        else {
             return library.artists
         }
 
