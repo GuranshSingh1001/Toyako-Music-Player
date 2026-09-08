@@ -87,13 +87,8 @@ struct PlaylistHeaderView: View {
         } else if let first = arts.first {
             artSquare(data: first)
         } else {
-            Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .overlay(
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 40))
-                        .foregroundColor(.secondary)
-                )
+            // Injects your custom generated abstract mesh
+            AbstractPlaylistCover(playlistID: playlist.id)
         }
     }
 
