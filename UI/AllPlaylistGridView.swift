@@ -3,7 +3,8 @@ import SwiftUI
 struct AllPlaylistsGridView: View {
     let playlists: [Playlist]
     let library: LocalLibrary
-    var onEditPlaylist: (Playlist) -> Void
+    var onAddSongs: (Playlist) -> Void
+    var onRename: (Playlist) -> Void
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 20)]
 
@@ -22,7 +23,7 @@ struct AllPlaylistsGridView: View {
                                 PlaylistHeaderView(
                                     playlist: playlist,
                                     tracks: pTracks,
-                                    onAddSongs: { onEditPlaylist(playlist) }
+                                    onAddSongs: { onAddSongs(playlist) }
                                 )
                             )
                         )
@@ -32,7 +33,7 @@ struct AllPlaylistsGridView: View {
                             AbstractPlaylistCover(playlistID: playlist.id)
                                 .frame(width: 160, height: 160)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+                                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
                             
                             Text(playlist.name)
                                 .font(.headline)
@@ -49,7 +50,7 @@ struct AllPlaylistsGridView: View {
                             }
                         }
                         Button("Edit Name") {
-                            onEditPlaylist(playlist)
+                            onRename(playlist)
                         }
                     }
                 }
