@@ -56,20 +56,6 @@ jobs:
             -project Toyako.xcodeproj \
             -list
             
-      - name: Verify App Icon Source
-        run: |
-          echo "=== ASSET CATALOG ==="
-          find Assets.xcassets -maxdepth 3 -type f -print
-
-          echo "=== APP ICON CONTENTS ==="
-          cat Assets.xcassets/AppIcon.appiconset/Contents.json
-
-          echo "=== ICON FILE ==="
-          file Assets.xcassets/AppIcon.appiconset/Toyako.png
-
-          echo "=== ICON SIZE ==="
-          sips -g pixelWidth -g pixelHeight \
-            Assets.xcassets/AppIcon.appiconset/Toyako.png
 
       - name: Check Asset Catalog
         run: |
