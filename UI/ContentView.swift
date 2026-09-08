@@ -24,29 +24,42 @@ struct ContentView: View {
     @State private var renameText = ""
 
     var body: some View {
-        TabView(selection: $selectedCategory) {
-            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) { tabContent(for: .songs) }
-            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) { tabContent(for: .albums) }
-            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) { tabContent(for: .artists) }
-            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) { tabContent(for: .allPlaylists) }
-        }
-        .tabViewStyle(.sidebarAdaptable)
-        
-        // GHOST WINDOW & BOUNCE FIX
-        .overlay {
-            GeometryReader { proxy in
-                NowPlayingView(isPresented: $showNowPlaying)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    // स्क्रीन के हाइट के हिसाब से पक्का नीचे भेजता है
-                    .offset(y: showNowPlaying ? 0 : proxy.size.height + 100)
-                    // .easeInOut में 0% बाउंस होता है, कोई काली लाइन नहीं आएगी
-                    .animation(.easeInOut(duration: 0.35), value: showNowPlaying)
-                    .allowsHitTesting(showNowPlaying)
+        // 1. ZSTACK FIX: "Invisible block" और लैग को जड़ से खत्म करने के लिए
+        ZStack {
+            // Main App Content
+            TabView(selection: $selectedCategory) {
+                Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) { tabContent(for: .songs) }
+                Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) { tabContent(for: .albums) }
+                Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) { tabContent(for: .artists) }
+                Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) { tabContent(for: .allPlaylists) }
             }
-            .ignoresSafeArea(.all, edges: .all)
-            .zIndex(99) // घोस्टिंग रोकने के लिए इसे हमेशा सबसे ऊपर लॉक कर दिया
+            .tabViewStyle(.sidebarAdaptable)
+            .safeAreaInset(edge: .bottom) {
+                if audioManager.currentTrack != nil {
+                    MiniPlayerView()
+                        // 2. LIQUID GLASS: आपका ओरिजिनल इफ़ेक्ट
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .contentShape(Capsule())
+                        .onTapGesture {
+                            showNowPlaying = true
+                        }
+                        .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                }
+            }
+            
+            // 3. NOW PLAYING OVERLAY (ZERO BOUNCE, ZERO LAG)
+            NowPlayingView(isPresented: $showNowPlaying)
+                // 150px एक्स्ट्रा नीचे पुश किया है ताकि ब्लैक लाइन पूरी तरह छुप जाए
+                .offset(y: showNowPlaying ? 0 : UIScreen.main.bounds.height + 150)
+                // .easeOut में 0% बाउंस होता है
+                .animation(.easeOut(duration: 0.3), value: showNowPlaying)
+                .ignoresSafeArea(.all)
+                // यह लाइन गारंटी देती है कि छुपने के बाद यह स्क्रीन कोई टैप ब्लॉक नहीं करेगी
+                .allowsHitTesting(showNowPlaying)
+                .zIndex(99)
         }
-        
         .sheet(isPresented: $showFilePicker) { DocumentPicker { urls in library.importExternalURLs(urls) } }
         .sheet(item: $playlistToEdit) { playlist in PlaylistAddSongsSheet(playlist: playlist, library: library) }
         
@@ -96,22 +109,6 @@ struct ContentView: View {
                         }
                     }
                 }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if audioManager.currentTrack != nil {
-                MiniPlayerView()
-                    // आपका कस्टम लिक्विड ग्लास इफ़ेक्ट वापस लगा दिया गया है
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .onTapGesture {
-                        // डबल-टैप घोस्ट बग से बचने के लिए
-                        if !showNowPlaying {
-                            showNowPlaying = true
-                        }
-                    }
-                    .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-            }
         }
     }
 
