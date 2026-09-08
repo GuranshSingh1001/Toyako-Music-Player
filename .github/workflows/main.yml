@@ -27,7 +27,8 @@ jobs:
             exit 1
           fi
 
-          echo "Using: $XCODE_PATH"
+          echo "Using Xcode:"
+          echo "$XCODE_PATH"
 
           sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
 
@@ -44,14 +45,31 @@ jobs:
 
       - name: Verify Generated Project
         run: |
-          echo "Generated files:"
+          echo "=== PROJECT FILES ==="
           ls -la
 
-          echo "Xcode projects:"
+          echo "=== XCODE PROJECT ==="
           find . -maxdepth 2 -name "*.xcodeproj" -print
 
-          echo "Available schemes:"
-          xcodebuild -project Toyako.xcodeproj -list
+          echo "=== SCHEMES ==="
+          xcodebuild \
+            -project Toyako.xcodeproj \
+            -list
+
+      - name: Verify App Icon Source
+        run: |
+          echo "=== ASSET CATALOG ==="
+          find Assets.xcassets -maxdepth 3 -type f -print
+
+          echo "=== APP ICON CONTENTS ==="
+          cat Assets.xcassets/AppIcon.appiconset/Contents.json
+
+          echo "=== ICON FILE ==="
+          file Assets.xcassets/AppIcon.appiconset/Toyako.png
+
+          echo "=== ICON SIZE ==="
+          sips -g pixelWidth -g pixelHeight \
+            Assets.xcassets/AppIcon.appiconset/Toyako.png
 
       - name: Build Unsigned Archive
         run: |
@@ -65,17 +83,36 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER=""
 
-      - name: Verify Archive
+      - name: Verify Compiled App
         run: |
-          echo "Archive contents:"
-          find "$RUNNER_TEMP/Toyako.xcarchive" -maxdepth 5 -print
+          APP_PATH="$RUNNER_TEMP/Toyako.xcarchive/Products/Applications/Toyako.app"
 
-          if [ ! -d "$RUNNER_TEMP/Toyako.xcarchive/Products/Applications/Toyako.app" ]; then
-            echo "Toyako.app was not found inside the archive."
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: Toyako.app was not created."
             exit 1
           fi
 
-          echo "Toyako.app found successfully."
+          echo "=== APP CONTENTS ==="
+          find "$APP_PATH" -maxdepth 2 -print
+
+          echo "=== ASSETS.CAR ==="
+
+          if [ -f "$APP_PATH/Assets.car" ]; then
+            echo "SUCCESS: Assets.car exists."
+          else
+            echo "ERROR: Assets.car is missing."
+            exit 1
+          fi
+
+          echo "=== ICON INFORMATION IN INFO.PLIST ==="
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleIcons" \
+            "$APP_PATH/Info.plist" || true
+
+          echo "=== IPAD ICON INFORMATION ==="
+          /usr/libexec/PlistBuddy \
+            -c "Print :CFBundleIcons~ipad" \
+            "$APP_PATH/Info.plist" || true
 
       - name: Package into IPA
         run: |
@@ -92,9 +129,11 @@ jobs:
 
       - name: Verify IPA
         run: |
+          echo "=== IPA ==="
           ls -lh "$RUNNER_TEMP/Toyako.ipa"
 
-          unzip -l "$RUNNER_TEMP/Toyako.ipa" | head -50
+          echo "=== IPA CONTENTS ==="
+          unzip -l "$RUNNER_TEMP/Toyako.ipa" | head -100
 
       - name: Upload Unsigned IPA
         uses: actions/upload-artifact@v4
