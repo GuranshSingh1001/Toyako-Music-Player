@@ -3,7 +3,7 @@ import SwiftUI
 struct AllPlaylistsGridView: View {
     let playlists: [Playlist]
     let library: LocalLibrary
-    @Binding var selectedCategory: LibraryCategory?
+    var onEditPlaylist: (Playlist) -> Void
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 20)]
 
@@ -11,8 +11,23 @@ struct AllPlaylistsGridView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 24) {
                 ForEach(playlists) { playlist in
-                    Button {
-                        selectedCategory = .playlist(playlist.id)
+                    // 1. Uses NavigationLink to push the detail view over the grid with a Back button
+                    NavigationLink {
+                        let pTracks = library.tracks.filter { playlist.trackURLs.contains($0.url) }
+                        SongListView(
+                            tracks: pTracks,
+                            allTracks: pTracks,
+                            library: library,
+                            playlistID: playlist.id,
+                            headerView: AnyView(
+                                PlaylistHeaderView(
+                                    playlist: playlist,
+                                    tracks: pTracks,
+                                    onAddSongs: { onEditPlaylist(playlist) }
+                                )
+                            )
+                        )
+                        .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
                             RoundedRectangle(cornerRadius: 12)
