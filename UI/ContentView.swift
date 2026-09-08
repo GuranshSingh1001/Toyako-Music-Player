@@ -19,19 +19,31 @@ struct ContentView: View {
     @State private var newPlaylistName = ""
     @State private var searchText = ""
     
-    // Separated the sheet state from the alert state
+    // Separated state variables for editing songs vs renaming the playlist
     @State private var playlistToEdit: Playlist?
     @State private var playlistToRename: Playlist?
     @State private var renameText = ""
 
     var body: some View {
         TabView(selection: $selectedCategory) {
-            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) { tabContent(for: .songs) }
-            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) { tabContent(for: .albums) }
-            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) { tabContent(for: .artists) }
-            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) { tabContent(for: .allPlaylists) }
+            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) {
+                tabContent(for: .songs)
+            }
+            
+            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
+                tabContent(for: .albums)
+            }
+            
+            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
+                tabContent(for: .artists)
+            }
+            
+            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
+                tabContent(for: .allPlaylists)
+            }
         }
         .tabViewStyle(.sidebarAdaptable)
+        // 1. Clean overlay for Now Playing
         .overlay {
             if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
@@ -40,9 +52,17 @@ struct ContentView: View {
                     .zIndex(2)
             }
         }
-        .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
-        .sheet(isPresented: $showFilePicker) { DocumentPicker { urls in library.importExternalURLs(urls) } }
-        .sheet(item: $playlistToEdit) { playlist in PlaylistAddSongsSheet(playlist: playlist, library: library) }
+        // 2. Zero-bounce spring animation to prevent the black line glitch
+        .animation(.spring(response: 0.35, dampingFraction: 1.0), value: showNowPlaying)
+        
+        .sheet(isPresented: $showFilePicker) {
+            DocumentPicker { urls in
+                library.importExternalURLs(urls)
+            }
+        }
+        .sheet(item: $playlistToEdit) { playlist in
+            PlaylistAddSongsSheet(playlist: playlist, library: library)
+        }
         
         // Playlist Creation Alert
         .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
@@ -93,18 +113,18 @@ struct ContentView: View {
                     }
                 }
         }
+        // 3. MiniPlayer attached safely to the bottom edge
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
                 MiniPlayerView()
-                    // 1. Makes the ENTIRE capsule clickable, fixing the hit-or-miss taps
-                    .contentShape(Capsule()) 
+                    // System-synced liquid glass effect (Light/Dark mode automatic)
+                    .background(.regularMaterial, in: Capsule())
+                    // Guarantees the entire pill shape is clickable, eliminating missed taps
+                    .contentShape(Capsule())
                     .onTapGesture {
                         showNowPlaying = true
                     }
-                    // 2. Native liquid glass that automatically syncs with Light/Dark mode
-                    .background(.regularMaterial, in: Capsule())
-                    // 3. Softer shadow to complement the transparent glass
-                    .shadow(color: .black.opacity(0.15), radius: 15, y: 8) 
+                    .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
             }
@@ -121,10 +141,13 @@ struct ContentView: View {
         case .artists:
             ArtistListView(artists: filteredArtists, library: library)
         case .allPlaylists:
+            // Passes both actions correctly to the grid view
             AllPlaylistsGridView(
                 playlists: library.playlists, 
                 library: library, 
-                onAddSongs: { pl in playlistToEdit = pl },
+                onAddSongs: { pl in 
+                    playlistToEdit = pl 
+                },
                 onRename: { pl in 
                     renameText = pl.name
                     playlistToRename = pl 
@@ -142,6 +165,8 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Search Filtering
+    
     private func filterTracks(_ source: [LocalTrack]) -> [LocalTrack] {
         if searchText.isEmpty { return source }
         return source.filter {
@@ -152,10 +177,12 @@ struct ContentView: View {
     }
 
     private var filteredTracks: [LocalTrack] { filterTracks(library.tracks) }
+    
     private var filteredAlbums: [AlbumGroup] {
         if searchText.isEmpty { return library.albums }
         return library.albums.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.artist.localizedCaseInsensitiveContains(searchText) }
     }
+    
     private var filteredArtists: [ArtistGroup] {
         if searchText.isEmpty { return library.artists }
         return library.artists.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
