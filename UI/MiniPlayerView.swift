@@ -47,9 +47,10 @@ struct MiniPlayerView: View {
                         .contentShape(Rectangle())
                 }
                 
+                // Muted the missing method call so it won't crash the compiler.
+                // Replace the print statement below with your exact 'skip forward' logic
                 Button {
-                    // TODO: Replace with your actual method (e.g., audioManager.skipForward())
-                    print("Skip tapped")
+                    print("Next track button tapped")
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
