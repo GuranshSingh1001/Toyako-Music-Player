@@ -4,42 +4,46 @@ struct AbstractPlaylistCover: View {
     let playlistID: UUID
     
     var body: some View {
-        let palette = colors(for: playlistID)
-        
-        ZStack {
-            // Base linear gradient
+        if #available(iOS 18.0, *) {
+            MeshGradient(
+                width: 3, 
+                height: 3,
+                points: [
+                    [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
+                    [0.0, 0.5], [0.8, 0.2], [1.0, 0.5],
+                    [0.0, 1.0], [0.5, 1.0], [1.0, 1.0]
+                ],
+                colors: meshColors(for: playlistID)
+            )
+            .overlay {
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 54, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .blendMode(.overlay)
+            }
+        } else {
+            // Fallback for older iOS versions
             LinearGradient(
-                colors: [palette.0, palette.1],
+                colors: [meshColors(for: playlistID).first ?? .purple, meshColors(for: playlistID).last ?? .blue],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            
-            // Secondary radial glow for that rich "mesh" feel
-            RadialGradient(
-                colors: [palette.2.opacity(0.8), .clear],
-                center: .bottomTrailing,
-                startRadius: 10,
-                endRadius: 180
-            )
-            .blendMode(.screen)
-            
-            Image(systemName: "music.note.list")
-                .font(.system(size: 44, weight: .bold))
-                .foregroundStyle(.white.opacity(0.95))
-                .shadow(color: .black.opacity(0.2), radius: 5, y: 3)
+            .overlay {
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 54, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .blendMode(.overlay)
+            }
         }
     }
     
-    // Consistently assigns a vibrant palette based on the playlist's unique ID
-    private func colors(for id: UUID) -> (Color, Color, Color) {
+    private func meshColors(for id: UUID) -> [Color] {
         let hash = abs(id.hashValue)
-        let palettes: [(Color, Color, Color)] = [
-            (.purple, .indigo, .cyan),     // Deep Space
-            (.pink, .orange, .yellow),     // Sunset
-            (.indigo, .purple, .pink),     // Berry
-            (.teal, .mint, .green),        // Aqua
-            (.red, .pink, .orange),        // Crimson
-            (.blue, .teal, .indigo)        // Ocean
+        let palettes: [[Color]] = [
+            [.purple, .indigo, .blue, .pink, .orange, .red, .purple, .pink, .orange], 
+            [.teal, .cyan, .blue, .mint, .teal, .indigo, .green, .mint, .teal],       
+            [.black, .purple, .indigo, .red, .pink, .purple, .black, .red, .orange],  
+            [.blue, .purple, .pink, .cyan, .indigo, .purple, .teal, .blue, .pink]     
         ]
         return palettes[hash % palettes.count]
     }
