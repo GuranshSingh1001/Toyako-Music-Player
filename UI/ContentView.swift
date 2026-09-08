@@ -102,18 +102,12 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
                 MiniPlayerView()
+                    .glassEffect(.regular.interactive(), in: .capsule)
                     .contentShape(Capsule())
                     .onTapGesture {
                         showNowPlaying = true
                     }
-                    // 3. TRUE LIQUID GLASS FIX:
-                    // Forces the ultra thin material to render correctly over scrolling content
-                    .background {
-                        Capsule()
-                            .fill(.ultraThinMaterial)
-                            .environment(\.colorScheme, .dark)
-                    }
-                    .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
+                    .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
             }
