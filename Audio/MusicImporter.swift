@@ -10,14 +10,24 @@ class LocalLibrary: ObservableObject {
     @Published var statusMessage: String = "Scanning..."
 
     private let playlistStorageKey = "offline_music_playlists"
+    private let tracksCacheKey = "cached_library_tracks_v1"
 
     init() {
+        // 1. Load playlists and cached tracks instantly on startup so UI is never blank
         loadPlaylists()
+        loadTracksFromCache()
+        
+        // 2. Automatically sync in the background for any changes
+        reloadFiles()
     }
 
     func reloadFiles() {
         Task {
-            statusMessage = "Scanning..."
+            // Only show "Scanning..." if we don't already have cached tracks showing
+            if tracks.isEmpty {
+                statusMessage = "Scanning..."
+            }
+            
             let fileManager = FileManager.default
             guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 statusMessage = "Unable to access Documents folder"
@@ -73,6 +83,9 @@ class LocalLibrary: ObservableObject {
             }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
             self.statusMessage = "Indexed \(discovered.count) songs"
+            
+            // Save newly scanned tracks to local cache for instant loading next time
+            saveTracksToCache()
         }
     }
 
@@ -180,6 +193,44 @@ class LocalLibrary: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: playlistStorageKey),
            let decoded = try? JSONDecoder().decode([Playlist].self, from: data) {
             playlists = decoded
+        }
+    }
+
+    private func saveTracksToCache() {
+        if let encoded = try? JSONEncoder().encode(tracks) {
+            UserDefaults.standard.set(encoded, forKey: tracksCacheKey)
+        }
+    }
+
+    private func loadTracksFromCache() {
+        if let data = UserDefaults.standard.data(forKey: tracksCacheKey),
+           let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data) {
+            self.tracks = decoded
+            
+            // Instantly populate album and artist groupings from cache
+            let albumDict = Dictionary(grouping: decoded, by: {
+                "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
+            })
+            self.albums = albumDict.map { _, trackList in
+                let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
+                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+                return AlbumGroup(
+                    name: preferredName,
+                    artist: preferredArtist,
+                    artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData,
+                    tracks: trackList
+                )
+            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+            let artistDict = Dictionary(grouping: decoded, by: {
+                $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
+            })
+            self.artists = artistDict.map { _, trackList in
+                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+                return ArtistGroup(name: preferredArtist, tracks: trackList)
+            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            
+            self.statusMessage = "Indexed \(decoded.count) songs"
         }
     }
 }
