@@ -24,42 +24,26 @@ struct ContentView: View {
     @State private var renameText = ""
 
     var body: some View {
-        // 1. ZSTACK FIX: "Invisible block" और लैग को जड़ से खत्म करने के लिए
-        ZStack {
-            // Main App Content
-            TabView(selection: $selectedCategory) {
-                Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) { tabContent(for: .songs) }
-                Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) { tabContent(for: .albums) }
-                Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) { tabContent(for: .artists) }
-                Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) { tabContent(for: .allPlaylists) }
-            }
-            .tabViewStyle(.sidebarAdaptable)
-            .safeAreaInset(edge: .bottom) {
-                if audioManager.currentTrack != nil {
-                    MiniPlayerView()
-                        // 2. LIQUID GLASS: आपका ओरिजिनल इफ़ेक्ट
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                        .contentShape(Capsule())
-                        .onTapGesture {
-                            showNowPlaying = true
-                        }
-                        .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                }
-            }
-            
-            // 3. NOW PLAYING OVERLAY (ZERO BOUNCE, ZERO LAG)
-            NowPlayingView(isPresented: $showNowPlaying)
-                // 150px एक्स्ट्रा नीचे पुश किया है ताकि ब्लैक लाइन पूरी तरह छुप जाए
-                .offset(y: showNowPlaying ? 0 : UIScreen.main.bounds.height + 150)
-                // .easeOut में 0% बाउंस होता है
-                .animation(.easeOut(duration: 0.3), value: showNowPlaying)
-                .ignoresSafeArea(.all)
-                // यह लाइन गारंटी देती है कि छुपने के बाद यह स्क्रीन कोई टैप ब्लॉक नहीं करेगी
-                .allowsHitTesting(showNowPlaying)
-                .zIndex(99)
+        TabView(selection: $selectedCategory) {
+            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) { tabContent(for: .songs) }
+            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) { tabContent(for: .albums) }
+            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) { tabContent(for: .artists) }
+            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) { tabContent(for: .allPlaylists) }
         }
+        .tabViewStyle(.sidebarAdaptable)
+        
+        // GHOST WINDOW, LAG & BOUNCE FIX
+        .overlay {
+            NowPlayingView(isPresented: $showNowPlaying)
+                // Pushes the view completely off-screen mathematically
+                .offset(y: showNowPlaying ? 0 : UIScreen.main.bounds.height + 200)
+                // Linear curve guarantees 0% bounce (no black line)
+                .animation(.easeOut(duration: 0.3), value: showNowPlaying)
+                // Disables all touch interception when hidden
+                .allowsHitTesting(showNowPlaying)
+                .ignoresSafeArea(.all)
+        }
+        
         .sheet(isPresented: $showFilePicker) { DocumentPicker { urls in library.importExternalURLs(urls) } }
         .sheet(item: $playlistToEdit) { playlist in PlaylistAddSongsSheet(playlist: playlist, library: library) }
         
@@ -109,6 +93,22 @@ struct ContentView: View {
                         }
                     }
                 }
+        }
+        // SIDEBAR OVERLAP FIX: Applying inset here restricts the MiniPlayer to the detail view only.
+        .safeAreaInset(edge: .bottom) {
+            if audioManager.currentTrack != nil {
+                MiniPlayerView()
+                    // Ensures the whole pill registers taps
+                    .contentShape(Capsule())
+                    .onTapGesture {
+                        showNowPlaying = true
+                    }
+                    // LIQUID GLASS FIX: Using your exact modifier
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
         }
     }
 
