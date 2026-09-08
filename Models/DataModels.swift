@@ -8,7 +8,7 @@ enum RepeatMode: String, CaseIterable, Codable {
     case one
 }
 
-struct LocalTrack: Identifiable, Hashable {
+struct LocalTrack: Identifiable, Hashable, Codable {
     let id: UUID
     let url: URL
     let title: String
