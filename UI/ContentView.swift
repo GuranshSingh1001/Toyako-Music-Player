@@ -135,6 +135,7 @@ struct ContentView: View {
                             Image(systemName: "plus")
                         }
                     }
+
                     ToolbarItem(placement: .navigationBarLeading) {
                         if searchText.isEmpty {
                             Button { library.reloadFiles() } label: {
@@ -196,7 +197,7 @@ struct ContentView: View {
     }
 
     private var filteredTracks: [LocalTrack] { filterTracks(library.tracks) }
-    
+
     private var filteredAlbums: [AlbumGroup] {
         if searchText.isEmpty { return library.albums }
         return library.albums.filter {
