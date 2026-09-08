@@ -4,109 +4,240 @@ struct PlaylistHeaderView: View {
     let playlist: Playlist
     let tracks: [LocalTrack]
     let onAddSongs: () -> Void
-    @EnvironmentObject var audioManager: AudioEngineManager
+
+    @EnvironmentObject var audioManager:
+        AudioEngineManager
 
     var body: some View {
-        HStack(spacing: 24) {
-            playlistArtwork
-                .frame(width: 130, height: 130)
-                .cornerRadius(12)
-                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+        VStack(
+            alignment:
+                .leading,
+            spacing:
+                18
+        ) {
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("PLAYLIST")
-                    .font(.caption.bold())
-                    .foregroundColor(.secondary)
+            HStack(
+                alignment:
+                    .top,
+                spacing:
+                    20
+            ) {
 
-                Text(playlist.name)
-                    .font(.title.bold())
-                    .lineLimit(1)
+                PlaylistArtwork(
+                    tracks:
+                        tracks,
+                    playlistName:
+                        playlist.name
+                )
+                .frame(
+                    width:
+                        145,
+                    height:
+                        145
+                )
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius:
+                            14,
+                        style:
+                            .continuous
+                    )
+                )
+                .shadow(
+                    color:
+                        .black.opacity(
+                            0.25
+                        ),
+                    radius:
+                        12,
+                    y:
+                        6
+                )
 
-                Text("\(tracks.count) Songs • \(totalDurationString)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                VStack(
+                    alignment:
+                        .leading,
+                    spacing:
+                        7
+                ) {
 
-                HStack(spacing: 12) {
-                    Button {
-                        if !tracks.isEmpty {
-                            audioManager.startQueue(tracks: tracks, startIndex: 0)
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "play.fill")
-                            Text("Play")
-                        }
-                        .font(.subheadline.bold())
-                    }
-                    .buttonStyle(.borderedProminent)
+                    Text(
+                        "PLAYLIST"
+                    )
+                    .font(
+                        .caption.bold()
+                    )
+                    .foregroundColor(
+                        .secondary
+                    )
 
-                    Button {
-                        if !tracks.isEmpty {
-                            if !audioManager.isShuffle {
-                                audioManager.toggleShuffle()
-                            }
-                            let randomIndex = Int.random(in: 0..<tracks.count)
-                            audioManager.startQueue(tracks: tracks, startIndex: randomIndex)
-                        }
-                    } label: {
-                        Label("Shuffle", systemImage: "shuffle")
-                            .font(.subheadline.bold())
-                    }
-                    .buttonStyle(.bordered)
+                    Text(
+                        playlist.name
+                    )
+                    .font(
+                        .system(
+                            size: 26,
+                            weight: .bold
+                        )
+                    )
+                    .lineLimit(
+                        2
+                    )
 
-                    Button(action: onAddSongs) {
-                        Label("Add Songs", systemImage: "plus.circle")
-                            .font(.subheadline.bold())
-                    }
-                    .buttonStyle(.bordered)
+                    Text(
+                        "\(tracks.count) "
+                        + (
+                            tracks.count == 1
+                            ? "Song"
+                            : "Songs"
+                        )
+                        + " • "
+                        + totalDurationString
+                    )
+                    .font(
+                        .subheadline
+                    )
+                    .foregroundColor(
+                        .secondary
+                    )
+
+                    Spacer(
+                        minLength:
+                            2
+                    )
                 }
-                .padding(.top, 4)
+
+                Spacer(
+                    minLength:
+                        0
+                )
             }
-            Spacer()
+
+            HStack(
+                spacing:
+                    12
+            ) {
+
+                Button {
+                    guard !tracks.isEmpty
+                    else {
+                        return
+                    }
+
+                    audioManager.startQueue(
+                        tracks:
+                            tracks,
+                        startIndex:
+                            0
+                    )
+                } label: {
+                    Label(
+                        "Play",
+                        systemImage:
+                            "play.fill"
+                    )
+                    .font(
+                        .subheadline.bold()
+                    )
+                }
+                .buttonStyle(
+                    .borderedProminent
+                )
+
+                Button {
+                    guard !tracks.isEmpty
+                    else {
+                        return
+                    }
+
+                    if !audioManager.isShuffle {
+                        audioManager.toggleShuffle()
+                    }
+
+                    let index =
+                        Int.random(
+                            in:
+                                0..<tracks.count
+                        )
+
+                    audioManager.startQueue(
+                        tracks:
+                            tracks,
+                        startIndex:
+                            index
+                    )
+                } label: {
+                    Label(
+                        "Shuffle",
+                        systemImage:
+                            "shuffle"
+                    )
+                    .font(
+                        .subheadline.bold()
+                    )
+                }
+                .buttonStyle(
+                    .bordered
+                )
+
+                Button(
+                    action:
+                        onAddSongs
+                ) {
+                    Label(
+                        "Add Songs",
+                        systemImage:
+                            "plus"
+                    )
+                    .font(
+                        .subheadline.bold()
+                    )
+                }
+                .buttonStyle(
+                    .bordered
+                )
+            }
         }
-        .padding(20)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
+        .padding(
+            .horizontal,
+            20
+        )
+        .padding(
+            .vertical,
+            18
+        )
     }
 
-    @ViewBuilder
-    private var playlistArtwork: some View {
-        let arts = tracks.compactMap { $0.artworkData }
-        if arts.count >= 4 {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    artSquare(data: arts[0])
-                    artSquare(data: arts[1])
-                }
-                HStack(spacing: 0) {
-                    artSquare(data: arts[2])
-                    artSquare(data: arts[3])
-                }
-            }
-        } else if let first = arts.first {
-            artSquare(data: first)
-        } else {
-            // Injects your custom generated abstract mesh
-            AbstractPlaylistCover(playlistID: playlist.id)
-        }
-    }
+    private var totalDurationString:
+        String {
 
-    private func artSquare(data: Data) -> some View {
-        Group {
-            if let img = UIImage(data: data) {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Color.gray.opacity(0.3)
+        let total =
+            tracks.reduce(
+                0
+            ) {
+                $0 + $1.duration
             }
-        }
-    }
 
-    private var totalDurationString: String {
-        let total = tracks.reduce(0) { $0 + $1.duration }
-        let mins = Int(total) / 60
-        return "\(mins) mins"
+        let seconds =
+            max(
+                0,
+                Int(
+                    total
+                )
+            )
+
+        let hours =
+            seconds / 3600
+
+        let minutes =
+            (seconds % 3600) / 60
+
+        if hours > 0 {
+            return
+                "\(hours) hr \(minutes) min"
+        }
+
+        return
+            "\(minutes) min"
     }
 }
