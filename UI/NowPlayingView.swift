@@ -1,32 +1,22 @@
 import SwiftUI
+import UIKit
 
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
 
-    @EnvironmentObject var audioManager:
-        AudioEngineManager
+    @EnvironmentObject var audioManager: AudioEngineManager
 
-    @State private var
-        dragOffset: CGFloat = 0
+    @State private var dragOffset: CGFloat = 0
+    @State private var isVisible = false
 
-    @State private var
-        isVisible = false
-
-    @State private var
-        playPausePressed = false
-
-    @State private var
-        previousPressed = false
-
-    @State private var
-        nextPressed = false
+    @State private var playPausePressed = false
+    @State private var previousPressed = false
+    @State private var nextPressed = false
 
     var body: some View {
-        GeometryReader { geo in
-
-            let landscape =
-                geo.size.width >
-                geo.size.height
+        GeometryReader { geometry in
+            let isLandscape =
+                geometry.size.width > geometry.size.height
 
             ZStack {
                 Color.black
@@ -34,94 +24,81 @@ struct NowPlayingView: View {
 
                 AppleMusicMovingBleedBackground(
                     artworkData:
-                        audioManager
-                            .currentTrack?
-                            .artworkData
+                        audioManager.currentTrack?.artworkData
                 )
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .gesture(
+                    dismissGesture(
+                        height: geometry.size.height
+                    )
+                )
 
-                if landscape {
-
+                if isLandscape {
                     HStack(
-                        spacing:
-                            geo.size.width * 0.035
+                        spacing: geometry.size.width * 0.035
                     ) {
                         artworkPane(
                             maxHeight:
-                                geo.size.height
-                                * 0.48
+                                geometry.size.height * 0.48
                         )
                         .frame(
                             width:
-                                geo.size.width
-                                * 0.35
+                                geometry.size.width * 0.35
+                        )
+                        .contentShape(Rectangle())
+                        .gesture(
+                            dismissGesture(
+                                height:
+                                    geometry.size.height
+                            )
                         )
 
                         lyricsPane
                             .frame(
-                                maxWidth:
-                                    .infinity,
-                                maxHeight:
-                                    .infinity
+                                maxWidth: .infinity,
+                                maxHeight: .infinity
                             )
                     }
-                    .padding(
-                        .horizontal,
-                        48
-                    )
-                    .padding(
-                        .vertical,
-                        24
-                    )
+                    .padding(.horizontal, 48)
+                    .padding(.vertical, 24)
 
                 } else {
-
-                    VStack(
-                        spacing:
-                            18
-                    ) {
+                    VStack(spacing: 18) {
                         artworkPane(
                             maxHeight:
-                                geo.size.height
-                                * 0.38
+                                geometry.size.height * 0.38
+                        )
+                        .contentShape(Rectangle())
+                        .gesture(
+                            dismissGesture(
+                                height:
+                                    geometry.size.height
+                            )
                         )
 
                         lyricsPane
                     }
-                    .padding(
-                        .horizontal,
-                        24
-                    )
+                    .padding(.horizontal, 24)
                 }
             }
-            .contentShape(
-                Rectangle()
-            )
-            .gesture(
-                dismissGesture(
-                    height:
-                        geo.size.height
-                )
-            )
             .frame(
-                width:
-                    geo.size.width,
-                height:
-                    geo.size.height
+                width: geometry.size.width,
+                height: geometry.size.height
             )
+            .clipped()
+
             .overlay(
-                alignment:
-                    .topLeading
+                alignment: .topLeading
             ) {
                 Button {
                     close(
                         height:
-                            geo.size.height
+                            geometry.size.height
                     )
                 } label: {
                     Image(
-                        systemName:
-                            "chevron.down"
+                        systemName: "chevron.down"
                     )
                     .font(
                         .system(
@@ -129,51 +106,47 @@ struct NowPlayingView: View {
                             weight: .bold
                         )
                     )
-                    .foregroundColor(
-                        .white.opacity(
-                            0.9
-                        )
+                    .foregroundStyle(
+                        .white.opacity(0.9)
                     )
                     .frame(
                         width: 52,
                         height: 52
                     )
-                    .contentShape(
-                        Circle()
-                    )
+                    .contentShape(Circle())
                 }
-                .padding(
-                    .leading,
-                    12
-                )
-                .padding(
-                    .top,
-                    8
-                )
+                .buttonStyle(.plain)
+                .padding(.leading, 10)
+                .padding(.top, 8)
             }
+
             .offset(
                 y:
                     isVisible
                     ? dragOffset
-                    : geo.size.height
+                    : geometry.size.height
             )
         }
         .ignoresSafeArea()
+
+        // Important fix:
+        // NowPlayingView remains mounted by ContentView,
+        // so its internal state must be reset every time
+        // isPresented changes.
         .onAppear {
             if isPresented {
                 show()
             }
         }
-        .onChange(
-            of:
-                isPresented
-        ) { _, presented in
 
+        .onChange(
+            of: isPresented
+        ) { _, presented in
             if presented {
                 show()
             } else {
-                isVisible = false
                 dragOffset = 0
+                isVisible = false
             }
         }
     }
@@ -181,7 +154,6 @@ struct NowPlayingView: View {
     // MARK: - Presentation
 
     private func show() {
-
         dragOffset = 0
 
         withAnimation(
@@ -195,43 +167,36 @@ struct NowPlayingView: View {
     }
 
     private func close(
-        height:
-            CGFloat
+        height: CGFloat
     ) {
-
         withAnimation(
             .spring(
                 response: 0.34,
                 dampingFraction: 0.88
             )
         ) {
-            dragOffset =
-                height
+            dragOffset = height
         }
 
         DispatchQueue.main.asyncAfter(
-            deadline:
-                .now() + 0.30
+            deadline: .now() + 0.30
         ) {
             isPresented = false
         }
     }
 
     private func dismissGesture(
-        height:
-            CGFloat
+        height: CGFloat
     ) -> some Gesture {
-
         DragGesture(
-            minimumDistance:
-                8,
-            coordinateSpace:
-                .global
+            minimumDistance: 8,
+            coordinateSpace: .global
         )
         .onChanged { value in
-
-            guard value.translation.height
-                    > 0
+            guard
+                value.translation.height > 0,
+                abs(value.translation.height)
+                    > abs(value.translation.width)
             else {
                 return
             }
@@ -240,24 +205,18 @@ struct NowPlayingView: View {
                 value.translation.height
         }
         .onEnded { value in
-
             let translation =
                 value.translation.height
 
             let predicted =
-                value.predictedEndTranslation
-                    .height
+                value.predictedEndTranslation.height
 
-            if translation > 100 ||
-                predicted > 260 {
+            if translation > 110 ||
+                predicted > 280 {
 
-                close(
-                    height:
-                        height
-                )
+                close(height: height)
 
             } else {
-
                 withAnimation(
                     .spring(
                         response: 0.34,
@@ -270,177 +229,31 @@ struct NowPlayingView: View {
         }
     }
 
-    // MARK: - Artwork / Controls
+    // MARK: - Artwork Pane
 
     private func artworkPane(
-        maxHeight:
-            CGFloat
+        maxHeight: CGFloat
     ) -> some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 4)
 
-        VStack(
-            spacing:
-                16
-        ) {
-
-            Spacer(
-                minLength:
-                    4
+            artwork(
+                maxHeight: maxHeight
             )
 
-            if let data =
-                audioManager
-                    .currentTrack?
-                    .artworkData,
-               let image =
-                    UIImage(
-                        data:
-                            data
-                    ) {
-
-                Image(
-                    uiImage:
-                        image
-                )
-                .resizable()
-                .scaledToFit()
-                .frame(
-                    maxHeight:
-                        maxHeight
-                )
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius:
-                            12,
-                        style:
-                            .continuous
-                    )
-                )
-                .shadow(
-                    color:
-                        .black.opacity(
-                            0.32
-                        ),
-                    radius:
-                        24,
-                    y:
-                        12
-                )
-                .id(
-                    audioManager
-                        .currentTrack?
-                        .id
-                )
-
-            } else {
-
-                RoundedRectangle(
-                    cornerRadius:
-                        12,
-                    style:
-                        .continuous
-                )
-                .fill(
-                    Color.white.opacity(
-                        0.08
-                    )
-                )
-                .frame(
-                    width:
-                        maxHeight,
-                    height:
-                        maxHeight
-                )
-                .overlay {
-                    Image(
-                        systemName:
-                            "music.note"
-                    )
-                    .font(
-                        .system(
-                            size: 52
-                        )
-                    )
-                    .foregroundColor(
-                        .white.opacity(
-                            0.35
-                        )
-                    )
-                }
-            }
-
-            VStack(
-                alignment:
-                    .leading,
-                spacing:
-                    3
-            ) {
-
-                Text(
-                    audioManager
-                        .currentTrack?
-                        .title
-                    ?? "Unknown Title"
-                )
-                .font(
-                    .system(
-                        size: 22,
-                        weight: .bold
-                    )
-                )
-                .foregroundColor(
-                    .white
-                )
-                .lineLimit(
-                    1
-                )
-
-                Text(
-                    audioManager
-                        .currentTrack?
-                        .artist
-                    ?? "Unknown Artist"
-                )
-                .font(
-                    .system(
-                        size: 17,
-                        weight: .medium
-                    )
-                )
-                .foregroundColor(
-                    .white.opacity(
-                        0.68
-                    )
-                )
-                .lineLimit(
-                    1
-                )
-            }
-            .frame(
-                maxWidth:
-                    .infinity,
-                alignment:
-                    .leading
-            )
+            trackInformation
 
             AppleMusicScrubberBar(
                 progress:
-                    audioManager
-                        .playbackProgress,
+                    audioManager.playbackProgress,
                 duration:
-                    audioManager
-                        .currentTrack?
-                        .duration
+                    audioManager.currentTrack?.duration
                     ?? 0,
                 currentTime:
-                    audioManager
-                        .currentTime,
-                onSeek: {
-                    progress in
-
+                    audioManager.currentTime,
+                onSeek: { progress in
                     guard let duration =
-                        audioManager
-                            .currentTrack?
-                            .duration,
+                        audioManager.currentTrack?.duration,
                           duration > 0
                     else {
                         return
@@ -448,178 +261,316 @@ struct NowPlayingView: View {
 
                     audioManager.seek(
                         to:
-                            progress
-                            * duration
+                            progress * duration
                     )
                 }
             )
 
-            HStack(
-                spacing:
-                    36
-            ) {
+            playbackControls
 
-                Button {
-                    audioManager
-                        .toggleShuffle()
-                } label: {
-                    Image(
-                        systemName:
-                            "shuffle"
-                    )
-                    .font(
-                        .system(
-                            size: 18,
-                            weight: .semibold
-                        )
-                    )
-                    .foregroundColor(
-                        audioManager.isShuffle
-                        ? .white
-                        : .white.opacity(
-                            0.34
-                        )
-                    )
-                }
-
-                Button {
-                    previousPressed = true
-
-                    audioManager.backward()
-
-                    DispatchQueue.main.asyncAfter(
-                        deadline:
-                            .now() + 0.14
-                    ) {
-                        previousPressed = false
-                    }
-                } label: {
-                    Image(
-                        systemName:
-                            "backward.fill"
-                    )
-                    .font(
-                        .system(
-                            size: 26,
-                            weight: .semibold
-                        )
-                    )
-                    .scaleEffect(
-                        previousPressed
-                        ? 0.76
-                        : 1
-                    )
-                }
-
-                Button {
-                    playPausePressed = true
-
-                    audioManager
-                        .togglePlayPause()
-
-                    DispatchQueue.main.asyncAfter(
-                        deadline:
-                            .now() + 0.14
-                    ) {
-                        playPausePressed = false
-                    }
-                } label: {
-                    Image(
-                        systemName:
-                            audioManager.isPlaying
-                            ? "pause.fill"
-                            : "play.fill"
-                    )
-                    .font(
-                        .system(
-                            size: 38,
-                            weight: .medium
-                        )
-                    )
-                    .frame(
-                        width: 48,
-                        height: 48
-                    )
-                    .scaleEffect(
-                        playPausePressed
-                        ? 0.76
-                        : 1
-                    )
-                    .contentTransition(
-                        .symbolEffect(
-                            .replace
-                        )
-                    )
-                }
-
-                Button {
-                    nextPressed = true
-
-                    audioManager.forward()
-
-                    DispatchQueue.main.asyncAfter(
-                        deadline:
-                            .now() + 0.14
-                    ) {
-                        nextPressed = false
-                    }
-                } label: {
-                    Image(
-                        systemName:
-                            "forward.fill"
-                    )
-                    .font(
-                        .system(
-                            size: 26,
-                            weight: .semibold
-                        )
-                    )
-                    .scaleEffect(
-                        nextPressed
-                        ? 0.76
-                        : 1
-                    )
-                }
-
-                Button {
-                    audioManager
-                        .toggleRepeat()
-                } label: {
-                    Image(
-                        systemName:
-                            repeatIcon
-                    )
-                    .font(
-                        .system(
-                            size: 18,
-                            weight: .semibold
-                        )
-                    )
-                    .foregroundColor(
-                        audioManager
-                            .repeatMode
-                            != .off
-                        ? .white
-                        : .white.opacity(
-                            0.34
-                        )
-                    )
-                }
-            }
-            .foregroundColor(
-                .white
-            )
-
-            Spacer(
-                minLength:
-                    4
-            )
+            Spacer(minLength: 4)
         }
     }
 
-    private var repeatIcon:
-        String {
+    // MARK: Artwork
 
+    @ViewBuilder
+    private func artwork(
+        maxHeight: CGFloat
+    ) -> some View {
+        if let data =
+            audioManager.currentTrack?.artworkData,
+           let image =
+            UIImage(data: data) {
+
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(
+                    maxHeight: maxHeight
+                )
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: 12,
+                        style: .continuous
+                    )
+                )
+                .shadow(
+                    color: .black.opacity(0.32),
+                    radius: 24,
+                    y: 12
+                )
+                .id(
+                    audioManager.currentTrack?.id
+                )
+                .transition(
+                    .opacity.combined(
+                        with:
+                            .scale(scale: 0.96)
+                    )
+                )
+
+        } else {
+            RoundedRectangle(
+                cornerRadius: 12,
+                style: .continuous
+            )
+            .fill(
+                Color.white.opacity(0.08)
+            )
+            .frame(
+                width: maxHeight,
+                height: maxHeight
+            )
+            .overlay {
+                Image(
+                    systemName: "music.note"
+                )
+                .font(
+                    .system(size: 52)
+                )
+                .foregroundStyle(
+                    .white.opacity(0.35)
+                )
+            }
+        }
+    }
+
+    // MARK: Track Information
+
+    private var trackInformation:
+        some View {
+
+        VStack(
+            alignment: .leading,
+            spacing: 3
+        ) {
+            Text(
+                audioManager.currentTrack?.title
+                ?? "Unknown Title"
+            )
+            .font(
+                .system(
+                    size: 22,
+                    weight: .bold
+                )
+            )
+            .foregroundStyle(.white)
+            .lineLimit(1)
+
+            Text(
+                audioManager.currentTrack?.artist
+                ?? "Unknown Artist"
+            )
+            .font(
+                .system(
+                    size: 17,
+                    weight: .medium
+                )
+            )
+            .foregroundStyle(
+                .white.opacity(0.68)
+            )
+            .lineLimit(1)
+        }
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
+        .animation(
+            .easeInOut(duration: 0.22),
+            value:
+                audioManager.currentTrack?.id
+        )
+    }
+
+    // MARK: - Playback Controls
+
+    private var playbackControls:
+        some View {
+
+        HStack(spacing: 36) {
+
+            Button {
+                audioManager.toggleShuffle()
+            } label: {
+                Image(
+                    systemName: "shuffle"
+                )
+                .font(
+                    .system(
+                        size: 18,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(
+                    audioManager.isShuffle
+                    ? .white
+                    : .white.opacity(0.34)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                previousPressed = true
+
+                audioManager.backward()
+
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + 0.14
+                ) {
+                    previousPressed = false
+                }
+            } label: {
+                Image(
+                    systemName:
+                        "backward.fill"
+                )
+                .font(
+                    .system(
+                        size: 26,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(.white)
+                .scaleEffect(
+                    previousPressed
+                    ? 0.76
+                    : 1
+                )
+                .offset(
+                    x:
+                        previousPressed
+                        ? -2
+                        : 0
+                )
+                .animation(
+                    .spring(
+                        response: 0.22,
+                        dampingFraction: 0.58
+                    ),
+                    value:
+                        previousPressed
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                playPausePressed = true
+
+                audioManager.togglePlayPause()
+
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + 0.14
+                ) {
+                    playPausePressed = false
+                }
+            } label: {
+                Image(
+                    systemName:
+                        audioManager.isPlaying
+                        ? "pause.fill"
+                        : "play.fill"
+                )
+                .font(
+                    .system(
+                        size: 38,
+                        weight: .medium
+                    )
+                )
+                .foregroundStyle(.white)
+                .frame(
+                    width: 50,
+                    height: 50
+                )
+                .scaleEffect(
+                    playPausePressed
+                    ? 0.76
+                    : 1
+                )
+                .contentTransition(
+                    .symbolEffect(.replace)
+                )
+                .animation(
+                    .spring(
+                        response: 0.22,
+                        dampingFraction: 0.58
+                    ),
+                    value:
+                        playPausePressed
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                nextPressed = true
+
+                audioManager.forward()
+
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + 0.14
+                ) {
+                    nextPressed = false
+                }
+            } label: {
+                Image(
+                    systemName:
+                        "forward.fill"
+                )
+                .font(
+                    .system(
+                        size: 26,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(.white)
+                .scaleEffect(
+                    nextPressed
+                    ? 0.76
+                    : 1
+                )
+                .offset(
+                    x:
+                        nextPressed
+                        ? 2
+                        : 0
+                )
+                .animation(
+                    .spring(
+                        response: 0.22,
+                        dampingFraction: 0.58
+                    ),
+                    value:
+                        nextPressed
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                audioManager.toggleRepeat()
+            } label: {
+                Image(
+                    systemName:
+                        repeatIcon
+                )
+                .font(
+                    .system(
+                        size: 18,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(
+                    audioManager.repeatMode
+                        != .off
+                    ? .white
+                    : .white.opacity(0.34)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var repeatIcon: String {
         switch audioManager.repeatMode {
         case .off, .all:
             return "repeat"
@@ -639,63 +590,43 @@ struct NowPlayingView: View {
 
         let activeID =
             activeLyricID(
-                lyrics:
-                    lyrics
+                lyrics: lyrics
             )
 
         return Group {
-
             if lyrics.isEmpty {
-
-                VStack(
-                    spacing:
-                        12
-                ) {
+                VStack(spacing: 12) {
                     Image(
                         systemName:
                             "quote.bubble"
                     )
                     .font(
-                        .system(
-                            size: 40
-                        )
+                        .system(size: 40)
                     )
-                    .foregroundColor(
-                        .white.opacity(
-                            0.18
-                        )
+                    .foregroundStyle(
+                        .white.opacity(0.18)
                     )
 
                     Text(
                         "Lyrics Unavailable"
                     )
-                    .font(
-                        .headline
-                    )
-                    .foregroundColor(
-                        .white.opacity(
-                            0.42
-                        )
+                    .font(.headline)
+                    .foregroundStyle(
+                        .white.opacity(0.42)
                     )
                 }
                 .frame(
-                    maxWidth:
-                        .infinity,
-                    maxHeight:
-                        .infinity
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
                 )
 
             } else {
-
                 SmoothLyricsView(
-                    lyrics:
-                        lyrics,
-                    activeID:
-                        activeID
+                    lyrics: lyrics,
+                    activeID: activeID
                 ) { time in
                     audioManager.seek(
-                        to:
-                            time
+                        to: time
                     )
                 }
             }
@@ -703,10 +634,8 @@ struct NowPlayingView: View {
     }
 
     private func activeLyricID(
-        lyrics:
-            [LyricLine]
+        lyrics: [LyricLine]
     ) -> UUID? {
-
         lyrics.last {
             $0.time <=
                 audioManager.currentTime
@@ -714,183 +643,35 @@ struct NowPlayingView: View {
     }
 }
 
-// MARK: - Smooth Lyrics
+// MARK: - Smooth Lyrics View
 
-private struct SmoothLyricsView:
-    View {
-
-    let lyrics:
-        [LyricLine]
-
-    let activeID:
-        UUID?
-
-    let onSeek:
-        (TimeInterval) -> Void
+private struct SmoothLyricsView: View {
+    let lyrics: [LyricLine]
+    let activeID: UUID?
+    let onSeek: (TimeInterval) -> Void
 
     var body: some View {
-
         ScrollViewReader { proxy in
-
             ScrollView(
-                showsIndicators:
-                    false
+                showsIndicators: false
             ) {
-
                 LazyVStack(
-                    alignment:
-                        .leading,
-                    spacing:
-                        28
+                    alignment: .leading,
+                    spacing: 30
                 ) {
-
-                    ForEach(
-                        lyrics
-                    ) { line in
-
-                        let active =
-                            line.id ==
-                            activeID
-
-                        VStack(
-                            alignment:
-                                .leading,
-                            spacing:
-                                6
-                        ) {
-
-                            if line.text
-                                .trimmingCharacters(
-                                    in:
-                                        .whitespacesAndNewlines
-                                )
-                                .isEmpty {
-
-                                HStack(
-                                    spacing:
-                                        7
-                                ) {
-                                    Circle()
-                                        .frame(
-                                            width:
-                                                8,
-                                            height:
-                                                8
-                                        )
-
-                                    Circle()
-                                        .frame(
-                                            width:
-                                                8,
-                                            height:
-                                                8
-                                        )
-
-                                    Circle()
-                                        .frame(
-                                            width:
-                                                8,
-                                            height:
-                                                8
-                                        )
-                                }
-                                .foregroundColor(
-                                    .white
-                                )
-                                .opacity(
-                                    active
-                                    ? 0.9
-                                    : 0.22
-                                )
-
-                            } else {
-
-                                Text(
-                                    line.text
-                                )
-                                .font(
-                                    .system(
-                                        size:
-                                            active
-                                            ? 48
-                                            : 43,
-                                        weight:
-                                            .bold,
-                                        design:
-                                            .rounded
-                                    )
-                                )
-                                .foregroundColor(
-                                    .white
-                                )
-                                .opacity(
-                                    active
-                                    ? 1
-                                    : 0.30
-                                )
-                                .scaleEffect(
-                                    active
-                                    ? 1
-                                    : 0.98,
-                                    anchor:
-                                        .leading
-                                )
-                                .fixedSize(
-                                    horizontal:
-                                        false,
-                                    vertical:
-                                        true
-                                )
-
-                                if let romanized =
-                                    line.romanized,
-                                   !romanized.isEmpty {
-
-                                    Text(
-                                        romanized
-                                    )
-                                    .font(
-                                        .system(
-                                            size:
-                                                active
-                                                ? 21
-                                                : 19,
-                                            weight:
-                                                .medium,
-                                            design:
-                                                .rounded
-                                        )
-                                    )
-                                    .foregroundColor(
-                                        .white
-                                    )
-                                    .opacity(
-                                        active
-                                        ? 0.70
-                                        : 0.20
-                                    )
-                                }
-                            }
-                        }
-                        .id(
-                            line.id
+                    ForEach(lyrics) { line in
+                        lyricLine(
+                            line: line,
+                            active:
+                                line.id == activeID
                         )
+                        .id(line.id)
                         .contentShape(
                             Rectangle()
                         )
                         .onTapGesture {
-                            onSeek(
-                                line.time
-                            )
+                            onSeek(line.time)
                         }
-                        .animation(
-                            .easeInOut(
-                                duration:
-                                    0.22
-                            ),
-                            value:
-                                active
-                        )
                     }
                 }
                 .padding(
@@ -902,124 +683,211 @@ private struct SmoothLyricsView:
                     220
                 )
             }
-            .mask(
+
+            // Gradient masking is cheaper and smoother
+            // than blurring every inactive lyric row.
+            .mask {
                 LinearGradient(
                     stops: [
                         .init(
-                            color:
-                                .clear,
-                            location:
-                                0
+                            color: .clear,
+                            location: 0
                         ),
                         .init(
-                            color:
-                                .black,
-                            location:
-                                0.14
+                            color: .black,
+                            location: 0.12
                         ),
                         .init(
-                            color:
-                                .black,
-                            location:
-                                0.86
+                            color: .black,
+                            location: 0.88
                         ),
                         .init(
-                            color:
-                                .clear,
-                            location:
-                                1
+                            color: .clear,
+                            location: 1
                         )
                     ],
-                    startPoint:
-                        .top,
-                    endPoint:
-                        .bottom
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-            )
-            .onChange(
-                of:
-                    activeID
-            ) { _, newID in
+            }
 
-                guard let newID
-                else {
+            // Scroll only when the active lyric line changes.
+            // It no longer tries to scroll on every timer update.
+            .onChange(
+                of: activeID
+            ) { _, newID in
+                guard let newID else {
                     return
                 }
 
                 withAnimation(
-                    .easeInOut(
-                        duration:
-                            0.38
-                    )
+                    .smooth(duration: 0.42)
                 ) {
                     proxy.scrollTo(
                         newID,
-                        anchor:
-                            .center
+                        anchor: .center
                     )
                 }
             }
         }
     }
+
+    @ViewBuilder
+    private func lyricLine(
+        line: LyricLine,
+        active: Bool
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: 7
+        ) {
+            if line.text
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+                .isEmpty {
+
+                HStack(spacing: 7) {
+                    Circle()
+                        .frame(
+                            width: 8,
+                            height: 8
+                        )
+
+                    Circle()
+                        .frame(
+                            width: 8,
+                            height: 8
+                        )
+
+                    Circle()
+                        .frame(
+                            width: 8,
+                            height: 8
+                        )
+                }
+                .foregroundStyle(.white)
+                .opacity(
+                    active ? 0.9 : 0.22
+                )
+                .padding(.vertical, 10)
+
+            } else {
+                Text(line.text)
+                    .font(
+                        .system(
+                            size:
+                                active
+                                ? 48
+                                : 43,
+                            weight: .bold,
+                            design: .rounded
+                        )
+                    )
+                    .foregroundStyle(.white)
+                    .opacity(
+                        active
+                        ? 1
+                        : 0.30
+                    )
+                    .scaleEffect(
+                        active
+                        ? 1.0
+                        : 0.985,
+                        anchor: .leading
+                    )
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+
+                if let romanized =
+                    line.romanized,
+                   !romanized.isEmpty {
+
+                    Text(romanized)
+                        .font(
+                            .system(
+                                size:
+                                    active
+                                    ? 21
+                                    : 19,
+                                weight: .medium,
+                                design: .rounded
+                            )
+                        )
+                        .foregroundStyle(.white)
+                        .opacity(
+                            active
+                            ? 0.72
+                            : 0.20
+                        )
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                }
+            }
+        }
+        .animation(
+            .easeInOut(duration: 0.22),
+            value: active
+        )
+    }
 }
 
 // MARK: - Apple Music Scrubber
 
-struct AppleMusicScrubberBar:
-    View {
+struct AppleMusicScrubberBar: View {
+    let progress: Double
+    let duration: TimeInterval
+    let currentTime: TimeInterval
+    let onSeek: (Double) -> Void
 
-    let progress:
-        Double
-
-    let duration:
-        TimeInterval
-
-    let currentTime:
-        TimeInterval
-
-    let onSeek:
-        (Double) -> Void
-
-    @State private var
-        dragging = false
-
-    @State private var
-        dragProgress = 0.0
+    @State private var dragging = false
+    @State private var dragProgress = 0.0
 
     private var shownProgress:
         Double {
 
+        let raw =
+            dragging
+            ? dragProgress
+            : progress
+
+        return min(
+            1,
+            max(0, raw)
+        )
+    }
+
+    private var displayedTime:
+        TimeInterval {
+
         dragging
-        ? dragProgress
-        : progress
+        ? duration * dragProgress
+        : currentTime
     }
 
     var body: some View {
-
-        VStack(
-            spacing:
-                7
-        ) {
-
+        VStack(spacing: 7) {
             GeometryReader { geometry in
-
                 ZStack(
-                    alignment:
-                        .leading
+                    alignment: .leading
                 ) {
-
                     Capsule()
                         .fill(
                             .white.opacity(
                                 dragging
-                                ? 0.28
-                                : 0.20
+                                ? 0.30
+                                : 0.18
                             )
                         )
                         .frame(
                             height:
                                 dragging
-                                ? 8
+                                ? 9
                                 : 5
                         )
 
@@ -1035,170 +903,121 @@ struct AppleMusicScrubberBar:
                             width:
                                 geometry.size.width
                                 * CGFloat(
-                                    min(
-                                        1,
-                                        max(
-                                            0,
-                                            shownProgress
-                                        )
-                                    )
+                                    shownProgress
                                 ),
                             height:
                                 dragging
-                                ? 8
+                                ? 9
                                 : 5
                         )
 
-                    Circle()
-                        .fill(
-                            .white
-                        )
-                        .frame(
-                            width:
-                                dragging
-                                ? 14
-                                : 0,
-                            height:
-                                dragging
-                                ? 14
-                                : 0
-                        )
-                        .position(
-                            x:
-                                min(
-                                    geometry.size.width,
-                                    max(
-                                        0,
-                                        geometry.size.width
-                                        * CGFloat(
-                                            shownProgress
-                                        )
-                                    )
-                                ),
-                            y:
-                                geometry.size.height
-                                / 2
-                        )
-                        .shadow(
-                            radius:
-                                3
-                        )
-                        .opacity(
-                            dragging
-                            ? 1
-                            : 0
-                        )
+                    if dragging {
+                        Circle()
+                            .fill(.white)
+                            .frame(
+                                width: 15,
+                                height: 15
+                            )
+                            .shadow(
+                                color:
+                                    .black.opacity(0.25),
+                                radius: 3,
+                                y: 1
+                            )
+                            .position(
+                                x:
+                                    thumbPosition(
+                                        width:
+                                            geometry.size.width
+                                    ),
+                                y:
+                                    geometry.size.height
+                                    / 2
+                            )
+                            .transition(
+                                .scale.combined(
+                                    with: .opacity
+                                )
+                            )
+                    }
                 }
                 .frame(
-                    maxWidth:
-                        .infinity,
-                    maxHeight:
-                        .infinity
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
                 )
                 .contentShape(
                     Rectangle()
                 )
+
+                // minimumDistance 0 makes a simple
+                // finger-down expand the slider immediately.
                 .gesture(
                     DragGesture(
-                        minimumDistance:
-                            0
+                        minimumDistance: 0
                     )
-                    .onChanged {
-                        value in
-
-                        dragging =
-                            true
+                    .onChanged { value in
+                        if !dragging {
+                            withAnimation(
+                                .spring(
+                                    response: 0.20,
+                                    dampingFraction: 0.78
+                                )
+                            ) {
+                                dragging = true
+                            }
+                        }
 
                         dragProgress =
-                            max(
-                                0,
-                                min(
-                                    1,
-                                    Double(
-                                        value
-                                            .location
-                                            .x
-                                        /
-                                        geometry
-                                            .size
-                                            .width
-                                    )
-                                )
+                            progressForX(
+                                value.location.x,
+                                width:
+                                    geometry.size.width
                             )
                     }
-                    .onEnded {
-                        value in
-
-                        let finalProgress =
-                            max(
-                                0,
-                                min(
-                                    1,
-                                    Double(
-                                        value
-                                            .location
-                                            .x
-                                        /
-                                        geometry
-                                            .size
-                                            .width
-                                    )
-                                )
+                    .onEnded { value in
+                        let newProgress =
+                            progressForX(
+                                value.location.x,
+                                width:
+                                    geometry.size.width
                             )
 
                         dragProgress =
-                            finalProgress
+                            newProgress
 
                         onSeek(
-                            finalProgress
+                            newProgress
                         )
 
                         withAnimation(
                             .spring(
-                                response:
-                                    0.25,
-                                dampingFraction:
-                                    0.78
+                                response: 0.27,
+                                dampingFraction: 0.82
                             )
                         ) {
-                            dragging =
-                                false
+                            dragging = false
                         }
                     }
                 )
+
                 .animation(
                     .spring(
-                        response:
-                            0.22,
-                        dampingFraction:
-                            0.8
+                        response: 0.22,
+                        dampingFraction: 0.82
                     ),
-                    value:
-                        dragging
+                    value: dragging
                 )
             }
-            .frame(
-                height:
-                    18
-            )
+            .frame(height: 20)
 
             HStack {
                 Text(
                     formatTime(
-                        dragging
-                        ? duration
-                            * dragProgress
-                        : currentTime
+                        displayedTime
                     )
                 )
 
                 Spacer()
-
-                let displayed =
-                    dragging
-                    ? duration
-                        * dragProgress
-                    : currentTime
 
                 Text(
                     "-" +
@@ -1206,40 +1025,73 @@ struct AppleMusicScrubberBar:
                         max(
                             0,
                             duration
-                            - displayed
+                            - displayedTime
                         )
                     )
                 )
             }
             .font(
                 .system(
-                    size:
-                        12,
-                    weight:
-                        .medium,
-                    design:
-                        .monospaced
+                    size: 12,
+                    weight: .medium,
+                    design: .monospaced
                 )
             )
-            .foregroundColor(
-                .white.opacity(
-                    0.62
-                )
+            .foregroundStyle(
+                .white.opacity(0.62)
             )
+            .monospacedDigit()
         }
     }
 
+    private func progressForX(
+        _ x: CGFloat,
+        width: CGFloat
+    ) -> Double {
+        guard width > 0 else {
+            return 0
+        }
+
+        return max(
+            0,
+            min(
+                1,
+                Double(x / width)
+            )
+        )
+    }
+
+    private func thumbPosition(
+        width: CGFloat
+    ) -> CGFloat {
+        let radius: CGFloat = 7.5
+
+        guard width > radius * 2 else {
+            return width / 2
+        }
+
+        return max(
+            radius,
+            min(
+                width - radius,
+                width * CGFloat(
+                    shownProgress
+                )
+            )
+        )
+    }
+
     private func formatTime(
-        _ duration:
-            TimeInterval
+        _ time: TimeInterval
     ) -> String {
+        guard time.isFinite else {
+            return "0:00"
+        }
 
         let seconds =
             max(
                 0,
-                Int(
-                    duration
-                )
+                Int(time)
             )
 
         return String(
@@ -1247,6 +1099,137 @@ struct AppleMusicScrubberBar:
                 "%d:%02d",
             seconds / 60,
             seconds % 60
+        )
+    }
+}
+
+// MARK: - Moving Artwork Background
+
+struct AppleMusicMovingBleedBackground: View {
+    let artworkData: Data?
+
+    @State private var phase = false
+
+    var body: some View {
+        ZStack {
+            Color.black
+
+            if let artworkData,
+               let image =
+                UIImage(
+                    data: artworkData
+                ) {
+
+                // Large blurred artwork layer.
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(
+                        phase
+                        ? 1.48
+                        : 1.32
+                    )
+                    .rotationEffect(
+                        .degrees(
+                            phase
+                            ? 8
+                            : -8
+                        )
+                    )
+                    .offset(
+                        x:
+                            phase
+                            ? 35
+                            : -35,
+                        y:
+                            phase
+                            ? -28
+                            : 28
+                    )
+                    .blur(
+                        radius: 65,
+                        opaque: true
+                    )
+                    .saturation(1.35)
+                    .brightness(-0.14)
+                    .opacity(0.82)
+
+                // A second layer moving the opposite
+                // direction prevents the background
+                // from looking like one static blurred image.
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(
+                        phase
+                        ? 1.30
+                        : 1.50
+                    )
+                    .rotationEffect(
+                        .degrees(
+                            phase
+                            ? -10
+                            : 10
+                        )
+                    )
+                    .offset(
+                        x:
+                            phase
+                            ? -30
+                            : 30,
+                        y:
+                            phase
+                            ? 25
+                            : -25
+                    )
+                    .blur(
+                        radius: 52,
+                        opaque: true
+                    )
+                    .saturation(1.2)
+                    .brightness(-0.18)
+                    .opacity(0.55)
+
+                Color.black
+                    .opacity(0.16)
+
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color.black,
+                        Color(
+                            white: 0.08
+                        ),
+                        Color.black
+                    ],
+                    startPoint:
+                        .topLeading,
+                    endPoint:
+                        .bottomTrailing
+                )
+            }
+        }
+        .clipped()
+        .onAppear {
+            phase = false
+
+            withAnimation(
+                .easeInOut(
+                    duration: 16
+                )
+                .repeatForever(
+                    autoreverses: true
+                )
+            ) {
+                phase = true
+            }
+        }
+
+        // Restart the ambient animation cleanly
+        // when the track artwork changes.
+        .id(
+            artworkData?.hashValue
+            ?? 0
         )
     }
 }
