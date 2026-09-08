@@ -23,96 +23,49 @@ class LocalLibrary: ObservableObject {
         reloadFiles()
     }
 
+    // MARK: - Scanning & Parsing
     func reloadFiles() {
-        if tracks.isEmpty {
-            statusMessage = "Scanning..."
-        }
+        if tracks.isEmpty { statusMessage = "Scanning..." }
         
-        Task.detached(priority: .userInitiated) {
-            let fileManager = FileManager.default
-            guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                await MainActor.run { self.statusMessage = "Unable to access Documents folder" }
-                return
-            }
-
-            let audioExts = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
-            var discoveredURLs: [URL] = []
-
-            if let enumerator = fileManager.enumerator(
-                at: docs,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
-            ) {
-                while let fileURL = enumerator.nextObject() as? URL {
-                    if audioExts.contains(fileURL.pathExtension.lowercased()) {
-                        discoveredURLs.append(fileURL)
-                    }
-                }
-            }
-
-            var discovered: [LocalTrack] = []
-            for fileURL in discoveredURLs {
-                let track = await self.parseAsset(at: fileURL)
-                discovered.append(track)
-            }
-
-            discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            
-            await MainActor.run {
-                self.tracks = discovered
-                self.rebuildGroups()
-                self.statusMessage = "Indexed \(discovered.count) songs"
-                self.saveTracksToCache()
-            }
+        Task {
+            // Await the heavy lifting from the background thread helper
+            let discovered = await runBackgroundScan()
+            self.tracks = discovered
+            self.rebuildGroups()
+            self.statusMessage = "Indexed \(discovered.count) songs"
+            self.saveTracksToCache()
         }
     }
     
-    private func rebuildGroups() {
-        let albumDict = Dictionary(grouping: tracks, by: {
-            "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
-        })
-        self.albums = albumDict.map { _, trackList in
-            let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
-            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-            return AlbumGroup(
-                name: preferredName,
-                artist: preferredArtist,
-                artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData,
-                tracks: trackList
-            )
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-        let artistDict = Dictionary(grouping: tracks, by: {
-            $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
-        })
-        self.artists = artistDict.map { _, trackList in
-            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-            return ArtistGroup(name: preferredArtist, tracks: trackList)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
-    func importExternalURLs(_ urls: [URL]) {
+    // Completely nonisolated to satisfy Swift 6 strict concurrency
+    nonisolated private func runBackgroundScan() async -> [LocalTrack] {
         let fileManager = FileManager.default
-        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return [] }
 
-        Task.detached(priority: .userInitiated) {
-            for url in urls {
-                let hasAccess = url.startAccessingSecurityScopedResource()
-                let dest = docs.appendingPathComponent(url.lastPathComponent)
-                
-                if !fileManager.fileExists(atPath: dest.path) {
-                    try? fileManager.copyItem(at: url, to: dest)
+        let audioExts = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
+        var discoveredURLs: [URL] = []
+
+        if let enumerator = fileManager.enumerator(
+            at: docs,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) {
+            while let fileURL = enumerator.nextObject() as? URL {
+                if audioExts.contains(fileURL.pathExtension.lowercased()) {
+                    discoveredURLs.append(fileURL)
                 }
-                if hasAccess { url.stopAccessingSecurityScopedResource() }
-            }
-            
-            await MainActor.run {
-                self.reloadFiles()
             }
         }
+
+        var discovered: [LocalTrack] = []
+        for fileURL in discoveredURLs {
+            discovered.append(await parseAsset(at: fileURL))
+        }
+
+        discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        return discovered
     }
 
-    // Making this nonisolated prevents main-thread blocking during background scans
     nonisolated private func parseAsset(at url: URL) async -> LocalTrack {
         let asset = AVURLAsset(url: url)
         let durationSeconds = (try? await asset.load(.duration).seconds) ?? 0.0
@@ -145,6 +98,49 @@ class LocalLibrary: ObservableObject {
         return LocalTrack(url: url, title: title, artist: artist, album: album, genre: genre, duration: duration, artworkData: artworkData)
     }
 
+    private func rebuildGroups() {
+        let albumDict = Dictionary(grouping: tracks, by: {
+            "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
+        })
+        self.albums = albumDict.map { _, trackList in
+            let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
+            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+            return AlbumGroup(name: preferredName, artist: preferredArtist, artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData, tracks: trackList)
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        let artistDict = Dictionary(grouping: tracks, by: {
+            $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
+        })
+        self.artists = artistDict.map { _, trackList in
+            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+            return ArtistGroup(name: preferredArtist, tracks: trackList)
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    // MARK: - File Importing
+    func importExternalURLs(_ urls: [URL]) {
+        Task {
+            await performImport(urls: urls)
+            self.reloadFiles()
+        }
+    }
+    
+    nonisolated private func performImport(urls: [URL]) async {
+        let fileManager = FileManager.default
+        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+
+        for url in urls {
+            let hasAccess = url.startAccessingSecurityScopedResource()
+            let dest = docs.appendingPathComponent(url.lastPathComponent)
+            
+            if !fileManager.fileExists(atPath: dest.path) {
+                try? fileManager.copyItem(at: url, to: dest)
+            }
+            if hasAccess { url.stopAccessingSecurityScopedResource() }
+        }
+    }
+
+    // MARK: - Playlist Management
     func createPlaylist(name: String) {
         let newPlaylist = Playlist(name: name, trackURLs: [])
         playlists.append(newPlaylist)
@@ -169,6 +165,13 @@ class LocalLibrary: ObservableObject {
         }
     }
 
+    func renamePlaylist(id: UUID, newName: String) {
+        if let idx = playlists.firstIndex(where: { $0.id == id }) {
+            playlists[idx].name = newName
+            savePlaylists()
+        }
+    }
+
     private func savePlaylists() {
         if let encoded = try? JSONEncoder().encode(playlists) {
             try? encoded.write(to: playlistsCacheURL)
@@ -182,6 +185,7 @@ class LocalLibrary: ObservableObject {
         }
     }
 
+    // MARK: - Persistent Library Caching
     private func saveTracksToCache() {
         let currentTracks = self.tracks
         let cacheURL = self.tracksCacheURL
@@ -201,10 +205,3 @@ class LocalLibrary: ObservableObject {
         }
     }
 }
-
-    func renamePlaylist(id: UUID, newName: String) {
-        if let idx = playlists.firstIndex(where: { $0.id == id }) {
-            playlists[idx].name = newName
-            savePlaylists()
-        }
-    }
