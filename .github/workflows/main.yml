@@ -1,4 +1,4 @@
-name: Build Unsigned IPA
+name: Build Toyako Unsigned IPA
 
 on:
   push:
@@ -20,37 +20,84 @@ jobs:
 
       - name: Select Xcode 26
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
+          XCODE_PATH=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort | tail -n 1)
+
+          if [ -z "$XCODE_PATH" ]; then
+            echo "Xcode 26 was not found."
+            exit 1
+          fi
+
+          echo "Using: $XCODE_PATH"
+
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          brew install xcodegen
 
       - name: Generate Xcode Project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+
+      - name: Verify Generated Project
+        run: |
+          echo "Generated files:"
+          ls -la
+
+          echo "Xcode projects:"
+          find . -maxdepth 2 -name "*.xcodeproj" -print
+
+          echo "Available schemes:"
+          xcodebuild -project Toyako.xcodeproj -list
 
       - name: Build Unsigned Archive
         run: |
           xcodebuild archive \
-            -project OfflineMusic.xcodeproj \
-            -scheme OfflineMusic \
+            -project Toyako.xcodeproj \
+            -scheme Toyako \
             -configuration Release \
-            -archivePath "$RUNNER_TEMP/OfflineMusic.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Toyako.xcarchive" \
             -destination "generic/platform=iOS" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER=""
 
+      - name: Verify Archive
+        run: |
+          echo "Archive contents:"
+          find "$RUNNER_TEMP/Toyako.xcarchive" -maxdepth 5 -print
+
+          if [ ! -d "$RUNNER_TEMP/Toyako.xcarchive/Products/Applications/Toyako.app" ]; then
+            echo "Toyako.app was not found inside the archive."
+            exit 1
+          fi
+
+          echo "Toyako.app found successfully."
+
       - name: Package into IPA
         run: |
           cd "$RUNNER_TEMP"
+
+          rm -rf Payload
           mkdir -p Payload
-          cp -r OfflineMusic.xcarchive/Products/Applications/OfflineMusic.app Payload/
-          zip -r OfflineMusic.ipa Payload
+
+          cp -R \
+            "Toyako.xcarchive/Products/Applications/Toyako.app" \
+            "Payload/Toyako.app"
+
+          zip -r "Toyako.ipa" Payload
+
+      - name: Verify IPA
+        run: |
+          ls -lh "$RUNNER_TEMP/Toyako.ipa"
+
+          unzip -l "$RUNNER_TEMP/Toyako.ipa" | head -50
 
       - name: Upload Unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: OfflineMusic-Unsigned-IPA
-          path: ${{ runner.temp }}/OfflineMusic.ipa
+          name: Toyako-Unsigned-IPA
+          path: ${{ runner.temp }}/Toyako.ipa
