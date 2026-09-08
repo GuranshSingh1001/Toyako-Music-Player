@@ -3,18 +3,50 @@ import SwiftUI
 import AVFoundation
 
 @MainActor
-class LocalLibrary: ObservableObject {
-    @Published var tracks: [LocalTrack] = []
-    @Published var albums: [AlbumGroup] = []
-    @Published var artists: [ArtistGroup] = []
-    @Published var playlists: [Playlist] = []
-    @Published var statusMessage: String = "Scanning..."
+class LocalLibrary:
+    ObservableObject {
 
-    private var playlistsCacheURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("playlists_cache.json")
+    @Published var tracks:
+        [LocalTrack] = []
+
+    @Published var albums:
+        [AlbumGroup] = []
+
+    @Published var artists:
+        [ArtistGroup] = []
+
+    @Published var playlists:
+        [Playlist] = []
+
+    @Published var statusMessage:
+        String = "Scanning..."
+
+    private var playlistsCacheURL:
+        URL {
+        FileManager.default
+            .urls(
+                for:
+                    .documentDirectory,
+                in:
+                    .userDomainMask
+            )[0]
+            .appendingPathComponent(
+                "playlists_cache.json"
+            )
     }
-    private var tracksCacheURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tracks_cache.json")
+
+    private var tracksCacheURL:
+        URL {
+        FileManager.default
+            .urls(
+                for:
+                    .documentDirectory,
+                in:
+                    .userDomainMask
+            )[0]
+            .appendingPathComponent(
+                "tracks_cache.json"
+            )
     }
 
     init() {
@@ -23,185 +55,854 @@ class LocalLibrary: ObservableObject {
         reloadFiles()
     }
 
-    // MARK: - Scanning & Parsing
+    // MARK: - Scanning
+
     func reloadFiles() {
-        if tracks.isEmpty { statusMessage = "Scanning..." }
-        
+
+        if tracks.isEmpty {
+            statusMessage =
+                "Scanning..."
+        }
+
         Task {
-            // Await the heavy lifting from the background thread helper
-            let discovered = await runBackgroundScan()
-            self.tracks = discovered
+            let discovered =
+                await runBackgroundScan()
+
+            self.tracks =
+                discovered
+
             self.rebuildGroups()
-            self.statusMessage = "Indexed \(discovered.count) songs"
+
+            self.statusMessage =
+                "Indexed \(discovered.count) songs"
+
             self.saveTracksToCache()
         }
     }
-    
-    // Completely nonisolated to satisfy Swift 6 strict concurrency
-    nonisolated private func runBackgroundScan() async -> [LocalTrack] {
-        let fileManager = FileManager.default
-        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return [] }
 
-        let audioExts = Set(["mp3", "m4a", "wav", "flac", "aac", "aiff", "alac"])
-        var discoveredURLs: [URL] = []
+    nonisolated
+    private func runBackgroundScan()
+        async -> [LocalTrack] {
 
-        if let enumerator = fileManager.enumerator(
-            at: docs,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) {
-            while let fileURL = enumerator.nextObject() as? URL {
-                if audioExts.contains(fileURL.pathExtension.lowercased()) {
-                    discoveredURLs.append(fileURL)
+        let fileManager =
+            FileManager.default
+
+        guard let docs =
+            fileManager.urls(
+                for:
+                    .documentDirectory,
+                in:
+                    .userDomainMask
+            ).first
+        else {
+            return []
+        }
+
+        let audioExtensions:
+            Set<String> = [
+                "mp3",
+                "m4a",
+                "mp4",
+                "wav",
+                "wave",
+                "flac",
+                "aac",
+                "aiff",
+                "aif",
+                "alac",
+                "caf"
+            ]
+
+        var discoveredURLs:
+            [URL] = []
+
+        if let enumerator =
+            fileManager.enumerator(
+                at:
+                    docs,
+                includingPropertiesForKeys:
+                    [
+                        .isRegularFileKey,
+                        .isReadableKey
+                    ],
+                options:
+                    [
+                        .skipsHiddenFiles,
+                        .skipsPackageDescendants
+                    ]
+            ) {
+
+            while let url =
+                enumerator.nextObject()
+                as? URL {
+
+                let extensionName =
+                    url.pathExtension
+                        .lowercased()
+
+                guard audioExtensions
+                    .contains(
+                        extensionName
+                    )
+                else {
+                    continue
                 }
+
+                if let values =
+                    try? url.resourceValues(
+                        forKeys:
+                            [
+                                .isRegularFileKey,
+                                .isReadableKey
+                            ]
+                    ),
+                   values.isRegularFile == false {
+                    continue
+                }
+
+                discoveredURLs.append(
+                    url
+                )
             }
         }
 
-        var discovered: [LocalTrack] = []
-        for fileURL in discoveredURLs {
-            discovered.append(await parseAsset(at: fileURL))
+        var discovered:
+            [LocalTrack] = []
+
+        discovered.reserveCapacity(
+            discoveredURLs.count
+        )
+
+        for url in discoveredURLs {
+            let track =
+                await parseAsset(
+                    at:
+                        url
+                )
+
+            discovered.append(
+                track
+            )
         }
 
-        discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        discovered.sort {
+            $0.title
+                .localizedCaseInsensitiveCompare(
+                    $1.title
+                )
+                ==
+                .orderedAscending
+        }
+
         return discovered
     }
 
-    nonisolated private func parseAsset(at url: URL) async -> LocalTrack {
-        let asset = AVURLAsset(url: url)
-        let durationSeconds = (try? await asset.load(.duration).seconds) ?? 0.0
-        let duration = durationSeconds.isNaN ? 0.0 : durationSeconds
-        let allMetadata = (try? await asset.load(.metadata)) ?? []
+    nonisolated
+    private func parseAsset(
+        at url:
+            URL
+    ) async -> LocalTrack {
 
-        var title = url.deletingPathExtension().lastPathComponent
-        var artist = "Unknown Artist"
-        var album = "Unknown Album"
-        var genre = "Unknown Genre"
-        var artworkData: Data?
+        let asset =
+            AVURLAsset(
+                url:
+                    url
+            )
 
-        for item in allMetadata {
-            let keyString = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
+        let durationSeconds =
+            (
+                try? await asset
+                    .load(.duration)
+                    .seconds
+            ) ?? 0
 
-            if keyString == "title" || keyString == "TIT2" || keyString == "©nam" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { title = str }
-            } else if keyString == "artist" || keyString == "TPE1" || keyString == "TPE2" || keyString == "©ART" || keyString == "aART" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { artist = str }
-            } else if keyString == "albumName" || keyString == "album" || keyString == "TALB" || keyString == "©alb" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { album = str }
-            } else if keyString == "type" || keyString == "genre" || keyString == "TCON" || keyString == "©gen" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { genre = str }
-            } else if keyString == "artwork" || keyString == "APIC" || keyString == "covr" {
-                if let data = try? await item.load(.dataValue) { artworkData = data }
-                else if let rawVal = try? await item.load(.value), let d = rawVal as? Data { artworkData = d }
+        let duration =
+            durationSeconds.isFinite
+            ? max(
+                0,
+                durationSeconds
+            )
+            : 0
+
+        let metadata =
+            (
+                try? await asset
+                    .load(.metadata)
+            ) ?? []
+
+        var title =
+            url
+                .deletingPathExtension()
+                .lastPathComponent
+
+        var artist =
+            "Unknown Artist"
+
+        var album =
+            "Unknown Album"
+
+        var genre =
+            "Unknown Genre"
+
+        var artworkData:
+            Data?
+
+        for item in metadata {
+
+            let key =
+                item.commonKey?
+                    .rawValue
+                ??
+                (item.key as? String)
+                ??
+                ""
+
+            if [
+                "title",
+                "TIT2",
+                "©nam"
+            ].contains(key) {
+
+                if let value =
+                    try? await item
+                        .load(
+                            .stringValue
+                        ),
+                   !value
+                    .trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    title =
+                        value
+                }
+
+            } else if [
+                "artist",
+                "TPE1",
+                "TPE2",
+                "©ART",
+                "aART"
+            ].contains(key) {
+
+                if let value =
+                    try? await item
+                        .load(
+                            .stringValue
+                        ),
+                   !value
+                    .trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    artist =
+                        value
+                }
+
+            } else if [
+                "albumName",
+                "album",
+                "TALB",
+                "©alb"
+            ].contains(key) {
+
+                if let value =
+                    try? await item
+                        .load(
+                            .stringValue
+                        ),
+                   !value
+                    .trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    album =
+                        value
+                }
+
+            } else if [
+                "type",
+                "genre",
+                "TCON",
+                "©gen"
+            ].contains(key) {
+
+                if let value =
+                    try? await item
+                        .load(
+                            .stringValue
+                        ),
+                   !value
+                    .trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+                    .isEmpty {
+
+                    genre =
+                        value
+                }
+
+            } else if [
+                "artwork",
+                "APIC",
+                "covr"
+            ].contains(key) {
+
+                if let data =
+                    try? await item
+                        .load(
+                            .dataValue
+                        ) {
+
+                    artworkData =
+                        data
+
+                } else if let value =
+                    try? await item
+                        .load(
+                            .value
+                        ),
+                          let data =
+                            value as? Data {
+
+                    artworkData =
+                        data
+                }
             }
         }
 
-        return LocalTrack(url: url, title: title, artist: artist, album: album, genre: genre, duration: duration, artworkData: artworkData)
+        return LocalTrack(
+            url:
+                url,
+            title:
+                title,
+            artist:
+                artist,
+            album:
+                album,
+            genre:
+                genre,
+            duration:
+                duration,
+            artworkData:
+                artworkData
+        )
     }
+
+    // MARK: - Groups
 
     private func rebuildGroups() {
-        let albumDict = Dictionary(grouping: tracks, by: {
-            "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
-        })
-        self.albums = albumDict.map { _, trackList in
-            let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
-            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-            return AlbumGroup(name: preferredName, artist: preferredArtist, artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData, tracks: trackList)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
-        let artistDict = Dictionary(grouping: tracks, by: {
-            $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
-        })
-        self.artists = artistDict.map { _, trackList in
-            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-            return ArtistGroup(name: preferredArtist, tracks: trackList)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
+        let albumDictionary =
+            Dictionary(
+                grouping:
+                    tracks,
+                by: {
+                    let album =
+                        $0.album
+                            .trimmingCharacters(
+                                in:
+                                    .whitespacesAndNewlines
+                            )
+                            .lowercased()
 
-    // MARK: - File Importing
-    func importExternalURLs(_ urls: [URL]) {
-        Task {
-            await performImport(urls: urls)
-            self.reloadFiles()
-        }
-    }
-    
-    nonisolated private func performImport(urls: [URL]) async {
-        let fileManager = FileManager.default
-        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+                    let artist =
+                        $0.artist
+                            .trimmingCharacters(
+                                in:
+                                    .whitespacesAndNewlines
+                            )
+                            .lowercased()
 
-        for url in urls {
-            let hasAccess = url.startAccessingSecurityScopedResource()
-            let dest = docs.appendingPathComponent(url.lastPathComponent)
-            
-            if !fileManager.fileExists(atPath: dest.path) {
-                try? fileManager.copyItem(at: url, to: dest)
+                    return
+                        "\(album)_\(artist)"
+                }
+            )
+
+        albums =
+            albumDictionary
+            .map {
+                _, trackList in
+
+                let name =
+                    trackList.first {
+                        $0.album
+                            != "Unknown Album"
+                    }?
+                    .album
+                    ??
+                    "Unknown Album"
+
+                let artist =
+                    trackList.first {
+                        $0.artist
+                            != "Unknown Artist"
+                    }?
+                    .artist
+                    ??
+                    "Unknown Artist"
+
+                let artwork =
+                    trackList.first {
+                        $0.artworkData
+                            != nil
+                    }?
+                    .artworkData
+
+                return AlbumGroup(
+                    name:
+                        name,
+                    artist:
+                        artist,
+                    artworkData:
+                        artwork,
+                    tracks:
+                        trackList
+                )
             }
-            if hasAccess { url.stopAccessingSecurityScopedResource() }
+            .sorted {
+                $0.name
+                    .localizedCaseInsensitiveCompare(
+                        $1.name
+                    )
+                    ==
+                    .orderedAscending
+            }
+
+        let artistDictionary =
+            Dictionary(
+                grouping:
+                    tracks,
+                by: {
+                    $0.artist
+                        .trimmingCharacters(
+                            in:
+                                .whitespacesAndNewlines
+                        )
+                        .lowercased()
+                }
+            )
+
+        artists =
+            artistDictionary
+            .map {
+                _, trackList in
+
+                let name =
+                    trackList.first {
+                        $0.artist
+                            != "Unknown Artist"
+                    }?
+                    .artist
+                    ??
+                    "Unknown Artist"
+
+                return ArtistGroup(
+                    name:
+                        name,
+                    tracks:
+                        trackList
+                )
+            }
+            .sorted {
+                $0.name
+                    .localizedCaseInsensitiveCompare(
+                        $1.name
+                    )
+                    ==
+                    .orderedAscending
+            }
+    }
+
+    // MARK: - Import
+
+    func importExternalURLs(
+        _ urls:
+            [URL]
+    ) {
+
+        guard !urls.isEmpty
+        else {
+            return
+        }
+
+        statusMessage =
+            "Importing..."
+
+        Task {
+            let importedCount =
+                await performImport(
+                    urls:
+                        urls
+                )
+
+            self.reloadFiles()
+
+            if importedCount > 0 {
+                self.statusMessage =
+                    "Imported \(importedCount) "
+                    + (
+                        importedCount == 1
+                        ? "file"
+                        : "files"
+                    )
+            }
         }
     }
 
-    // MARK: - Playlist Management
-    func createPlaylist(name: String) {
-        let newPlaylist = Playlist(name: name, trackURLs: [])
-        playlists.append(newPlaylist)
+    nonisolated
+    private func performImport(
+        urls:
+            [URL]
+    ) async -> Int {
+
+        let fileManager =
+            FileManager.default
+
+        guard let documents =
+            fileManager.urls(
+                for:
+                    .documentDirectory,
+                in:
+                    .userDomainMask
+            ).first
+        else {
+            return 0
+        }
+
+        var importedCount =
+            0
+
+        for sourceURL in urls {
+
+            let accessing =
+                sourceURL
+                    .startAccessingSecurityScopedResource()
+
+            defer {
+                if accessing {
+                    sourceURL
+                        .stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                let destination =
+                    uniqueDestinationURL(
+                        for:
+                            sourceURL,
+                        in:
+                            documents,
+                        fileManager:
+                            fileManager
+                    )
+
+                try fileManager.copyItem(
+                    at:
+                        sourceURL,
+                    to:
+                        destination
+                )
+
+                importedCount += 1
+
+            } catch {
+                // Try a second path for providers that
+                // return a temporary URL.
+                do {
+                    let data =
+                        try Data(
+                            contentsOf:
+                                sourceURL
+                        )
+
+                    let destination =
+                        uniqueDestinationURL(
+                            for:
+                                sourceURL,
+                            in:
+                                documents,
+                            fileManager:
+                                fileManager
+                        )
+
+                    try data.write(
+                        to:
+                            destination,
+                        options:
+                            .atomic
+                    )
+
+                    importedCount += 1
+
+                } catch {
+                    continue
+                }
+            }
+        }
+
+        return importedCount
+    }
+
+    nonisolated
+    private func uniqueDestinationURL(
+        for source:
+            URL,
+        in directory:
+            URL,
+        fileManager:
+            FileManager
+    ) -> URL {
+
+        let base =
+            source
+                .deletingPathExtension()
+                .lastPathComponent
+
+        let ext =
+            source
+                .pathExtension
+
+        var candidate =
+            directory
+                .appendingPathComponent(
+                    source.lastPathComponent
+                )
+
+        var number = 2
+
+        while fileManager.fileExists(
+            atPath:
+                candidate.path
+        ) {
+
+            let filename =
+                ext.isEmpty
+                ? "\(base) \(number)"
+                : "\(base) \(number).\(ext)"
+
+            candidate =
+                directory
+                    .appendingPathComponent(
+                        filename
+                    )
+
+            number += 1
+        }
+
+        return candidate
+    }
+
+    // MARK: - Playlists
+
+    func createPlaylist(
+        name:
+            String
+    ) {
+        let playlist =
+            Playlist(
+                name:
+                    name,
+                trackURLs:
+                    []
+            )
+
+        playlists.append(
+            playlist
+        )
+
         savePlaylists()
     }
 
-    func addTracksToPlaylist(playlistID: UUID, trackURLs: [URL]) {
-        if let idx = playlists.firstIndex(where: { $0.id == playlistID }) {
-            for url in trackURLs {
-                if !playlists[idx].trackURLs.contains(url) {
-                    playlists[idx].trackURLs.append(url)
-                }
+    func addTracksToPlaylist(
+        playlistID:
+            UUID,
+        trackURLs:
+            [URL]
+    ) {
+
+        guard let index =
+            playlists.firstIndex(
+                where:
+                    {
+                        $0.id ==
+                            playlistID
+                    }
+            )
+        else {
+            return
+        }
+
+        for url in trackURLs {
+
+            if !playlists[index]
+                .trackURLs
+                .contains(url) {
+
+                playlists[index]
+                    .trackURLs
+                    .append(url)
             }
-            savePlaylists()
         }
+
+        savePlaylists()
     }
 
-    func removeTrackFromPlaylist(playlistID: UUID, trackURL: URL) {
-        if let idx = playlists.firstIndex(where: { $0.id == playlistID }) {
-            playlists[idx].trackURLs.removeAll { $0 == trackURL }
-            savePlaylists()
+    func removeTrackFromPlaylist(
+        playlistID:
+            UUID,
+        trackURL:
+            URL
+    ) {
+
+        guard let index =
+            playlists.firstIndex(
+                where:
+                    {
+                        $0.id ==
+                            playlistID
+                    }
+            )
+        else {
+            return
         }
+
+        playlists[index]
+            .trackURLs
+            .removeAll {
+                $0 == trackURL
+            }
+
+        savePlaylists()
     }
 
-    func renamePlaylist(id: UUID, newName: String) {
-        if let idx = playlists.firstIndex(where: { $0.id == id }) {
-            playlists[idx].name = newName
-            savePlaylists()
+    func renamePlaylist(
+        id:
+            UUID,
+        newName:
+            String
+    ) {
+
+        guard let index =
+            playlists.firstIndex(
+                where:
+                    {
+                        $0.id == id
+                    }
+            )
+        else {
+            return
         }
+
+        playlists[index].name =
+            newName
+
+        savePlaylists()
     }
 
     private func savePlaylists() {
-        if let encoded = try? JSONEncoder().encode(playlists) {
-            try? encoded.write(to: playlistsCacheURL)
+
+        guard let data =
+            try? JSONEncoder()
+                .encode(
+                    playlists
+                )
+        else {
+            return
         }
+
+        try? data.write(
+            to:
+                playlistsCacheURL,
+            options:
+                .atomic
+        )
     }
 
     private func loadPlaylists() {
-        if let data = try? Data(contentsOf: playlistsCacheURL),
-           let decoded = try? JSONDecoder().decode([Playlist].self, from: data) {
-            playlists = decoded
+
+        guard let data =
+            try? Data(
+                contentsOf:
+                    playlistsCacheURL
+            ),
+              let decoded =
+                try? JSONDecoder()
+                    .decode(
+                        [Playlist].self,
+                        from:
+                            data
+                    )
+        else {
+            return
         }
+
+        playlists =
+            decoded
     }
 
-    // MARK: - Persistent Library Caching
+    // MARK: - Cache
+
     private func saveTracksToCache() {
-        let currentTracks = self.tracks
-        let cacheURL = self.tracksCacheURL
-        DispatchQueue.global(qos: .background).async {
-            if let encoded = try? JSONEncoder().encode(currentTracks) {
-                try? encoded.write(to: cacheURL)
+
+        let currentTracks =
+            tracks
+
+        let cacheURL =
+            tracksCacheURL
+
+        DispatchQueue.global(
+            qos:
+                .background
+        ).async {
+
+            if let data =
+                try? JSONEncoder()
+                    .encode(
+                        currentTracks
+                    ) {
+
+                try? data.write(
+                    to:
+                        cacheURL,
+                    options:
+                        .atomic
+                )
             }
         }
     }
 
     private func loadTracksFromCache() {
-        if let data = try? Data(contentsOf: tracksCacheURL),
-           let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data) {
-            self.tracks = decoded
-            self.rebuildGroups()
-            self.statusMessage = "Indexed \(decoded.count) songs"
+
+        guard let data =
+            try? Data(
+                contentsOf:
+                    tracksCacheURL
+            ),
+              let decoded =
+                try? JSONDecoder()
+                    .decode(
+                        [LocalTrack].self,
+                        from:
+                            data
+                    )
+        else {
+            return
         }
+
+        tracks =
+            decoded
+
+        rebuildGroups()
+
+        statusMessage =
+            "Indexed \(decoded.count) songs"
     }
 }
