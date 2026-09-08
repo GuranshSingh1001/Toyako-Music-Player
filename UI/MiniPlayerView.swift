@@ -39,7 +39,7 @@ struct MiniPlayerView: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 20) {
-                // HighPriorityGesture ensures the play button is never confused with opening the Now Playing screen
+                // नॉर्मल बटन यूज़ करें, कोई एक्स्ट्रा जेस्चर नहीं
                 Button {
                     audioManager.togglePlayPause()
                 } label: {
@@ -47,18 +47,15 @@ struct MiniPlayerView: View {
                         .font(.title2)
                         .contentShape(Rectangle())
                 }
-                .highPriorityGesture(TapGesture().onEnded { audioManager.togglePlayPause() })
                 
                 Button {
-                    print("Next track button tapped") // Replace with your audioManager's next track method
+                    // यहाँ अपना नेक्स्ट ट्रैक वाला मेथड लगाएँ
+                    print("Next track tapped") 
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
                         .contentShape(Rectangle())
                 }
-                .highPriorityGesture(TapGesture().onEnded { 
-                    print("Next track button tapped") // Replace with your audioManager's next track method
-                })
             }
             .foregroundColor(.primary)
             .padding(.trailing, 8)
