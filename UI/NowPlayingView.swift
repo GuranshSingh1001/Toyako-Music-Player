@@ -7,6 +7,10 @@ struct NowPlayingView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var isVisible: Bool = false
 
+    @State private var playPausePressed = false
+    @State private var previousPressed = false
+    @State private var nextPressed = false
+
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
@@ -36,7 +40,9 @@ struct NowPlayingView: View {
                         dragOffset = geo.size.height
                     }
 
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + 0.3
+                    ) {
                         isPresented = false
                     }
                 } else {
@@ -55,7 +61,6 @@ struct NowPlayingView: View {
                 Color.black
                     .ignoresSafeArea()
 
-                // Moving Apple Music Ambient Mesh Bleed
                 AppleMusicMovingBleedBackground(
                     artworkData: audioManager.currentTrack?.artworkData
                 )
@@ -70,7 +75,9 @@ struct NowPlayingView: View {
                         artworkPane(
                             maxHeight: geo.size.height * 0.48
                         )
-                        .frame(width: geo.size.width * 0.35)
+                        .frame(
+                            width: geo.size.width * 0.35
+                        )
                         .contentShape(Rectangle())
                         .gesture(dismissGesture)
 
@@ -82,7 +89,6 @@ struct NowPlayingView: View {
                     }
                     .padding(.horizontal, 48)
                     .padding(.vertical, 24)
-
                 } else {
                     VStack(spacing: 20) {
                         artworkPane(
@@ -103,18 +109,9 @@ struct NowPlayingView: View {
             .clipped()
             .overlay(alignment: .topLeading) {
                 Button {
-                    withAnimation(
-                        .interpolatingSpring(
-                            stiffness: 250,
-                            damping: 25
-                        )
-                    ) {
-                        dragOffset = geo.size.height
-                    }
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        isPresented = false
-                    }
+                    dismissNowPlaying(
+                        height: geo.size.height
+                    )
                 } label: {
                     Image(systemName: "chevron.down")
                         .font(
@@ -135,6 +132,8 @@ struct NowPlayingView: View {
                     : geo.size.height
             )
             .onAppear {
+                dragOffset = 0
+
                 withAnimation(
                     .interpolatingSpring(
                         stiffness: 250,
@@ -147,35 +146,38 @@ struct NowPlayingView: View {
         }
         .ignoresSafeArea()
 
-        // MARK: - Important Presentation State Fix
-        //
-        // NowPlayingView remains mounted inside ContentView's
-        // overlay. Therefore onAppear() is NOT necessarily called
-        // again when the mini-player is opened for the second time.
-        //
-        // Without this synchronization, dragOffset can remain at
-        // the previous dismissal position (screen height), causing
-        // the second presentation to appear off-screen.
-        .onAppear {
-            isVisible = isPresented
-            dragOffset = 0
-        }
+        // Fixes second-opening bug.
         .onChange(of: isPresented) { _, presented in
             if presented {
-                // Reset the previous dismissal position before
-                // showing Now Playing again.
                 dragOffset = 0
                 isVisible = true
             } else {
-                // Reset transient presentation state after dismissal
-                // so it cannot leak into the next presentation.
                 dragOffset = 0
                 isVisible = false
             }
         }
     }
 
-    // MARK: - Left Pane: Artwork, Metadata, Controls
+    // MARK: - Dismiss
+
+    private func dismissNowPlaying(height: CGFloat) {
+        withAnimation(
+            .interpolatingSpring(
+                stiffness: 250,
+                damping: 25
+            )
+        ) {
+            dragOffset = height
+        }
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + 0.3
+        ) {
+            isPresented = false
+        }
+    }
+
+    // MARK: - Artwork / Controls
 
     private func artworkPane(
         maxHeight: CGFloat
@@ -196,27 +198,30 @@ struct NowPlayingView: View {
                         radius: 24,
                         y: 12
                     )
+                    .id(audioManager.currentTrack?.id)
 
             } else {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        Color.white.opacity(0.08)
-                    )
-                    .frame(
-                        width: maxHeight,
-                        height: maxHeight
-                    )
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .font(
-                                .system(
-                                    size: 54
-                                )
+                RoundedRectangle(
+                    cornerRadius: 12
+                )
+                .fill(
+                    Color.white.opacity(0.08)
+                )
+                .frame(
+                    width: maxHeight,
+                    height: maxHeight
+                )
+                .overlay {
+                    Image(systemName: "music.note")
+                        .font(
+                            .system(
+                                size: 54
                             )
-                            .foregroundColor(
-                                .white.opacity(0.35)
-                            )
-                    )
+                        )
+                        .foregroundColor(
+                            .white.opacity(0.35)
+                        )
+                }
             }
 
             VStack(
@@ -257,22 +262,30 @@ struct NowPlayingView: View {
             )
             .padding(.horizontal, 4)
 
-            // Apple Music Pill Scrubber
             AppleMusicScrubberBar(
                 progress: audioManager.playbackProgress,
-                duration: audioManager.currentTrack?.duration ?? 0,
+                duration:
+                    audioManager.currentTrack?.duration ?? 0,
                 currentTime: audioManager.currentTime,
                 onSeek: { newProgress in
-                    if let dur = audioManager.currentTrack?.duration {
-                        audioManager.seek(
-                            to: newProgress * dur
-                        )
+                    guard let duration =
+                        audioManager.currentTrack?.duration,
+                          duration > 0
+                    else {
+                        return
                     }
+
+                    audioManager.seek(
+                        to: newProgress * duration
+                    )
                 }
             )
             .padding(.horizontal, 4)
 
+            // MARK: Playback Controls
+
             HStack(spacing: 40) {
+
                 Button {
                     audioManager.toggleShuffle()
                 } label: {
@@ -288,21 +301,50 @@ struct NowPlayingView: View {
                                 ? .white
                                 : .white.opacity(0.35)
                         )
-                }
-
-                Button {
-                    audioManager.backward()
-                } label: {
-                    Image(systemName: "backward.fill")
-                        .font(
-                            .system(
-                                size: 26
-                            )
+                        .symbolEffect(
+                            .bounce,
+                            value: audioManager.isShuffle
                         )
                 }
 
                 Button {
+                    previousPressed = true
+                    audioManager.backward()
+
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + 0.16
+                    ) {
+                        previousPressed = false
+                    }
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(
+                            .system(
+                                size: 26,
+                                weight: .semibold
+                            )
+                        )
+                        .scaleEffect(
+                            previousPressed
+                                ? 0.76
+                                : 1.0
+                        )
+                        .offset(
+                            x: previousPressed
+                                ? -2
+                                : 0
+                        )
+                }
+
+                Button {
+                    playPausePressed = true
                     audioManager.togglePlayPause()
+
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + 0.16
+                    ) {
+                        playPausePressed = false
+                    }
                 } label: {
                     Image(
                         systemName:
@@ -312,23 +354,50 @@ struct NowPlayingView: View {
                     )
                     .font(
                         .system(
-                            size: 38
+                            size: 38,
+                            weight: .medium
                         )
                     )
                     .frame(
-                        width: 44,
-                        height: 44
+                        width: 52,
+                        height: 52
+                    )
+                    .scaleEffect(
+                        playPausePressed
+                            ? 0.76
+                            : 1.0
+                    )
+                    .contentTransition(
+                        .symbolEffect(.replace)
                     )
                 }
 
                 Button {
+                    nextPressed = true
                     audioManager.forward()
+
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + 0.16
+                    ) {
+                        nextPressed = false
+                    }
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(
                             .system(
-                                size: 26
+                                size: 26,
+                                weight: .semibold
                             )
+                        )
+                        .scaleEffect(
+                            nextPressed
+                                ? 0.76
+                                : 1.0
+                        )
+                        .offset(
+                            x: nextPressed
+                                ? 2
+                                : 0
                         )
                 }
 
@@ -356,9 +425,13 @@ struct NowPlayingView: View {
 
             Spacer(minLength: 8)
         }
+        .animation(
+            .easeInOut(duration: 0.25),
+            value: audioManager.currentTrack?.id
+        )
     }
 
-    // MARK: - Lyrics Pane
+    // MARK: - Lyrics
 
     private var lyricsPane: some View {
         let lyrics = audioManager.currentLyrics
@@ -366,14 +439,9 @@ struct NowPlayingView: View {
 
         return ScrollViewReader { proxy in
             if lyrics.isEmpty {
-
                 VStack(spacing: 12) {
                     Image(systemName: "quote.bubble")
-                        .font(
-                            .system(
-                                size: 42
-                            )
-                        )
+                        .font(.system(size: 42))
                         .foregroundColor(
                             .white.opacity(0.2)
                         )
@@ -388,9 +456,7 @@ struct NowPlayingView: View {
                     maxWidth: .infinity,
                     maxHeight: .infinity
                 )
-
             } else {
-
                 ScrollView(
                     showsIndicators: false
                 ) {
@@ -406,7 +472,6 @@ struct NowPlayingView: View {
                                 alignment: .leading,
                                 spacing: 8
                             ) {
-
                                 if line.text
                                     .trimmingCharacters(
                                         in: .whitespaces
@@ -462,11 +527,12 @@ struct NowPlayingView: View {
                                         .blur(
                                             radius:
                                                 isActive
-                                                ? 0.0
+                                                ? 0
                                                 : 1.5
                                         )
 
-                                    if let romaji = line.romanized,
+                                    if let romaji =
+                                        line.romanized,
                                        !romaji.isEmpty {
 
                                         Text(romaji)
@@ -486,8 +552,8 @@ struct NowPlayingView: View {
                                             .blur(
                                                 radius:
                                                     isActive
-                                                    ? 0.0
-                                                    : 1.0
+                                                    ? 0
+                                                    : 1
                                             )
                                     }
                                 }
@@ -538,28 +604,26 @@ struct NowPlayingView: View {
                         endPoint: .bottom
                     )
                 )
-                .onChange(
-                    of: activeId
-                ) { _, newId in
-                    if let newId = newId {
-                        withAnimation(
-                            .spring(
-                                response: 0.45,
-                                dampingFraction: 1.0
-                            )
-                        ) {
-                            proxy.scrollTo(
-                                newId,
-                                anchor: .center
-                            )
-                        }
+                .onChange(of: activeId) { _, newId in
+                    guard let newId else {
+                        return
+                    }
+
+                    withAnimation(
+                        .spring(
+                            response: 0.45,
+                            dampingFraction: 1.0
+                        )
+                    ) {
+                        proxy.scrollTo(
+                            newId,
+                            anchor: .center
+                        )
                     }
                 }
             }
         }
     }
-
-    // MARK: - Repeat Icon
 
     private func repeatIcon() -> String {
         switch audioManager.repeatMode {
@@ -571,16 +635,16 @@ struct NowPlayingView: View {
         }
     }
 
-    // MARK: - Active Lyrics Line
-
     private func activeLineId() -> UUID? {
-        audioManager.currentLyrics.last {
-            $0.time <= audioManager.currentTime
-        }?.id
+        audioManager.currentLyrics.last(
+            where: {
+                $0.time <= audioManager.currentTime
+            }
+        )?.id
     }
 }
 
-// MARK: - Authentic Apple Music Interactive Scrubber
+// MARK: - Apple Music Scrubber
 
 struct AppleMusicScrubberBar: View {
     let progress: Double
@@ -588,8 +652,8 @@ struct AppleMusicScrubberBar: View {
     let currentTime: TimeInterval
     let onSeek: (Double) -> Void
 
-    @State private var isDragging: Bool = false
-    @State private var dragProgress: Double = 0.0
+    @State private var isDragging = false
+    @State private var dragProgress = 0.0
 
     private var activeProgress: Double {
         isDragging
@@ -602,10 +666,13 @@ struct AppleMusicScrubberBar: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
 
-                    // Track base
                     Capsule()
                         .fill(
-                            Color.white.opacity(0.18)
+                            Color.white.opacity(
+                                isDragging
+                                    ? 0.28
+                                    : 0.18
+                            )
                         )
                         .frame(
                             height:
@@ -614,10 +681,13 @@ struct AppleMusicScrubberBar: View {
                                 : 5
                         )
 
-                    // Track elapsed fill
                     Capsule()
                         .fill(
-                            Color.white.opacity(0.85)
+                            Color.white.opacity(
+                                isDragging
+                                    ? 1.0
+                                    : 0.85
+                            )
                         )
                         .frame(
                             width: max(
@@ -635,87 +705,106 @@ struct AppleMusicScrubberBar: View {
                                 ? 8
                                 : 5
                         )
+
+                    Circle()
+                        .fill(.white)
+                        .frame(
+                            width:
+                                isDragging
+                                ? 14
+                                : 0,
+                            height:
+                                isDragging
+                                ? 14
+                                : 0
+                        )
+                        .shadow(
+                            color: .black.opacity(0.2),
+                            radius: 3,
+                            y: 1
+                        )
+                        .position(
+                            x: max(
+                                7,
+                                min(
+                                    geo.size.width - 7,
+                                    geo.size.width
+                                        * CGFloat(
+                                            activeProgress
+                                        )
+                                )
+                            ),
+                            y: geo.size.height / 2
+                        )
+                        .opacity(
+                            isDragging
+                                ? 1
+                                : 0
+                        )
                 }
                 .frame(
-                    maxHeight: .infinity,
-                    alignment: .center
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
                 )
                 .contentShape(Rectangle())
-
-                // Tap to seek
-                .onTapGesture(
-                    coordinateSpace: .local
-                ) { location in
-                    let computed =
-                        Double(
-                            location.x
-                                / geo.size.width
-                        )
-
-                    let finalVal =
-                        max(
-                            0.0,
-                            min(
-                                1.0,
-                                computed
-                            )
-                        )
-
-                    onSeek(finalVal)
-                }
-
-                // Drag to scrub
                 .gesture(
                     DragGesture(
-                        minimumDistance: 5
+                        minimumDistance: 0,
+                        coordinateSpace: .local
                     )
                     .onChanged { value in
                         isDragging = true
 
-                        let computed =
-                            Double(
-                                value.location.x
-                                    / geo.size.width
-                            )
+                        let position =
+                            value.location.x
+                            / geo.size.width
 
-                        dragProgress =
-                            max(
-                                0.0,
-                                min(
-                                    1.0,
-                                    computed
-                                )
+                        dragProgress = max(
+                            0,
+                            min(
+                                1,
+                                Double(position)
                             )
+                        )
                     }
                     .onEnded { value in
-                        let computed =
-                            Double(
-                                value.location.x
-                                    / geo.size.width
-                            )
+                        let position =
+                            value.location.x
+                            / geo.size.width
 
-                        let finalVal =
+                        let finalProgress =
                             max(
-                                0.0,
+                                0,
                                 min(
-                                    1.0,
-                                    computed
+                                    1,
+                                    Double(position)
                                 )
                             )
 
-                        onSeek(finalVal)
+                        dragProgress = finalProgress
 
-                        isDragging = false
+                        onSeek(finalProgress)
+
+                        withAnimation(
+                            .spring(
+                                response: 0.30,
+                                dampingFraction: 0.75
+                            )
+                        ) {
+                            isDragging = false
+                        }
                     }
                 )
                 .animation(
-                    .easeInOut(duration: 0.15),
+                    .spring(
+                        response: 0.22,
+                        dampingFraction: 0.75
+                    ),
                     value: isDragging
                 )
             }
-            .frame(height: 14)
+            .frame(height: 18)
 
-            // Timestamps
             HStack {
                 Text(
                     formatTime(
@@ -727,22 +816,19 @@ struct AppleMusicScrubberBar: View {
 
                 Spacer()
 
+                let shownTime =
+                    isDragging
+                        ? duration * dragProgress
+                        : currentTime
+
                 let remaining =
                     max(
                         0,
-                        duration
-                            - (
-                                isDragging
-                                ? duration * dragProgress
-                                : currentTime
-                            )
+                        duration - shownTime
                     )
 
                 Text(
-                    "-"
-                        + formatTime(
-                            remaining
-                        )
+                    "-" + formatTime(remaining)
                 )
             }
             .font(
@@ -755,22 +841,29 @@ struct AppleMusicScrubberBar: View {
             .foregroundColor(
                 .white.opacity(0.6)
             )
+            .monospacedDigit()
         }
     }
 
     private func formatTime(
         _ duration: TimeInterval
     ) -> String {
-        let mins =
-            Int(duration) / 60
+        let totalSeconds =
+            max(
+                0,
+                Int(duration.rounded(.down))
+            )
 
-        let secs =
-            Int(duration) % 60
+        let minutes =
+            totalSeconds / 60
+
+        let seconds =
+            totalSeconds % 60
 
         return String(
             format: "%d:%02d",
-            mins,
-            secs
+            minutes,
+            seconds
         )
     }
 }
@@ -780,48 +873,35 @@ struct AppleMusicScrubberBar: View {
 struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
 
-    @State private var isBright: Bool = false
-    @State private var phase: Bool = false
+    @State private var isBright = false
+    @State private var phase = false
 
     var body: some View {
         ZStack {
             if let data = artworkData,
                let img = UIImage(data: data) {
 
-                // Secondary offset layer
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
                     .scaleEffect(
-                        phase
-                            ? 1.45
-                            : 1.30
+                        phase ? 1.45 : 1.30
                     )
                     .rotationEffect(
                         .degrees(
-                            phase
-                                ? 8
-                                : -8
+                            phase ? 8 : -8
                         )
                     )
                     .offset(
-                        x: phase
-                            ? 30
-                            : -30,
-                        y: phase
-                            ? -25
-                            : 25
+                        x: phase ? 30 : -30,
+                        y: phase ? -25 : 25
                     )
                     .clipped()
                     .brightness(
-                        isBright
-                            ? -0.15
-                            : -0.05
+                        isBright ? -0.15 : -0.05
                     )
                     .saturation(
-                        isBright
-                            ? 0.8
-                            : 1.45
+                        isBright ? 0.8 : 1.45
                     )
                     .blur(
                         radius: 60,
@@ -829,52 +909,35 @@ struct AppleMusicMovingBleedBackground: View {
                     )
                     .opacity(0.75)
 
-                // Primary moving layer
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
                     .scaleEffect(
-                        phase
-                            ? 1.35
-                            : 1.50
+                        phase ? 1.35 : 1.50
                     )
                     .rotationEffect(
                         .degrees(
-                            phase
-                                ? -12
-                                : 12
+                            phase ? -12 : 12
                         )
                     )
                     .offset(
-                        x: phase
-                            ? -35
-                            : 35,
-                        y: phase
-                            ? 30
-                            : -30
+                        x: phase ? -35 : 35,
+                        y: phase ? 30 : -30
                     )
                     .clipped()
                     .brightness(
-                        isBright
-                            ? -0.15
-                            : -0.05
+                        isBright ? -0.15 : -0.05
                     )
                     .saturation(
-                        isBright
-                            ? 0.85
-                            : 1.5
+                        isBright ? 0.85 : 1.5
                     )
                     .blur(
                         radius:
-                            isBright
-                            ? 45
-                            : 65,
+                            isBright ? 45 : 65,
                         opaque: true
                     )
                     .opacity(
-                        isBright
-                            ? 0.65
-                            : 0.92
+                        isBright ? 0.65 : 0.92
                     )
 
             } else {
@@ -886,19 +949,15 @@ struct AppleMusicMovingBleedBackground: View {
             calculateBrightness()
 
             withAnimation(
-                .easeInOut(
-                    duration: 18
-                )
-                .repeatForever(
-                    autoreverses: true
-                )
+                .easeInOut(duration: 18)
+                    .repeatForever(
+                        autoreverses: true
+                    )
             ) {
                 phase.toggle()
             }
         }
-        .onChange(
-            of: artworkData
-        ) { _, _ in
+        .onChange(of: artworkData) { _, _ in
             calculateBrightness()
         }
     }
@@ -918,23 +977,20 @@ struct AppleMusicMovingBleedBackground: View {
 
             DispatchQueue.main.async {
                 withAnimation(
-                    .easeInOut(
-                        duration: 0.5
-                    )
+                    .easeInOut(duration: 0.5)
                 ) {
-                    self.isBright = bright
+                    isBright = bright
                 }
             }
         }
     }
 }
 
-// MARK: - Safe Artwork Brightness Analyzer
+// MARK: - Artwork Brightness Analyzer
 
 extension UIImage {
     func isImageTooBright() -> Bool {
-        guard let cgImage = self.cgImage
-        else {
+        guard let cgImage = self.cgImage else {
             return false
         }
 
@@ -947,9 +1003,7 @@ extension UIImage {
         var rawData =
             [UInt8](
                 repeating: 0,
-                count: width
-                    * height
-                    * 4
+                count: width * height * 4
             )
 
         guard let context =
@@ -986,9 +1040,7 @@ extension UIImage {
         var totalLuminance: CGFloat = 0
 
         let totalPixels =
-            CGFloat(
-                width * height
-            )
+            CGFloat(width * height)
 
         for i in stride(
             from: 0,
@@ -996,32 +1048,24 @@ extension UIImage {
             by: 4
         ) {
             let r =
-                CGFloat(
-                    rawData[i]
-                ) / 255.0
+                CGFloat(rawData[i]) / 255.0
 
             let g =
-                CGFloat(
-                    rawData[i + 1]
-                ) / 255.0
+                CGFloat(rawData[i + 1]) / 255.0
 
             let b =
-                CGFloat(
-                    rawData[i + 2]
-                ) / 255.0
+                CGFloat(rawData[i + 2]) / 255.0
 
             let luminance =
                 (0.299 * r)
                 + (0.587 * g)
                 + (0.114 * b)
 
-            totalLuminance +=
-                luminance
+            totalLuminance += luminance
         }
 
         let averageLuminance =
-            totalLuminance
-            / totalPixels
+            totalLuminance / totalPixels
 
         return averageLuminance > 0.60
     }
