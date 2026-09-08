@@ -39,6 +39,7 @@ struct MiniPlayerView: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 20) {
+                // HighPriorityGesture ensures the play button is never confused with opening the Now Playing screen
                 Button {
                     audioManager.togglePlayPause()
                 } label: {
@@ -46,16 +47,18 @@ struct MiniPlayerView: View {
                         .font(.title2)
                         .contentShape(Rectangle())
                 }
+                .highPriorityGesture(TapGesture().onEnded { audioManager.togglePlayPause() })
                 
-                // Muted the missing method call so it won't crash the compiler.
-                // Replace the print statement below with your exact 'skip forward' logic
                 Button {
-                    print("Next track button tapped")
+                    print("Next track button tapped") // Replace with your audioManager's next track method
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
                         .contentShape(Rectangle())
                 }
+                .highPriorityGesture(TapGesture().onEnded { 
+                    print("Next track button tapped") // Replace with your audioManager's next track method
+                })
             }
             .foregroundColor(.primary)
             .padding(.trailing, 8)
