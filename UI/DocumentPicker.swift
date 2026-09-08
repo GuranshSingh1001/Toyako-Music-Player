@@ -1,30 +1,88 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
-struct DocumentPicker: UIViewControllerRepresentable {
-    var onPick: ([URL]) -> Void
-    
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.audio], asCopy: false)
-        picker.allowsMultipleSelection = true
-        picker.delegate = context.coordinator
+struct DocumentPicker:
+    UIViewControllerRepresentable {
+
+    let onPick:
+        ([URL]) -> Void
+
+    func makeUIViewController(
+        context:
+            Context
+    ) -> UIDocumentPickerViewController {
+
+        let supportedTypes:
+            [UTType] = [
+                .audio,
+                .mp3,
+                .mpeg4Audio,
+                .wav,
+                .aiff,
+                .flac
+            ]
+
+        let picker =
+            UIDocumentPickerViewController(
+                forOpeningContentTypes:
+                    supportedTypes,
+                asCopy:
+                    true
+            )
+
+        picker.allowsMultipleSelection =
+            true
+
+        picker.delegate =
+            context.coordinator
+
         return picker
     }
-    
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onPick: onPick)
+
+    func updateUIViewController(
+        _ uiViewController:
+            UIDocumentPickerViewController,
+        context:
+            Context
+    ) {
     }
-    
-    class Coordinator: NSObject, UIDocumentPickerDelegate {
-        var onPick: ([URL]) -> Void
-        
-        init(onPick: @escaping ([URL]) -> Void) { 
-            self.onPick = onPick 
+
+    func makeCoordinator()
+        -> Coordinator {
+
+        Coordinator(
+            onPick:
+                onPick
+        )
+    }
+
+    final class Coordinator:
+        NSObject,
+        UIDocumentPickerDelegate {
+
+        let onPick:
+            ([URL]) -> Void
+
+        init(
+            onPick:
+                @escaping ([URL]) -> Void
+        ) {
+            self.onPick =
+                onPick
         }
-        
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+
+        func documentPicker(
+            _ controller:
+                UIDocumentPickerViewController,
+            didPickDocumentsAt urls:
+                [URL]
+        ) {
+            guard !urls.isEmpty
+            else {
+                return
+            }
+
             onPick(urls)
         }
     }
