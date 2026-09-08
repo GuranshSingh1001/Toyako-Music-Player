@@ -2,7 +2,7 @@ name: OfflineMusic
 options:
   bundleIdPrefix: com.local
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.0"
 settings:
   SWIFT_VERSION: "5.9"
   TARGETED_DEVICE_FAMILY: "2"
