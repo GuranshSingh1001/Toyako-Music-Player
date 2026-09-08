@@ -48,8 +48,8 @@ struct MiniPlayerView: View {
                 }
                 
                 Button {
-                    // REPLACE THIS with your actual method name if it differs (e.g., skipForward(), nextTrack())
-                    audioManager.playNextTrack() 
+                    // TODO: Replace with your actual method (e.g., audioManager.skipForward())
+                    print("Skip tapped")
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
