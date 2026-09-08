@@ -39,7 +39,6 @@ struct MiniPlayerView: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 20) {
-                // नॉर्मल बटन यूज़ करें, कोई एक्स्ट्रा जेस्चर नहीं
                 Button {
                     audioManager.togglePlayPause()
                 } label: {
@@ -49,8 +48,7 @@ struct MiniPlayerView: View {
                 }
                 
                 Button {
-                    // यहाँ अपना नेक्स्ट ट्रैक वाला मेथड लगाएँ
-                    print("Next track tapped") 
+                    print("Next track tapped") // यहाँ अपना नेक्स्ट ट्रैक मेथड डालें
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
@@ -62,5 +60,6 @@ struct MiniPlayerView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
+        .background(Color.black.opacity(0.001))
     }
 }
