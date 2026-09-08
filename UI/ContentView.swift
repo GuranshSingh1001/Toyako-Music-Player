@@ -19,52 +19,39 @@ struct ContentView: View {
     @State private var newPlaylistName = ""
     @State private var searchText = ""
     
-    // Separated state variables for editing songs vs renaming the playlist
     @State private var playlistToEdit: Playlist?
     @State private var playlistToRename: Playlist?
     @State private var renameText = ""
 
     var body: some View {
         TabView(selection: $selectedCategory) {
-            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) {
-                tabContent(for: .songs)
-            }
-            
-            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
-                tabContent(for: .albums)
-            }
-            
-            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
-                tabContent(for: .artists)
-            }
-            
-            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
-                tabContent(for: .allPlaylists)
-            }
+            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) { tabContent(for: .songs) }
+            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) { tabContent(for: .albums) }
+            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) { tabContent(for: .artists) }
+            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) { tabContent(for: .allPlaylists) }
         }
         .tabViewStyle(.sidebarAdaptable)
-        // 1. Clean overlay for Now Playing
+        
+        // 1. GHOST BUG & LAG FIX:
+        // View is permanently rendered to prevent frame drops. 
+        // We only move it up/down using offset, preventing SwiftUI transition bugs.
         .overlay {
-            if showNowPlaying {
+            GeometryReader { proxy in
                 NowPlayingView(isPresented: $showNowPlaying)
-                    .transition(.move(edge: .bottom))
-                    .ignoresSafeArea()
-                    .zIndex(2)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    // Pushes it exactly below the screen when false
+                    .offset(y: showNowPlaying ? 0 : proxy.size.height + proxy.safeAreaInsets.bottom)
+                    // 2. BOUNCE FIX: 
+                    // .easeOut guarantees a completely flat, physics-free slide with 0 bounce.
+                    .animation(.easeOut(duration: 0.35), value: showNowPlaying)
+                    .allowsHitTesting(showNowPlaying)
             }
-        }
-        // 2. Zero-bounce spring animation to prevent the black line glitch
-        .animation(.spring(response: 0.35, dampingFraction: 1.0), value: showNowPlaying)
-        
-        .sheet(isPresented: $showFilePicker) {
-            DocumentPicker { urls in
-                library.importExternalURLs(urls)
-            }
-        }
-        .sheet(item: $playlistToEdit) { playlist in
-            PlaylistAddSongsSheet(playlist: playlist, library: library)
+            .ignoresSafeArea(.all, edges: .all)
         }
         
-        // Playlist Creation Alert
+        .sheet(isPresented: $showFilePicker) { DocumentPicker { urls in library.importExternalURLs(urls) } }
+        .sheet(item: $playlistToEdit) { playlist in PlaylistAddSongsSheet(playlist: playlist, library: library) }
+        
         .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
             TextField("Playlist Name", text: $newPlaylistName)
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
@@ -76,7 +63,6 @@ struct ContentView: View {
             }
         }
         
-        // Playlist Rename Alert
         .alert("Rename Playlist", isPresented: Binding(
             get: { playlistToRename != nil },
             set: { if !$0 { playlistToRename = nil } }
@@ -113,18 +99,21 @@ struct ContentView: View {
                     }
                 }
         }
-        // 3. MiniPlayer attached safely to the bottom edge
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
                 MiniPlayerView()
-                    // System-synced liquid glass effect (Light/Dark mode automatic)
-                    .background(.regularMaterial, in: Capsule())
-                    // Guarantees the entire pill shape is clickable, eliminating missed taps
                     .contentShape(Capsule())
                     .onTapGesture {
                         showNowPlaying = true
                     }
-                    .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
+                    // 3. TRUE LIQUID GLASS FIX:
+                    // Forces the ultra thin material to render correctly over scrolling content
+                    .background {
+                        Capsule()
+                            .fill(.ultraThinMaterial)
+                            .environment(\.colorScheme, .dark)
+                    }
+                    .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
             }
@@ -141,13 +130,10 @@ struct ContentView: View {
         case .artists:
             ArtistListView(artists: filteredArtists, library: library)
         case .allPlaylists:
-            // Passes both actions correctly to the grid view
             AllPlaylistsGridView(
                 playlists: library.playlists, 
                 library: library, 
-                onAddSongs: { pl in 
-                    playlistToEdit = pl 
-                },
+                onAddSongs: { pl in playlistToEdit = pl },
                 onRename: { pl in 
                     renameText = pl.name
                     playlistToRename = pl 
@@ -165,8 +151,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Search Filtering
-    
     private func filterTracks(_ source: [LocalTrack]) -> [LocalTrack] {
         if searchText.isEmpty { return source }
         return source.filter {
@@ -177,12 +161,10 @@ struct ContentView: View {
     }
 
     private var filteredTracks: [LocalTrack] { filterTracks(library.tracks) }
-    
     private var filteredAlbums: [AlbumGroup] {
         if searchText.isEmpty { return library.albums }
         return library.albums.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.artist.localizedCaseInsensitiveContains(searchText) }
     }
-    
     private var filteredArtists: [ArtistGroup] {
         if searchText.isEmpty { return library.artists }
         return library.artists.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
