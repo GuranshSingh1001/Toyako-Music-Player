@@ -34,7 +34,6 @@ struct PlaylistAddSongsSheet: View {
                 )
             }
             .navigationTitle("Add Songs")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
