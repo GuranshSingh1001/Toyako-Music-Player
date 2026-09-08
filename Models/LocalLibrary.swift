@@ -24,14 +24,14 @@ class LocalLibrary: ObservableObject {
     }
 
     func reloadFiles() {
-        Task {
-            if tracks.isEmpty {
-                statusMessage = "Scanning..."
-            }
-            
+        if tracks.isEmpty {
+            statusMessage = "Scanning..."
+        }
+        
+        Task.detached(priority: .userInitiated) {
             let fileManager = FileManager.default
             guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                statusMessage = "Unable to access Documents folder"
+                await MainActor.run { self.statusMessage = "Unable to access Documents folder" }
                 return
             }
 
@@ -52,16 +52,18 @@ class LocalLibrary: ObservableObject {
 
             var discovered: [LocalTrack] = []
             for fileURL in discoveredURLs {
-                let track = await parseAsset(at: fileURL)
+                let track = await self.parseAsset(at: fileURL)
                 discovered.append(track)
             }
 
             discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             
-            self.tracks = discovered
-            self.rebuildGroups()
-            self.statusMessage = "Indexed \(discovered.count) songs"
-            self.saveTracksToCache()
+            await MainActor.run {
+                self.tracks = discovered
+                self.rebuildGroups()
+                self.statusMessage = "Indexed \(discovered.count) songs"
+                self.saveTracksToCache()
+            }
         }
     }
     
@@ -110,7 +112,8 @@ class LocalLibrary: ObservableObject {
         }
     }
 
-    private func parseAsset(at url: URL) async -> LocalTrack {
+    // Making this nonisolated prevents main-thread blocking during background scans
+    nonisolated private func parseAsset(at url: URL) async -> LocalTrack {
         let asset = AVURLAsset(url: url)
         let durationSeconds = (try? await asset.load(.duration).seconds) ?? 0.0
         let duration = durationSeconds.isNaN ? 0.0 : durationSeconds
@@ -126,27 +129,16 @@ class LocalLibrary: ObservableObject {
             let keyString = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
 
             if keyString == "title" || keyString == "TIT2" || keyString == "©nam" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
-                    title = str
-                }
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { title = str }
             } else if keyString == "artist" || keyString == "TPE1" || keyString == "TPE2" || keyString == "©ART" || keyString == "aART" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
-                    artist = str
-                }
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { artist = str }
             } else if keyString == "albumName" || keyString == "album" || keyString == "TALB" || keyString == "©alb" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
-                    album = str
-                }
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { album = str }
             } else if keyString == "type" || keyString == "genre" || keyString == "TCON" || keyString == "©gen" {
-                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty {
-                    genre = str
-                }
+                if let str = try? await item.load(.stringValue), !str.trimmingCharacters(in: .whitespaces).isEmpty { genre = str }
             } else if keyString == "artwork" || keyString == "APIC" || keyString == "covr" {
-                if let data = try? await item.load(.dataValue) {
-                    artworkData = data
-                } else if let rawVal = try? await item.load(.value) {
-                    if let d = rawVal as? Data { artworkData = d }
-                }
+                if let data = try? await item.load(.dataValue) { artworkData = data }
+                else if let rawVal = try? await item.load(.value), let d = rawVal as? Data { artworkData = d }
             }
         }
 
@@ -191,11 +183,11 @@ class LocalLibrary: ObservableObject {
     }
 
     private func saveTracksToCache() {
-        // Create an immutable copy to safely pass to the background thread
         let currentTracks = self.tracks
+        let cacheURL = self.tracksCacheURL
         DispatchQueue.global(qos: .background).async {
             if let encoded = try? JSONEncoder().encode(currentTracks) {
-                try? encoded.write(to: self.tracksCacheURL)
+                try? encoded.write(to: cacheURL)
             }
         }
     }
