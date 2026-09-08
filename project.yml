@@ -4,7 +4,6 @@ options:
   deploymentTarget:
     iOS: "26.0"
 settings:
-  SWIFT_VERSION: "5.9"
   TARGETED_DEVICE_FAMILY: "2"
 targets:
   OfflineMusic:
