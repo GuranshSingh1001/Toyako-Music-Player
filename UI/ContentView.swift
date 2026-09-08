@@ -35,12 +35,10 @@ struct ContentView: View {
                 tabContent(for: .artists)
             }
             
-            // 1. Declared as a primary Tab so it appears in the top floating pill
             Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
                 tabContent(for: .allPlaylists)
             }
             
-            // 2. Sidebar-only grouping for individual playlists
             TabSection("My Playlists") {
                 ForEach(library.playlists) { pl in
                     Tab(pl.name, systemImage: "music.note.list", value: LibraryCategory.playlist(pl.id)) {
@@ -50,16 +48,16 @@ struct ContentView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        // 1. Completely removes the view from hierarchy when false, allowing taps to pass through to the miniplayer
         .overlay {
-            GeometryReader { proxy in
+            if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
-                    .offset(y: showNowPlaying ? 0 : proxy.size.height)
-                    .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
-                    // 3. Prevents the invisible overlay from blocking touches
-                    .allowsHitTesting(showNowPlaying)
+                    .transition(.move(edge: .bottom))
+                    .ignoresSafeArea()
+                    .zIndex(2)
             }
-            .ignoresSafeArea()
         }
+        .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
         .sheet(isPresented: $showFilePicker) {
             DocumentPicker { urls in
                 library.importExternalURLs(urls)
@@ -103,17 +101,15 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
-                // 4. Wrapped in a native Button to guarantee tap responsiveness
-                Button {
-                    showNowPlaying = true
-                } label: {
-                    MiniPlayerView()
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                        .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                MiniPlayerView()
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showNowPlaying = true
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
             }
         }
     }
@@ -128,7 +124,12 @@ struct ContentView: View {
         case .artists:
             ArtistListView(artists: filteredArtists, library: library)
         case .allPlaylists:
-            AllPlaylistsGridView(playlists: library.playlists, library: library, selectedCategory: $selectedCategory)
+            // 2. Pass down an action instead of mutating selectedCategory directly
+            AllPlaylistsGridView(
+                playlists: library.playlists, 
+                library: library, 
+                onEditPlaylist: { pl in playlistToEdit = pl }
+            )
         case .playlist(let id):
             if let pl = library.playlists.first(where: { $0.id == id }) {
                 let pTracks = library.tracks.filter { pl.trackURLs.contains($0.url) }
