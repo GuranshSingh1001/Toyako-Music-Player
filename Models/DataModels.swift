@@ -16,7 +16,12 @@ struct LocalTrack: Identifiable, Hashable, Codable {
     let album: String
     let genre: String
     let duration: TimeInterval
-    let artworkData: Data?
+    var artworkData: Data?
+
+    // Explicitly omit artworkData from the JSON keys to keep the file size tiny
+    enum CodingKeys: String, CodingKey {
+        case id, url, title, artist, album, genre, duration
+    }
 
     init(id: UUID = UUID(), url: URL, title: String, artist: String = "Unknown Artist", album: String = "Unknown Album", genre: String = "Unknown Genre", duration: TimeInterval = 0.0, artworkData: Data? = nil) {
         self.id = id
@@ -27,6 +32,31 @@ struct LocalTrack: Identifiable, Hashable, Codable {
         self.genre = genre
         self.duration = duration
         self.artworkData = artworkData
+    }
+
+    // Custom Decoder: Loads text instantly, leaves artwork blank until background scan finishes
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.url = try container.decode(URL.self, forKey: .url)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.artist = try container.decode(String.self, forKey: .artist)
+        self.album = try container.decode(String.self, forKey: .album)
+        self.genre = try container.decode(String.self, forKey: .genre)
+        self.duration = try container.decode(TimeInterval.self, forKey: .duration)
+        self.artworkData = nil 
+    }
+
+    // Custom Encoder: Skips encoding the massive image data array into the JSON file
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(url, forKey: .url)
+        try container.encode(title, forKey: .title)
+        try container.encode(artist, forKey: .artist)
+        try container.encode(album, forKey: .album)
+        try container.encode(genre, forKey: .genre)
+        try container.encode(duration, forKey: .duration)
     }
 }
 
