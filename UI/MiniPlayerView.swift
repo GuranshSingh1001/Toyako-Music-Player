@@ -46,6 +46,7 @@ struct MiniPlayerView: View {
                         .font(.title2)
                         .contentShape(Rectangle())
                 }
+                .highPriorityGesture(TapGesture().onEnded { audioManager.togglePlayPause() })
                 
                 Button {
                     print("Next track tapped") // यहाँ अपना नेक्स्ट ट्रैक मेथड डालें
@@ -54,12 +55,14 @@ struct MiniPlayerView: View {
                         .font(.title2)
                         .contentShape(Rectangle())
                 }
+                .highPriorityGesture(TapGesture().onEnded { print("Next track tapped") })
             }
             .foregroundColor(.primary)
             .padding(.trailing, 8)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
-        .background(Color.black.opacity(0.001))
+        // यह लाइन खाली स्पेस को भी 100% टैपएबल बनाती है
+        .background(Color.black.opacity(0.001)) 
     }
 }
