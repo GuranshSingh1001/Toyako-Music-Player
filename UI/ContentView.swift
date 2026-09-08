@@ -95,17 +95,18 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
-                Button {
-                    showNowPlaying = true
-                } label: {
-                    MiniPlayerView()
-                }
-                .buttonStyle(.plain)
-                .background(.ultraThinMaterial, in: Capsule())
-                .environment(\.colorScheme, .dark)
-                .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                MiniPlayerView()
+                    // 1. Makes the ENTIRE capsule clickable, fixing the hit-or-miss taps
+                    .contentShape(Capsule()) 
+                    .onTapGesture {
+                        showNowPlaying = true
+                    }
+                    // 2. Native liquid glass that automatically syncs with Light/Dark mode
+                    .background(.regularMaterial, in: Capsule())
+                    // 3. Softer shadow to complement the transparent glass
+                    .shadow(color: .black.opacity(0.15), radius: 15, y: 8) 
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
             }
         }
     }
