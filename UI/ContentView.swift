@@ -18,25 +18,18 @@ struct ContentView: View {
     @State private var showNewPlaylistAlert = false
     @State private var newPlaylistName = ""
     @State private var searchText = ""
+    
+    // Separated the sheet state from the alert state
     @State private var playlistToEdit: Playlist?
+    @State private var playlistToRename: Playlist?
+    @State private var renameText = ""
 
     var body: some View {
         TabView(selection: $selectedCategory) {
-            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) {
-                tabContent(for: .songs)
-            }
-            
-            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
-                tabContent(for: .albums)
-            }
-            
-            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
-                tabContent(for: .artists)
-            }
-            
-            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
-                tabContent(for: .allPlaylists)
-            }
+            Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) { tabContent(for: .songs) }
+            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) { tabContent(for: .albums) }
+            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) { tabContent(for: .artists) }
+            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) { tabContent(for: .allPlaylists) }
         }
         .tabViewStyle(.sidebarAdaptable)
         .overlay {
@@ -48,14 +41,10 @@ struct ContentView: View {
             }
         }
         .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
-        .sheet(isPresented: $showFilePicker) {
-            DocumentPicker { urls in
-                library.importExternalURLs(urls)
-            }
-        }
-        .sheet(item: $playlistToEdit) { playlist in
-            PlaylistAddSongsSheet(playlist: playlist, library: library)
-        }
+        .sheet(isPresented: $showFilePicker) { DocumentPicker { urls in library.importExternalURLs(urls) } }
+        .sheet(item: $playlistToEdit) { playlist in PlaylistAddSongsSheet(playlist: playlist, library: library) }
+        
+        // Playlist Creation Alert
         .alert("Create Playlist", isPresented: $showNewPlaylistAlert) {
             TextField("Playlist Name", text: $newPlaylistName)
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
@@ -64,6 +53,21 @@ struct ContentView: View {
                     library.createPlaylist(name: newPlaylistName)
                     newPlaylistName = ""
                 }
+            }
+        }
+        
+        // Playlist Rename Alert
+        .alert("Rename Playlist", isPresented: Binding(
+            get: { playlistToRename != nil },
+            set: { if !$0 { playlistToRename = nil } }
+        )) {
+            TextField("New Name", text: $renameText)
+            Button("Cancel", role: .cancel) { playlistToRename = nil }
+            Button("Save") {
+                if let pl = playlistToRename, !renameText.isEmpty {
+                    library.renamePlaylist(id: pl.id, newName: renameText)
+                }
+                playlistToRename = nil
             }
         }
         .keyboardShortcut(" ", modifiers: [])
@@ -119,7 +123,11 @@ struct ContentView: View {
             AllPlaylistsGridView(
                 playlists: library.playlists, 
                 library: library, 
-                onEditPlaylist: { pl in playlistToEdit = pl }
+                onAddSongs: { pl in playlistToEdit = pl },
+                onRename: { pl in 
+                    renameText = pl.name
+                    playlistToRename = pl 
+                }
             )
         }
     }
