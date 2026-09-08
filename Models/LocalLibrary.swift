@@ -9,8 +9,13 @@ class LocalLibrary: ObservableObject {
     @Published var playlists: [Playlist] = []
     @Published var statusMessage: String = "Scanning..."
 
-    private let playlistStorageKey = "offline_music_playlists"
-    private let tracksCacheKey = "cached_library_tracks_v1"
+    // Use physical files instead of UserDefaults to bypass size limits
+    private var playlistsCacheURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("playlists_cache.json")
+    }
+    private var tracksCacheURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tracks_cache.json")
+    }
 
     init() {
         loadPlaylists()
@@ -52,40 +57,44 @@ class LocalLibrary: ObservableObject {
             }
 
             discovered.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            self.tracks = discovered
-
-            let albumDict = Dictionary(grouping: discovered, by: {
-                "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
-            })
-            self.albums = albumDict.map { _, trackList in
-                let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
-                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-                return AlbumGroup(
-                    name: preferredName,
-                    artist: preferredArtist,
-                    artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData,
-                    tracks: trackList
-                )
-            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-            let artistDict = Dictionary(grouping: discovered, by: {
-                $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
-            })
-            self.artists = artistDict.map { _, trackList in
-                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-                return ArtistGroup(name: preferredArtist, tracks: trackList)
-            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-            self.statusMessage = "Indexed \(discovered.count) songs"
-            saveTracksToCache()
+            
+            DispatchQueue.main.async {
+                self.tracks = discovered
+                self.rebuildGroups()
+                self.statusMessage = "Indexed \(discovered.count) songs"
+                self.saveTracksToCache()
+            }
         }
+    }
+    
+    private func rebuildGroups() {
+        let albumDict = Dictionary(grouping: tracks, by: {
+            "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
+        })
+        self.albums = albumDict.map { _, trackList in
+            let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
+            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+            return AlbumGroup(
+                name: preferredName,
+                artist: preferredArtist,
+                artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData,
+                tracks: trackList
+            )
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        let artistDict = Dictionary(grouping: tracks, by: {
+            $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
+        })
+        self.artists = artistDict.map { _, trackList in
+            let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
+            return ArtistGroup(name: preferredArtist, tracks: trackList)
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func importExternalURLs(_ urls: [URL]) {
         let fileManager = FileManager.default
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
 
-        // Push the file copying to the background so the UI doesn't freeze
         Task.detached(priority: .userInitiated) {
             for url in urls {
                 let hasAccess = url.startAccessingSecurityScopedResource()
@@ -94,15 +103,11 @@ class LocalLibrary: ObservableObject {
                 if !fileManager.fileExists(atPath: dest.path) {
                     try? fileManager.copyItem(at: url, to: dest)
                 }
-                
                 if hasAccess { url.stopAccessingSecurityScopedResource() }
             }
-            
-            // Refresh library once copying completes
             await self.reloadFiles()
         }
     }
-
 
     private func parseAsset(at url: URL) async -> LocalTrack {
         let asset = AVURLAsset(url: url)
@@ -139,11 +144,7 @@ class LocalLibrary: ObservableObject {
                 if let data = try? await item.load(.dataValue) {
                     artworkData = data
                 } else if let rawVal = try? await item.load(.value) {
-                    if let d = rawVal as? Data {
-                        artworkData = d
-                    } else if let dict = rawVal as? [String: Any], let d = dict["data"] as? Data {
-                        artworkData = d
-                    }
+                    if let d = rawVal as? Data { artworkData = d }
                 }
             }
         }
@@ -177,50 +178,31 @@ class LocalLibrary: ObservableObject {
 
     private func savePlaylists() {
         if let encoded = try? JSONEncoder().encode(playlists) {
-            UserDefaults.standard.set(encoded, forKey: playlistStorageKey)
+            try? encoded.write(to: playlistsCacheURL)
         }
     }
 
     private func loadPlaylists() {
-        if let data = UserDefaults.standard.data(forKey: playlistStorageKey),
+        if let data = try? Data(contentsOf: playlistsCacheURL),
            let decoded = try? JSONDecoder().decode([Playlist].self, from: data) {
             playlists = decoded
         }
     }
 
     private func saveTracksToCache() {
-        if let encoded = try? JSONEncoder().encode(tracks) {
-            UserDefaults.standard.set(encoded, forKey: tracksCacheKey)
+        // Run on a background thread to prevent lag
+        DispatchQueue.global(qos: .background).async {
+            if let encoded = try? JSONEncoder().encode(self.tracks) {
+                try? encoded.write(to: self.tracksCacheURL)
+            }
         }
     }
 
     private func loadTracksFromCache() {
-        if let data = UserDefaults.standard.data(forKey: tracksCacheKey),
+        if let data = try? Data(contentsOf: tracksCacheURL),
            let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data) {
             self.tracks = decoded
-            
-            let albumDict = Dictionary(grouping: decoded, by: {
-                "\($0.album.trimmingCharacters(in: .whitespaces).lowercased())_\($0.artist.trimmingCharacters(in: .whitespaces).lowercased())"
-            })
-            self.albums = albumDict.map { _, trackList in
-                let preferredName = trackList.first(where: { $0.album != "Unknown Album" })?.album ?? "Unknown Album"
-                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-                return AlbumGroup(
-                    name: preferredName,
-                    artist: preferredArtist,
-                    artworkData: trackList.first(where: { $0.artworkData != nil })?.artworkData,
-                    tracks: trackList
-                )
-            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-            let artistDict = Dictionary(grouping: decoded, by: {
-                $0.artist.trimmingCharacters(in: .whitespaces).lowercased()
-            })
-            self.artists = artistDict.map { _, trackList in
-                let preferredArtist = trackList.first(where: { $0.artist != "Unknown Artist" })?.artist ?? "Unknown Artist"
-                return ArtistGroup(name: preferredArtist, tracks: trackList)
-            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            
+            self.rebuildGroups()
             self.statusMessage = "Indexed \(decoded.count) songs"
         }
     }
