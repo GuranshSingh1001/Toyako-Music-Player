@@ -46,9 +46,7 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             if audioManager.currentTrack != nil {
                 MiniPlayerView()
-                    .glassEffect()
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
+                    .glassEffect(cornerRadius: 16)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         withAnimation(.interpolatingSpring(stiffness: 250, damping: 25)) {
