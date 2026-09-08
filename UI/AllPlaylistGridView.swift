@@ -42,6 +42,16 @@ struct AllPlaylistsGridView: View {
                         .frame(width: 160)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Change Cover Style") {
+                            if let idx = library.playlists.firstIndex(where: { $0.id == playlist.id }) {
+                                library.playlists[idx] = Playlist(id: UUID(), name: playlist.name, trackURLs: playlist.trackURLs)
+                            }
+                        }
+                        Button("Edit Name") {
+                            onEditPlaylist(playlist)
+                        }
+                    }
                 }
             }
             .padding()
