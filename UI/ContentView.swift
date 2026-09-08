@@ -13,7 +13,8 @@ struct ContentView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @StateObject private var library = LocalLibrary()
 
-    @State private var selectedCategory: LibraryCategory = .songs
+    // Made Optional to satisfy TabSection generic type inference (V?)
+    @State private var selectedCategory: LibraryCategory? = .songs
     @State private var showFilePicker = false
     @State private var showNowPlaying = false
     @State private var showNewPlaylistAlert = false
@@ -23,23 +24,24 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // 1. iOS 18+ Adaptable Sidebar / Tab Bar
+            // iOS 18+ Adaptable Sidebar / Tab Bar
             TabView(selection: $selectedCategory) {
-                Tab("Songs", systemImage: "music.note", value: .songs) {
+                Tab("Songs", systemImage: "music.note", value: LibraryCategory.songs) {
                     tabContent(for: .songs)
                 }
                 
-                Tab("Albums", systemImage: "square.stack", value: .albums) {
+                Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
                     tabContent(for: .albums)
                 }
                 
-                Tab("Artists", systemImage: "music.mic", value: .artists) {
+                Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
                     tabContent(for: .artists)
                 }
                 
                 TabSection("Playlists") {
                     ForEach(library.playlists) { pl in
-                        Tab(pl.name, systemImage: "music.note.list", value: .playlist(pl.id)) {
+                        // Explicitly cast to LibraryCategory to force compiler inference
+                        Tab(pl.name, systemImage: "music.note.list", value: LibraryCategory.playlist(pl.id) as LibraryCategory) {
                             tabContent(for: .playlist(pl.id))
                         }
                     }
@@ -47,7 +49,7 @@ struct ContentView: View {
             }
             .tabViewStyle(.sidebarAdaptable)
             
-            // 2. Global MiniPlayer Overlay with Liquid Glass (ultraThinMaterial)
+            // Global MiniPlayer Overlay with Liquid Glass
             VStack {
                 Spacer()
                 if audioManager.currentTrack != nil {
@@ -75,7 +77,6 @@ struct ContentView: View {
                 }
             }
 
-            // 3. NowPlaying overlay with smooth .identity offset physics
             if showNowPlaying {
                 NowPlayingView(isPresented: $showNowPlaying)
                     .transition(.identity) 
@@ -106,7 +107,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Reusable Tab Content Wrapper
     @ViewBuilder
     private func tabContent(for category: LibraryCategory) -> some View {
         NavigationStack {
@@ -185,9 +185,9 @@ struct ContentView: View {
         }
     }
 
-    private func titleForCategory(_ category: LibraryCategory) -> String {
+    private func titleForCategory(_ category: LibraryCategory?) -> String {
         switch category {
-        case .songs: return "Songs"
+        case .songs, .none: return "Songs"
         case .albums: return "Albums"
         case .artists: return "Artists"
         case .playlist(let id): return library.playlists.first(where: { $0.id == id })?.name ?? "Playlist"
