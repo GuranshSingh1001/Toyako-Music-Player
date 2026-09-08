@@ -384,13 +384,14 @@ private struct SmoothLyricsView: View {
                 Text(line.text)
                     .font(
                         .system(
-                            size: active ? 48 : 43,
+                            size: active ? 50 : 50,
                             weight: .bold,
                             design: .rounded
                         )
                     )
                     .foregroundStyle(.white)
                     .opacity(active ? 1 : 0.30)
+                    .blur(radius: active ? 0 : 1.8)
                     .scaleEffect(active ? 1 : 0.985, anchor: .leading)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -398,13 +399,14 @@ private struct SmoothLyricsView: View {
                     Text(romanized)
                         .font(
                             .system(
-                                size: active ? 21 : 19,
+                                size: active ? 22 : 22,
                                 weight: .medium,
                                 design: .rounded
                             )
                         )
                         .foregroundStyle(.white)
                         .opacity(active ? 0.72 : 0.20)
+                        .blur(radius: active ? 0 : 1.2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
