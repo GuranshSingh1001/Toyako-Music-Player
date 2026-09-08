@@ -14,29 +14,42 @@ struct PlaylistAddSongsSheet: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             FolderBrowserView(
-                currentURL: rootDirectory, rootURL: rootDirectory,
-                library: library, selectedURLs: $selectedURLs,
-                onNavigate: { navigationPath.append($0) }
+                currentURL: rootDirectory,
+                rootURL: rootDirectory,
+                library: library,
+                selectedURLs: $selectedURLs,
+                onNavigate: { folderURL in
+                    navigationPath.append(folderURL)
+                }
             )
             .navigationDestination(for: URL.self) { folderURL in
                 FolderBrowserView(
-                    currentURL: folderURL, rootURL: rootDirectory,
-                    library: library, selectedURLs: $selectedURLs,
-                    onNavigate: { navigationPath.append($0) }
+                    currentURL: folderURL,
+                    rootURL: rootDirectory,
+                    library: library,
+                    selectedURLs: $selectedURLs,
+                    onNavigate: { nextURL in
+                        navigationPath.append(nextURL)
+                    }
                 )
             }
             .navigationTitle("Add Songs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done (\(selectedURLs.count))") {
                         library.addTracksToPlaylist(playlistID: playlist.id, trackURLs: Array(selectedURLs))
                         dismiss()
-                    }.fontWeight(.bold)
+                    }
+                    .fontWeight(.bold)
                 }
             }
         }
-        .onAppear { selectedURLs = Set(playlist.trackURLs) }
+        .onAppear {
+            selectedURLs = Set(playlist.trackURLs)
+        }
     }
 }
