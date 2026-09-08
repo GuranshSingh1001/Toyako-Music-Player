@@ -4,46 +4,41 @@ struct AbstractPlaylistCover: View {
     let playlistID: UUID
     
     var body: some View {
-        if #available(iOS 18.0, *) {
-            MeshGradient(
-                width: 3, 
-                height: 3,
-                points: [
-                    [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
-                    [0.0, 0.5], [0.8, 0.2], [1.0, 0.5],
-                    [0.0, 1.0], [0.5, 1.0], [1.0, 1.0]
-                ],
-                colors: meshColors(for: playlistID)
-            )
-            .overlay {
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 54, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .blendMode(.overlay)
-            }
-        } else {
-            // Fallback for older iOS versions
+        let colors = palette(for: playlistID)
+        
+        ZStack {
+            // Clean, rich Apple Music style background
             LinearGradient(
-                colors: [meshColors(for: playlistID).first ?? .purple, meshColors(for: playlistID).last ?? .blue],
+                colors: [colors.0, colors.1],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            .overlay {
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 54, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .blendMode(.overlay)
-            }
+            
+            // Soft overlay glow
+            RadialGradient(
+                colors: [.white.opacity(0.3), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 150
+            )
+            .blendMode(.overlay)
+            
+            Image(systemName: "music.note.list")
+                .font(.system(size: 50, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
         }
     }
     
-    private func meshColors(for id: UUID) -> [Color] {
+    private func palette(for id: UUID) -> (Color, Color) {
         let hash = abs(id.hashValue)
-        let palettes: [[Color]] = [
-            [.purple, .indigo, .blue, .pink, .orange, .red, .purple, .pink, .orange], 
-            [.teal, .cyan, .blue, .mint, .teal, .indigo, .green, .mint, .teal],       
-            [.black, .purple, .indigo, .red, .pink, .purple, .black, .red, .orange],  
-            [.blue, .purple, .pink, .cyan, .indigo, .purple, .teal, .blue, .pink]     
+        let palettes: [(Color, Color)] = [
+            (.pink, .red),         // Classic Apple Music Pink
+            (.cyan, .blue),        // Deep Ocean
+            (.purple, .pink),      // Berry
+            (.mint, .teal),        // Fresh
+            (.orange, .red),       // Sunset
+            (.indigo, .purple)     // Midnight
         ]
         return palettes[hash % palettes.count]
     }
