@@ -7,7 +7,6 @@ struct FolderBrowserView: View {
     @Binding var selectedURLs: Set<URL>
     let onNavigate: (URL) -> Void
 
-    // Pre-computed arrays prevent main-thread lag during scroll
     @State private var subfolders: [(url: URL, count: Int)] = []
     @State private var localTracks: [LocalTrack] = []
     @State private var isLoaded = false
@@ -76,17 +75,17 @@ struct FolderBrowserView: View {
     private func loadContents() {
         guard !isLoaded else { return }
         
+        // Extract safely on main thread to avoid strict concurrency crashes
+        let currentTracks = library.tracks 
+        let path = currentURL.standardizedFileURL.path
+        
         DispatchQueue.global(qos: .userInitiated).async {
-            let path = currentURL.standardizedFileURL.path
-            
-            // 1. Find tracks directly in this folder
-            let tracksInFolder = library.tracks.filter {
+            let tracksInFolder = currentTracks.filter {
                 $0.url.deletingLastPathComponent().standardizedFileURL.path == path
             }
             
-            // 2. Find immediate subfolders efficiently
             var folderCounts: [URL: Int] = [:]
-            for track in library.tracks {
+            for track in currentTracks {
                 let trackDir = track.url.deletingLastPathComponent().standardizedFileURL.path
                 if trackDir.hasPrefix(path) && trackDir != path {
                     let relativePath = trackDir.replacingOccurrences(of: path + "/", with: "")
