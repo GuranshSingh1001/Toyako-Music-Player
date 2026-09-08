@@ -6,7 +6,6 @@ enum LibraryCategory: Hashable {
     case albums
     case artists
     case allPlaylists
-    case playlist(UUID)
 }
 
 struct ContentView: View {
@@ -38,26 +37,17 @@ struct ContentView: View {
             Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
                 tabContent(for: .allPlaylists)
             }
-            
-            TabSection("My Playlists") {
-                ForEach(library.playlists) { pl in
-                    Tab(pl.name, systemImage: "music.note.list", value: LibraryCategory.playlist(pl.id)) {
-                        tabContent(for: .playlist(pl.id))
-                    }
-                }
-            }
         }
         .tabViewStyle(.sidebarAdaptable)
-        // 1. Completely removes the view from hierarchy when false, allowing taps to pass through to the miniplayer
         .overlay {
-            if showNowPlaying {
+            GeometryReader { proxy in
                 NowPlayingView(isPresented: $showNowPlaying)
-                    .transition(.move(edge: .bottom))
-                    .ignoresSafeArea()
-                    .zIndex(2)
+                    .offset(y: showNowPlaying ? 0 : proxy.size.height)
+                    .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
+                    .allowsHitTesting(showNowPlaying)
             }
+            .ignoresSafeArea()
         }
-        .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: showNowPlaying)
         .sheet(isPresented: $showFilePicker) {
             DocumentPicker { urls in
                 library.importExternalURLs(urls)
@@ -101,15 +91,16 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom) {
             if audioManager.currentTrack != nil {
-                MiniPlayerView()
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        showNowPlaying = true
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                Button {
+                    showNowPlaying = true
+                } label: {
+                    MiniPlayerView()
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
             }
         }
     }
@@ -124,31 +115,11 @@ struct ContentView: View {
         case .artists:
             ArtistListView(artists: filteredArtists, library: library)
         case .allPlaylists:
-            // 2. Pass down an action instead of mutating selectedCategory directly
             AllPlaylistsGridView(
                 playlists: library.playlists, 
                 library: library, 
                 onEditPlaylist: { pl in playlistToEdit = pl }
             )
-        case .playlist(let id):
-            if let pl = library.playlists.first(where: { $0.id == id }) {
-                let pTracks = library.tracks.filter { pl.trackURLs.contains($0.url) }
-                let displayedPlaylistTracks = filterTracks(pTracks)
-
-                SongListView(
-                    tracks: displayedPlaylistTracks,
-                    allTracks: pTracks,
-                    library: library,
-                    playlistID: pl.id,
-                    headerView: searchText.isEmpty ? AnyView(
-                        PlaylistHeaderView(
-                            playlist: pl,
-                            tracks: pTracks,
-                            onAddSongs: { playlistToEdit = pl }
-                        )
-                    ) : nil
-                )
-            }
         }
     }
 
@@ -158,7 +129,6 @@ struct ContentView: View {
         case .albums: return "Albums"
         case .artists: return "Artists"
         case .allPlaylists: return "All Playlists"
-        case .playlist(let id): return library.playlists.first(where: { $0.id == id })?.name ?? "Playlist"
         }
     }
 
