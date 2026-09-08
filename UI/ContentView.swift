@@ -59,9 +59,12 @@ struct ContentView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
 
+        // MARK: - Now Playing Overlay
+
         .overlay {
             NowPlayingView(
-                isPresented: $showNowPlaying
+                isPresented:
+                    $showNowPlaying
             )
             .offset(
                 y:
@@ -73,20 +76,26 @@ struct ContentView: View {
                 .easeOut(duration: 0.3),
                 value: showNowPlaying
             )
-            .allowsHitTesting(showNowPlaying)
+            .allowsHitTesting(
+                showNowPlaying
+            )
             .ignoresSafeArea(.all)
         }
 
         .sheet(
-            isPresented: $showFilePicker
+            isPresented:
+                $showFilePicker
         ) {
             DocumentPicker { urls in
-                library.importExternalURLs(urls)
+                library.importExternalURLs(
+                    urls
+                )
             }
         }
 
         .sheet(
-            item: $playlistToEdit
+            item:
+                $playlistToEdit
         ) { playlist in
             PlaylistAddSongsSheet(
                 playlist: playlist,
@@ -96,11 +105,13 @@ struct ContentView: View {
 
         .alert(
             "Create Playlist",
-            isPresented: $showNewPlaylistAlert
+            isPresented:
+                $showNewPlaylistAlert
         ) {
             TextField(
                 "Playlist Name",
-                text: $newPlaylistName
+                text:
+                    $newPlaylistName
             )
 
             Button(
@@ -113,7 +124,8 @@ struct ContentView: View {
             Button("Create") {
                 if !newPlaylistName.isEmpty {
                     library.createPlaylist(
-                        name: newPlaylistName
+                        name:
+                            newPlaylistName
                     )
 
                     newPlaylistName = ""
@@ -123,20 +135,22 @@ struct ContentView: View {
 
         .alert(
             "Rename Playlist",
-            isPresented: Binding(
-                get: {
-                    playlistToRename != nil
-                },
-                set: {
-                    if !$0 {
-                        playlistToRename = nil
+            isPresented:
+                Binding(
+                    get: {
+                        playlistToRename != nil
+                    },
+                    set: {
+                        if !$0 {
+                            playlistToRename = nil
+                        }
                     }
-                }
-            )
+                )
         ) {
             TextField(
                 "New Name",
-                text: $renameText
+                text:
+                    $renameText
             )
 
             Button(
@@ -147,12 +161,15 @@ struct ContentView: View {
             }
 
             Button("Save") {
-                if let playlist = playlistToRename,
+                if let pl =
+                    playlistToRename,
                    !renameText.isEmpty {
 
                     library.renamePlaylist(
-                        id: playlist.id,
-                        newName: renameText
+                        id:
+                            pl.id,
+                        newName:
+                            renameText
                     )
                 }
 
@@ -166,28 +183,40 @@ struct ContentView: View {
         )
     }
 
+    // MARK: - Tab Content
+
     @ViewBuilder
     private func tabContent(
-        for category: LibraryCategory
+        for category:
+            LibraryCategory
     ) -> some View {
+
         NavigationStack {
             detailContent(
                 for: category
             )
             .searchable(
-                text: $searchText,
-                prompt: "Search library"
+                text:
+                    $searchText,
+                prompt:
+                    "Search library"
             )
             .navigationTitle(
-                titleForCategory(category)
+                titleForCategory(
+                    category
+                )
             )
             .toolbar {
+
                 ToolbarItem(
-                    placement: .primaryAction
+                    placement:
+                        .primaryAction
                 ) {
                     Menu {
+
                         Button {
-                            showFilePicker = true
+                            showFilePicker =
+                                true
                         } label: {
                             Label(
                                 "Import Audio",
@@ -197,7 +226,8 @@ struct ContentView: View {
                         }
 
                         Button {
-                            showNewPlaylistAlert = true
+                            showNewPlaylistAlert =
+                                true
                         } label: {
                             Label(
                                 "New Playlist",
@@ -205,9 +235,11 @@ struct ContentView: View {
                                     "plus.rectangle.on.rectangle"
                             )
                         }
+
                     } label: {
                         Image(
-                            systemName: "plus"
+                            systemName:
+                                "plus"
                         )
                     }
                 }
@@ -230,76 +262,105 @@ struct ContentView: View {
             }
         }
 
+        // MARK: - Mini Player
+
         .safeAreaInset(
             edge: .bottom
         ) {
             if audioManager.currentTrack != nil {
 
-                MiniPlayerView()
-                    .contentShape(Capsule())
-                    .glassEffect(
-                        .regular.interactive(),
-                        in: .capsule
-                    )
-                    .shadow(
-                        color:
-                            .black.opacity(0.15),
-                        radius: 15,
-                        y: 8
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-                    .onTapGesture {
-                        showNowPlaying = true
-                    }
+                MiniPlayerView {
+                    showNowPlaying = true
+                }
+                .glassEffect(
+                    .regular.interactive(),
+                    in: .capsule
+                )
+                .shadow(
+                    color:
+                        .black.opacity(0.15),
+                    radius: 15,
+                    y: 8
+                )
+                .padding(
+                    .horizontal,
+                    16
+                )
+                .padding(
+                    .bottom,
+                    12
+                )
             }
         }
     }
 
+    // MARK: - Detail Content
+
     @ViewBuilder
     private func detailContent(
-        for category: LibraryCategory
+        for category:
+            LibraryCategory
     ) -> some View {
+
         switch category {
 
         case .songs:
             SongListView(
-                tracks: filteredTracks,
-                allTracks: library.tracks,
-                library: library
+                tracks:
+                    filteredTracks,
+                allTracks:
+                    library.tracks,
+                library:
+                    library
             )
 
         case .albums:
             AlbumGridView(
-                albums: filteredAlbums,
-                library: library
+                albums:
+                    filteredAlbums,
+                library:
+                    library
             )
 
         case .artists:
             ArtistListView(
-                artists: filteredArtists,
-                library: library
+                artists:
+                    filteredArtists,
+                library:
+                    library
             )
 
         case .allPlaylists:
             AllPlaylistsGridView(
-                playlists: library.playlists,
-                library: library,
-                onAddSongs: { playlist in
-                    playlistToEdit = playlist
+                playlists:
+                    library.playlists,
+                library:
+                    library,
+
+                onAddSongs: { pl in
+                    playlistToEdit = pl
                 },
-                onRename: { playlist in
-                    renameText = playlist.name
-                    playlistToRename = playlist
+
+                onRename: { pl in
+                    renameText =
+                        pl.name
+
+                    playlistToRename =
+                        pl
                 }
             )
         }
     }
 
+    // MARK: - Titles
+
     private func titleForCategory(
-        _ category: LibraryCategory?
+        _ category:
+            LibraryCategory?
     ) -> String {
+
         switch category {
+
         case .songs, .none:
             return "Songs"
 
@@ -314,45 +375,75 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Search
+
     private func filterTracks(
-        _ source: [LocalTrack]
+        _ source:
+            [LocalTrack]
     ) -> [LocalTrack] {
+
         if searchText.isEmpty {
             return source
         }
 
         return source.filter {
-            $0.title.localizedCaseInsensitiveContains(
-                searchText
-            )
+            $0.title
+                .localizedCaseInsensitiveContains(
+                    searchText
+                )
             ||
-            $0.artist.localizedCaseInsensitiveContains(
-                searchText
-            )
+            $0.artist
+                .localizedCaseInsensitiveContains(
+                    searchText
+                )
+            ||
+            $0.album
+                .localizedCaseInsensitiveContains(
+                    searchText
+                )
         }
     }
 
-    private var filteredTracks: [LocalTrack] {
-        filterTracks(library.tracks)
+    private var filteredTracks:
+        [LocalTrack] {
+
+        filterTracks(
+            library.tracks
+        )
     }
 
-    private var filteredAlbums: [Album] {
-        library.albums.filter { album in
-            searchText.isEmpty
+    private var filteredAlbums:
+        [AlbumGroup] {
+
+        if searchText.isEmpty {
+            return library.albums
+        }
+
+        return library.albums.filter {
+            $0.name
+                .localizedCaseInsensitiveContains(
+                    searchText
+                )
             ||
-            album.name.localizedCaseInsensitiveContains(
-                searchText
-            )
+            $0.artist
+                .localizedCaseInsensitiveContains(
+                    searchText
+                )
         }
     }
 
-    private var filteredArtists: [Artist] {
-        library.artists.filter { artist in
-            searchText.isEmpty
-            ||
-            artist.name.localizedCaseInsensitiveContains(
-                searchText
-            )
+    private var filteredArtists:
+        [ArtistGroup] {
+
+        if searchText.isEmpty {
+            return library.artists
+        }
+
+        return library.artists.filter {
+            $0.name
+                .localizedCaseInsensitiveContains(
+                    searchText
+                )
         }
     }
 }
