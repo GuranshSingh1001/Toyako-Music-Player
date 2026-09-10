@@ -166,8 +166,10 @@ class AudioEngineManager: ObservableObject {
         player.seek(to: CMTime(seconds: max(0, min(state.position, current.duration)), preferredTimescale: 600))
         currentTime = max(0, min(state.position, current.duration))
         playbackProgress = current.duration > 0 ? currentTime / current.duration : 0
-        isPlaying = state.isPlaying
-        if state.isPlaying { player.play() }
+        // Restore the exact track and position, but never auto-start audio
+        // after a relaunch. The user must explicitly press Play.
+        isPlaying = false
+        player.pause()
         updateNowPlaying(track: current)
         attachTimeObserver(duration: current.duration)
         endObserverToken = NotificationCenter.default.addObserver(
