@@ -6,6 +6,11 @@ import AVFoundation
 class LocalLibrary:
     ObservableObject {
 
+    private struct FileFingerprint: Codable, Equatable {
+        let size: UInt64
+        let modified: TimeInterval
+    }
+
     @Published var tracks:
         [LocalTrack] = []
 
@@ -49,6 +54,12 @@ class LocalLibrary:
             )
     }
 
+    private var indexManifestURL: URL {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("tracks_index_manifest.json")
+    }
+
     init() {
         loadPlaylists()
         loadTracksFromCache()
@@ -58,342 +69,235 @@ class LocalLibrary:
     // MARK: - Scanning
 
     func reloadFiles() {
-
-        if tracks.isEmpty {
-            statusMessage =
-                "Scanning..."
+        let cachedTracks = tracks
+        if cachedTracks.isEmpty {
+            statusMessage = "Scanning..."
         }
 
-        Task {
-            let discovered =
-                await runBackgroundScan()
-
-            self.tracks =
-                discovered
-
-            self.rebuildGroups()
-
-            self.statusMessage =
-                "Indexed \(discovered.count) songs"
-
-            self.saveTracksToCache()
-        }
-    }
-
-    nonisolated
-    private func runBackgroundScan()
-        async -> [LocalTrack] {
-
-        let fileManager =
-            FileManager.default
-
-        guard let docs =
-            fileManager.urls(
-                for:
-                    .documentDirectory,
-                in:
-                    .userDomainMask
-            ).first
-        else {
-            return []
-        }
-
-        let audioExtensions:
-            Set<String> = [
-                "mp3",
-                "m4a",
-                "mp4",
-                "wav",
-                "wave",
-                "flac",
-                "aac",
-                "aiff",
-                "aif",
-                "alac",
-                "caf"
-            ]
-
-        var discoveredURLs:
-            [URL] = []
-
-        if let enumerator =
-            fileManager.enumerator(
-                at:
-                    docs,
-                includingPropertiesForKeys:
-                    [
-                        .isRegularFileKey
-                    ],
-                options:
-                    [
-                        .skipsHiddenFiles,
-                        .skipsPackageDescendants
-                    ]
-            ) {
-
-            while let url =
-                enumerator.nextObject()
-                as? URL {
-
-                let extensionName =
-                    url.pathExtension
-                        .lowercased()
-
-                guard audioExtensions
-                    .contains(
-                        extensionName
-                    )
-                else {
-                    continue
-                }
-
-                // Avoid an extra filesystem metadata lookup for every file.
-                // The enumerator already gives us the URL; directories with an
-                // audio-looking suffix are simply ignored.
-                guard !url.hasDirectoryPath else {
-                    continue
-                }
-
-                discoveredURLs.append(url)
-            }
-        }
-
-        // Parse multiple audio files concurrently. A bounded task group keeps
-        // indexing fast without creating hundreds of AVAsset operations at once.
-        let concurrencyLimit = min(8, max(1, discoveredURLs.count))
-        var discovered: [LocalTrack] = []
-        discovered.reserveCapacity(discoveredURLs.count)
-
-        await withTaskGroup(of: (Int, LocalTrack).self) { group in
-            var nextIndex = 0
-
-            for _ in 0..<concurrencyLimit {
-                let index = nextIndex
-                nextIndex += 1
-                let url = discoveredURLs[index]
-                group.addTask {
-                    (index, await LocalLibrary.parseAsset(at: url))
-                }
-            }
-
-            while let result = await group.next() {
-                discovered.append(result.1)
-
-                if nextIndex < discoveredURLs.count {
-                    let index = nextIndex
-                    nextIndex += 1
-                    let url = discoveredURLs[index]
-                    group.addTask {
-                        (index, await LocalLibrary.parseAsset(at: url))
-                    }
-                }
-            }
-        }
-
-        discovered.sort {
-            $0.title
-                .localizedCaseInsensitiveCompare(
-                    $1.title
-                )
-                ==
-                .orderedAscending
-        }
-
-        return discovered
-    }
-
-    nonisolated
-    private static func parseAsset(
-        at url:
-            URL
-    ) async -> LocalTrack {
-
-        let asset =
-            AVURLAsset(
-                url: url,
-                options: [
-                    AVURLAssetPreferPreciseDurationAndTimingKey: false
-                ]
+        let manifestURL = indexManifestURL
+        Task(priority: .utility) {
+            let discovered = await Self.runIncrementalScan(
+                cachedTracks: cachedTracks,
+                manifestURL: manifestURL
             )
 
+            await MainActor.run {
+                guard !discovered.isEmpty || !cachedTracks.isEmpty else { return }
+                self.tracks = discovered
+                self.rebuildGroups()
+                self.statusMessage = "Indexed \(discovered.count) songs"
+                self.saveTracksToCache()
+            }
+        }
+    }
+
+    nonisolated
+    private static func runIncrementalScan(
+        cachedTracks: [LocalTrack],
+        manifestURL: URL
+    ) async -> [LocalTrack] {
+        let fileManager = FileManager.default
+        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return cachedTracks
+        }
+
+        let audioExtensions: Set<String> = [
+            "mp3", "m4a", "mp4", "wav", "wave", "flac", "aac", "aiff", "aif", "alac", "caf"
+        ]
+
+        var files: [(url: URL, fingerprint: FileFingerprint)] = []
+        if let enumerator = fileManager.enumerator(
+            at: docs,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) {
+            while let url = enumerator.nextObject() as? URL {
+                guard audioExtensions.contains(url.pathExtension.lowercased()) else { continue }
+                guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
+                      values.isRegularFile == true else { continue }
+                files.append((
+                    url,
+                    FileFingerprint(
+                        size: UInt64(values.fileSize ?? 0),
+                        modified: values.contentModificationDate?.timeIntervalSinceReferenceDate ?? 0
+                    )
+                ))
+            }
+        }
+
+        var oldManifest: [String: FileFingerprint] = [:]
+        if let data = try? Data(contentsOf: manifestURL),
+           let decoded = try? JSONDecoder().decode([String: FileFingerprint].self, from: data) {
+            oldManifest = decoded
+        }
+
+        let currentManifest = Dictionary(uniqueKeysWithValues: files.map { ($0.url.standardizedFileURL.path, $0.fingerprint) })
+        let cachedByPath = Dictionary(uniqueKeysWithValues: cachedTracks.map { ($0.url.standardizedFileURL.path, $0) })
+
+        // Fast path: the library has not changed. Do not open a single AVAsset.
+        if currentManifest == oldManifest,
+           files.count == cachedTracks.count,
+           !cachedTracks.isEmpty {
+            return cachedTracks
+        }
+
+        var result: [LocalTrack] = []
+        result.reserveCapacity(files.count)
+        var changed: [(Int, URL, LocalTrack?)] = []
+
+        for (index, file) in files.enumerated() {
+            let path = file.url.standardizedFileURL.path
+            if let cached = cachedByPath[path], oldManifest[path] == file.fingerprint {
+                result.append(cached)
+            } else {
+                result.append(cachedByPath[path] ?? LocalTrack(url: file.url, title: file.url.deletingPathExtension().lastPathComponent))
+                changed.append((index, file.url, cachedByPath[path]))
+            }
+        }
+
+        if !changed.isEmpty {
+            let parsed = await withTaskGroup(of: (Int, LocalTrack).self, returning: [Int: LocalTrack].self) { group in
+                for (index, url, cached) in changed {
+                    group.addTask {
+                        let parsed = await Self.parseAsset(at: url)
+                        if let cached {
+                            return (index, LocalTrack(
+                                id: cached.id,
+                                url: parsed.url,
+                                title: parsed.title,
+                                artist: parsed.artist,
+                                album: parsed.album,
+                                genre: parsed.genre,
+                                duration: parsed.duration,
+                                artworkData: parsed.artworkData
+                            ))
+                        }
+                        return (index, parsed)
+                    }
+                }
+
+                var values: [Int: LocalTrack] = [:]
+                for await (index, track) in group {
+                    values[index] = track
+                }
+                return values
+            }
+
+            for (index, track) in parsed {
+                result[index] = track
+            }
+        }
+
+        result.sort {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+
+        if let data = try? JSONEncoder().encode(currentManifest) {
+            try? data.write(to: manifestURL, options: .atomic)
+        }
+
+        return result
+    }
+
+    nonisolated
+    private static func parseAsset(at url: URL) async -> LocalTrack {
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
+        )
+
         async let durationValue = asset.load(.duration)
-        async let metadataValue = asset.load(.metadata)
+        async let metadataValue = asset.load(.commonMetadata)
 
-        let durationSeconds =
-            (try? await durationValue)?.seconds ?? 0
+        let durationSeconds = (try? await durationValue)?.seconds ?? 0
+        let duration = durationSeconds.isFinite ? max(0, durationSeconds) : 0
+        let metadata = (try? await metadataValue) ?? []
 
-        let duration =
-            durationSeconds.isFinite
-            ? max(0, durationSeconds)
-            : 0
+        var title = url.deletingPathExtension().lastPathComponent
+        var artist = "Unknown Artist"
+        var album = "Unknown Album"
+        var genre = "Unknown Genre"
+        var artworkData: Data?
 
-        let metadata =
-            (try? await metadataValue) ?? []
-
-        var title =
-            url
-                .deletingPathExtension()
-                .lastPathComponent
-
-        var artist =
-            "Unknown Artist"
-
-        var album =
-            "Unknown Album"
-
-        var genre =
-            "Unknown Genre"
-
-        var artworkData:
-            Data?
-
+        // Only load the metadata values that are actually used. commonMetadata is
+        // considerably cheaper than asking AVFoundation for the complete metadata set.
         for item in metadata {
+            let key = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
 
-            let key =
-                item.commonKey?
-                    .rawValue
-                ??
-                (item.key as? String)
-                ??
-                ""
-
-            if [
-                "title",
-                "TIT2",
-                "©nam"
-            ].contains(key) {
-
-                if let value =
-                    try? await item
-                        .load(
-                            .stringValue
-                        ),
-                   !value
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines
-                    )
-                    .isEmpty {
-
-                    title =
-                        value
-                }
-
-            } else if [
-                "artist",
-                "TPE1",
-                "TPE2",
-                "©ART",
-                "aART"
-            ].contains(key) {
-
-                if let value =
-                    try? await item
-                        .load(
-                            .stringValue
-                        ),
-                   !value
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines
-                    )
-                    .isEmpty {
-
-                    artist =
-                        value
-                }
-
-            } else if [
-                "albumName",
-                "album",
-                "TALB",
-                "©alb"
-            ].contains(key) {
-
-                if let value =
-                    try? await item
-                        .load(
-                            .stringValue
-                        ),
-                   !value
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines
-                    )
-                    .isEmpty {
-
-                    album =
-                        value
-                }
-
-            } else if [
-                "type",
-                "genre",
-                "TCON",
-                "©gen"
-            ].contains(key) {
-
-                if let value =
-                    try? await item
-                        .load(
-                            .stringValue
-                        ),
-                   !value
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines
-                    )
-                    .isEmpty {
-
-                    genre =
-                        value
-                }
-
-            } else if [
-                "artwork",
-                "APIC",
-                "covr"
-            ].contains(key) {
-
-                if let data =
-                    try? await item
-                        .load(
-                            .dataValue
-                        ) {
-
-                    artworkData =
-                        data
-
-                } else if let value =
-                    try? await item
-                        .load(
-                            .value
-                        ),
-                          let data =
-                            value as? Data {
-
-                    artworkData =
-                        data
+            if ["title", "TIT2", "©nam"].contains(key),
+               let value = try? await item.load(.stringValue),
+               !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                title = value
+            } else if ["artist", "TPE1", "TPE2", "©ART", "aART"].contains(key),
+                      let value = try? await item.load(.stringValue),
+                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                artist = value
+            } else if ["albumName", "album", "TALB", "©alb"].contains(key),
+                      let value = try? await item.load(.stringValue),
+                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                album = value
+            } else if ["type", "genre", "TCON", "©gen"].contains(key),
+                      let value = try? await item.load(.stringValue),
+                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                genre = value
+            } else if ["artwork", "APIC", "covr"].contains(key) {
+                artworkData = try? await item.load(.dataValue)
+                if artworkData == nil, let value = try? await item.load(.value), let data = value as? Data {
+                    artworkData = data
                 }
             }
         }
 
         return LocalTrack(
-            url:
-                url,
-            title:
-                title,
-            artist:
-                artist,
-            album:
-                album,
-            genre:
-                genre,
-            duration:
-                duration,
-            artworkData:
-                artworkData
+            url: url,
+            title: title,
+            artist: artist,
+            album: album,
+            genre: genre,
+            duration: duration,
+            artworkData: artworkData
         )
+    }
+
+    /// Artwork is fetched only for the active track on a cached launch. This keeps
+    /// startup fast without leaving Now Playing stuck with a blank cover.
+    func refreshArtwork(for track: LocalTrack) {
+        guard track.artworkData == nil else { return }
+        let url = track.url
+
+        Task(priority: .utility) {
+            let refreshed = await Self.parseArtworkOnly(at: url)
+            guard let artworkData = refreshed else { return }
+
+            await MainActor.run {
+                guard let index = self.tracks.firstIndex(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) else { return }
+                let old = self.tracks[index]
+                self.tracks[index] = LocalTrack(
+                    id: old.id,
+                    url: old.url,
+                    title: old.title,
+                    artist: old.artist,
+                    album: old.album,
+                    genre: old.genre,
+                    duration: old.duration,
+                    artworkData: artworkData
+                )
+                self.rebuildGroups()
+            }
+        }
+    }
+
+    nonisolated
+    private static func parseArtworkOnly(at url: URL) async -> Data? {
+        let asset = AVURLAsset(url: url)
+        let metadata = (try? await asset.load(.commonMetadata)) ?? []
+        for item in metadata {
+            let key = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
+            guard ["artwork", "APIC", "covr"].contains(key) else { continue }
+            if let data = try? await item.load(.dataValue) { return data }
+            if let value = try? await item.load(.value), let data = value as? Data { return data }
+        }
+        return nil
     }
 
     // MARK: - Groups
