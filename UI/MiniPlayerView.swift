@@ -1,303 +1,112 @@
 import SwiftUI
 
 struct MiniPlayerView: View {
-    @EnvironmentObject var audioManager:
-        AudioEngineManager
-
-    let onOpenNowPlaying:
-        () -> Void
-
-    @State private var
-        playPausePressed = false
-
-    @State private var
-        previousPressed = false
-
-    @State private var
-        nextPressed = false
-
-    init(
-        onOpenNowPlaying:
-            @escaping () -> Void
-    ) {
-        self.onOpenNowPlaying =
-            onOpenNowPlaying
-    }
+    @EnvironmentObject var audioManager: AudioEngineManager
+    let onOpenNowPlaying: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        Button {
+            onOpenNowPlaying()
+        } label: {
+            HStack(spacing: 11) {
+                artwork
+                    .padding(.leading, 5)
 
-            // MARK: - Artwork + Track Information
-            //
-            // This area opens Now Playing.
-            // Playback buttons below remain independent.
-
-            Button {
-                onOpenNowPlaying()
-            } label: {
-                HStack(spacing: 10) {
-                    artwork
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: 2
-                    ) {
-                        Text(
-                            audioManager
-                                .currentTrack?
-                                .title
-                                ?? "Not Playing"
-                        )
-                        .font(
-                            .subheadline
-                                .weight(.semibold)
-                        )
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(audioManager.currentTrack?.title ?? "Not Playing")
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
 
-                        Text(
-                            audioManager
-                                .currentTrack?
-                                .artist
-                                ?? "Unknown Artist"
-                        )
+                    Text(audioManager.currentTrack?.artist ?? "Unknown Artist")
                         .font(.caption)
-                        .foregroundStyle(
-                            .secondary
-                        )
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
+
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(.primary.opacity(0.12))
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(.primary.opacity(0.55))
+                                    .frame(width: proxy.size.width * min(max(audioManager.playbackProgress, 0), 1))
+                            }
                     }
+                    .frame(height: 2.5)
+                    .clipped()
                 }
-                .frame(
-                    maxWidth: .infinity,
-                    alignment: .leading
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                MiniPlayerActivity(
+                    isPlaying: audioManager.isPlaying,
+                    progress: audioManager.playbackProgress,
+                    currentTime: audioManager.currentTime
                 )
-                .contentShape(Rectangle())
+                .padding(.trailing, 10)
             }
-            .buttonStyle(.plain)
-
-            // MARK: - Previous
-
-            Button {
-                previousPressed = true
-
-                audioManager.backward()
-
-                DispatchQueue.main.asyncAfter(
-                    deadline: .now() + 0.14
-                ) {
-                    previousPressed = false
-                }
-            } label: {
-                Image(
-                    systemName:
-                        "backward.fill"
-                )
-                .font(
-                    .system(
-                        size: 17,
-                        weight: .semibold
-                    )
-                )
-                .frame(
-                    width: 34,
-                    height: 44
-                )
-                .scaleEffect(
-                    previousPressed
-                    ? 0.78
-                    : 1.0
-                )
-                .animation(
-                    .spring(
-                        response: 0.28,
-                        dampingFraction: 0.72
-                    ),
-                    value:
-                        previousPressed
-                )
-            }
-            .buttonStyle(.plain)
-
-            // MARK: - Play / Pause
-
-            Button {
-                playPausePressed = true
-
-                audioManager.togglePlayPause()
-
-                DispatchQueue.main.asyncAfter(
-                    deadline: .now() + 0.14
-                ) {
-                    playPausePressed = false
-                }
-            } label: {
-                Image(
-                    systemName:
-                        audioManager.isPlaying
-                        ? "pause.fill"
-                        : "play.fill"
-                )
-                .font(
-                    .system(
-                        size: 20,
-                        weight: .medium
-                    )
-                )
-                .frame(
-                    width: 34,
-                    height: 44
-                )
-                .scaleEffect(
-                    playPausePressed
-                    ? 0.76
-                    : 1.0
-                )
-                .contentTransition(
-                    .symbolEffect(.replace)
-                )
-                .animation(
-                    .spring(
-                        response: 0.28,
-                        dampingFraction: 0.72
-                    ),
-                    value:
-                        playPausePressed
-                )
-            }
-            .buttonStyle(.plain)
-
-            // MARK: - Next
-
-            Button {
-                nextPressed = true
-
-                audioManager.forward()
-
-                DispatchQueue.main.asyncAfter(
-                    deadline: .now() + 0.14
-                ) {
-                    nextPressed = false
-                }
-            } label: {
-                Image(
-                    systemName:
-                        "forward.fill"
-                )
-                .font(
-                    .system(
-                        size: 17,
-                        weight: .semibold
-                    )
-                )
-                .frame(
-                    width: 34,
-                    height: 44
-                )
-                .scaleEffect(
-                    nextPressed
-                    ? 0.78
-                    : 1.0
-                )
-                .animation(
-                    .spring(
-                        response: 0.28,
-                        dampingFraction: 0.72
-                    ),
-                    value:
-                        nextPressed
-                )
-            }
-            .buttonStyle(.plain)
+            .padding(.vertical, 7)
+            .foregroundStyle(.primary)
+            .contentShape(Rectangle())
         }
-        .padding(
-            .vertical,
-            7
-        )
-        .padding(
-            .leading,
-            8
-        )
-        .padding(
-            .trailing,
-            5
-        )
-        .foregroundStyle(.primary)
-
-        // Only the artwork/title/artist button above opens Now Playing.
-        // Playback controls remain completely independent.
-
-        .animation(
-            .easeInOut(
-                duration: 0.18
-            ),
-            value:
-                audioManager
-                    .currentTrack?
-                    .id
-        )
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.18), value: audioManager.currentTrack?.id)
     }
-
-    // MARK: - Artwork
 
     private var artwork: some View {
         Group {
-            if let track =
-                audioManager.currentTrack,
-               let data =
-                track.artworkData,
-               let image =
-                UIImage(data: data) {
-
-                Image(
-                    uiImage: image
-                )
-                .resizable()
-                .scaledToFill()
-                .frame(
-                    width: 44,
-                    height: 44
-                )
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 8,
-                        style: .continuous
-                    )
-                )
-                .id(track.id)
-                .transition(
-                    .opacity
-                        .combined(
-                            with:
-                                .scale(
-                                    scale: 0.9
-                                )
-                        )
-                )
-
+            if let track = audioManager.currentTrack,
+               let data = track.artworkData,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .id(track.id)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else {
-                RoundedRectangle(
-                    cornerRadius: 8,
-                    style: .continuous
-                )
-                .fill(
-                    Color.gray.opacity(
-                        0.22
-                    )
-                )
-                .frame(
-                    width: 44,
-                    height: 44
-                )
-                .overlay {
-                    Image(
-                        systemName:
-                            "music.note"
-                    )
-                    .foregroundStyle(
-                        .secondary
-                    )
-                }
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.secondary.opacity(0.16))
+                    .frame(width: 44, height: 44)
+                    .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
             }
         }
+    }
+}
+
+private struct MiniPlayerActivity: View {
+    let isPlaying: Bool
+    let progress: Double
+    let currentTime: TimeInterval
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            VStack(spacing: 6) {
+                HStack(alignment: .bottom, spacing: 2.5) {
+                    ForEach(0..<5, id: \.self) { index in
+                        Capsule()
+                            .fill(.primary.opacity(isPlaying ? 0.72 : 0.32))
+                            .frame(width: 2.5, height: barHeight(index, time: context.date.timeIntervalSinceReferenceDate))
+                    }
+                }
+                .frame(height: 18, alignment: .bottom)
+
+                Text(timeString)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .frame(width: 30)
+        }
+    }
+
+    private func barHeight(_ index: Int, time: TimeInterval) -> CGFloat {
+        guard isPlaying else { return 7 }
+        let phase = time * (1.8 + Double(index) * 0.12) + Double(index) * 1.35
+        return CGFloat(8 + 7 * ((sin(phase) + 1) * 0.5) + progress * 2)
+    }
+
+    private var timeString: String {
+        let seconds = max(0, Int(currentTime.rounded()))
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 }
