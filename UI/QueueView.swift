@@ -1,243 +1,199 @@
 import SwiftUI
+import UIKit
 
-struct PlaylistHeaderView: View {
-    let playlist: Playlist
-    let tracks: [LocalTrack]
-    let onAddSongs: () -> Void
-
-    @EnvironmentObject var audioManager:
-        AudioEngineManager
+struct QueueView: View {
+    @EnvironmentObject private var audioManager: AudioEngineManager
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(
-            alignment:
-                .leading,
-            spacing:
-                18
-        ) {
-
-            HStack(
-                alignment:
-                    .top,
-                spacing:
-                    20
-            ) {
-
-                PlaylistArtwork(
-                    tracks:
-                        tracks,
-                    playlistName:
-                        playlist.name
-                )
-                .frame(
-                    width:
-                        145,
-                    height:
-                        145
-                )
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius:
-                            14,
-                        style:
-                            .continuous
-                    )
-                )
-                .shadow(
-                    color:
-                        .black.opacity(
-                            0.25
-                        ),
-                    radius:
-                        12,
-                    y:
-                        6
-                )
-
-                VStack(
-                    alignment:
-                        .leading,
-                    spacing:
-                        7
-                ) {
-
-                    Text(
-                        "PLAYLIST"
-                    )
-                    .font(
-                        .caption.bold()
-                    )
-                    .foregroundColor(
-                        .secondary
-                    )
-
-                    Text(
-                        playlist.name
-                    )
-                    .font(
-                        .system(
-                            size: 26,
-                            weight: .bold
-                        )
-                    )
-                    .lineLimit(
-                        2
-                    )
-
-                    Text(
-                        "\(tracks.count) "
-                        + (
-                            tracks.count == 1
-                            ? "Song"
-                            : "Songs"
-                        )
-                        + " • "
-                        + totalDurationString
-                    )
-                    .font(
-                        .subheadline
-                    )
-                    .foregroundColor(
-                        .secondary
-                    )
-
-                    Spacer(
-                        minLength:
-                            2
-                    )
-                }
-
-                Spacer(
-                    minLength:
-                        0
-                )
-            }
-
-            HStack(
-                spacing:
-                    12
-            ) {
-
-                Button {
-                    guard !tracks.isEmpty
-                    else {
-                        return
-                    }
-
-                    audioManager.startQueue(
-                        tracks:
-                            tracks,
-                        startIndex:
-                            0
-                    )
-                } label: {
-                    Label(
-                        "Play",
-                        systemImage:
-                            "play.fill"
-                    )
-                    .font(
-                        .subheadline.bold()
-                    )
-                }
-                .buttonStyle(
-                    .borderedProminent
-                )
-
-                Button {
-                    guard !tracks.isEmpty
-                    else {
-                        return
-                    }
-
-                    if !audioManager.isShuffle {
-                        audioManager.toggleShuffle()
-                    }
-
-                    let index =
-                        Int.random(
-                            in:
-                                0..<tracks.count
-                        )
-
-                    audioManager.startQueue(
-                        tracks:
-                            tracks,
-                        startIndex:
-                            index
-                    )
-                } label: {
-                    Label(
-                        "Shuffle",
-                        systemImage:
-                            "shuffle"
-                    )
-                    .font(
-                        .subheadline.bold()
-                    )
-                }
-                .buttonStyle(
-                    .bordered
-                )
-
-                Button(
-                    action:
-                        onAddSongs
-                ) {
-                    Label(
-                        "Add Songs",
-                        systemImage:
-                            "plus"
-                    )
-                    .font(
-                        .subheadline.bold()
-                    )
-                }
-                .buttonStyle(
-                    .bordered
-                )
-            }
-        }
-        .padding(
-            .horizontal,
-            20
+        QueueContent(
+            currentTrack: audioManager.currentTrack,
+            queue: audioManager.queue,
+            queueIndex: audioManager.queueIndex,
+            isPlaying: audioManager.isPlaying,
+            onSelect: { index in audioManager.playQueuedTrack(at: index) },
+            onRemove: { index in audioManager.removeFromQueue(at: IndexSet(integer: index)) },
+            onClear: { audioManager.clearQueue() },
+            onDismiss: { dismiss() }
         )
-        .padding(
-            .vertical,
-            18
-        )
+        .equatable()
+    }
+}
+
+private struct QueueContent: View, Equatable {
+    let currentTrack: LocalTrack?
+    let queue: [LocalTrack]
+    let queueIndex: Int
+    let isPlaying: Bool
+
+    let onSelect: (Int) -> Void
+    let onRemove: (Int) -> Void
+    let onClear: () -> Void
+    let onDismiss: () -> Void
+
+    static func == (lhs: QueueContent, rhs: QueueContent) -> Bool {
+        lhs.queueIndex == rhs.queueIndex &&
+        lhs.isPlaying == rhs.isPlaying &&
+        trackFingerprint(lhs.currentTrack) == trackFingerprint(rhs.currentTrack) &&
+        lhs.queue.map(trackFingerprint) == rhs.queue.map(trackFingerprint)
     }
 
-    private var totalDurationString:
-        String {
+    private static func trackFingerprint(_ track: LocalTrack?) -> String {
+        guard let track else { return "nil" }
+        return "\(track.id.uuidString)|\(track.title)|\(track.artist)|\(track.album)|\(track.artworkData != nil)"
+    }
 
-        let total =
-            tracks.reduce(
-                0
-            ) {
-                $0 + $1.duration
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if let currentTrack {
+                        sectionTitle("Playing")
+                        QueueRow(
+                            track: currentTrack,
+                            current: true,
+                            isPlaying: isPlaying,
+                            onSelect: nil,
+                            onRemove: nil
+                        )
+                    }
+
+                    let start = min(queueIndex + 1, queue.count)
+                    if start < queue.count {
+                        sectionTitle("Up Next")
+                            .padding(.top, 22)
+
+                        ForEach(Array(queue[start...].enumerated()), id: \.element.id) { offset, track in
+                            let index = start + offset
+                            QueueRow(
+                                track: track,
+                                current: false,
+                                isPlaying: false,
+                                onSelect: { onSelect(index) },
+                                onRemove: { onRemove(index) }
+                            )
+                        }
+                    } else if currentTrack != nil {
+                        Text("No more songs in the queue")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 20)
+                            .padding(.horizontal, 22)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 22)
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .glassEffect(
+            .regular.interactive(),
+            in: RoundedRectangle(cornerRadius: 30, style: .continuous)
+        )
+        .padding(8)
+        .background(Color.clear)
+    }
+
+    private var header: some View {
+        HStack {
+            Button("Done", action: onDismiss)
+                .buttonStyle(.glass)
+
+            Spacer()
+
+            Text("Queue")
+                .font(.headline.weight(.semibold))
+
+            Spacer()
+
+            if queue.count > 1 {
+                Button("Clear", role: .destructive, action: onClear)
+                    .buttonStyle(.glass)
+            } else {
+                Color.clear.frame(width: 64, height: 1)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .foregroundStyle(.primary)
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 8)
+    }
+}
+
+private struct QueueRow: View {
+    let track: LocalTrack
+    let current: Bool
+    let isPlaying: Bool
+    let onSelect: (() -> Void)?
+    let onRemove: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            artwork
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.title)
+                    .font(.body.weight(current ? .semibold : .regular))
+                    .lineLimit(1)
+
+                Text(track.artist)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
-        let seconds =
-            max(
-                0,
-                Int(
-                    total
-                )
-            )
+            Spacer(minLength: 8)
 
-        let hours =
-            seconds / 3600
-
-        let minutes =
-            (seconds % 3600) / 60
-
-        if hours > 0 {
-            return
-                "\(hours) hr \(minutes) min"
+            if current {
+                Image(systemName: isPlaying ? "waveform" : "pause.fill")
+                    .foregroundStyle(.tint)
+                    .contentTransition(.symbolEffect(.replace))
+            }
         }
+        .frame(minHeight: 64)
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect?() }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if let onRemove {
+                Button(role: .destructive, action: onRemove) {
+                    Label("Remove", systemImage: "trash")
+                }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.primary.opacity(0.09))
+                .frame(height: 0.5)
+                .padding(.leading, 56)
+        }
+    }
 
-        return
-            "\(minutes) min"
+    @ViewBuilder
+    private var artwork: some View {
+        if let data = track.artworkData, let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.secondary.opacity(0.14))
+                .frame(width: 44, height: 44)
+                .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
+        }
     }
 }
