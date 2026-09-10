@@ -179,7 +179,7 @@ class LocalLibrary:
         // Metadata parsing is versioned independently from the file manifest.
         // This lets us repair tracks that were cached with an older/incorrect
         // AVFoundation key mapping without forcing a full scan on every launch.
-        let metadataParserVersion = 2
+        let metadataParserVersion = 3
         let parserVersionKey = "Toyako.MetadataParserVersion"
         let needsParserMigration = UserDefaults.standard.integer(forKey: parserVersionKey) < metadataParserVersion
 
@@ -252,7 +252,7 @@ class LocalLibrary:
         )
 
         async let durationValue = asset.load(.duration)
-        async let metadataValue = asset.load(.commonMetadata)
+        async let metadataValue = asset.load(.metadata)
 
         let durationSeconds = (try? await durationValue)?.seconds ?? 0
         let duration = durationSeconds.isFinite ? max(0, durationSeconds) : 0
@@ -393,7 +393,7 @@ class LocalLibrary:
     nonisolated
     private static func parseArtworkOnly(at url: URL) async -> Data? {
         let asset = AVURLAsset(url: url)
-        let metadata = (try? await asset.load(.commonMetadata)) ?? []
+        let metadata = (try? await asset.load(.metadata)) ?? []
         for item in metadata {
             guard matchesMetadataKey(metadataKeys(for: item), aliases: ["artwork", "picture", "cover", "apic", "covr"]) else { continue }
             if let data = await metadataDataValue(item) {
