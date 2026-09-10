@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import AVFoundation
+import UIKit
+import ImageIO
+import CryptoKit
 
 @MainActor
 class LocalLibrary:
@@ -60,10 +63,24 @@ class LocalLibrary:
             .appendingPathComponent("tracks_index_manifest.json")
     }
 
+    private var artworkCacheDirectoryURL: URL {
+        FileManager.default
+            .urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ToyakoArtwork", isDirectory: true)
+    }
+
+    private var artworkHydrationTask: Task<Void, Never>?
+
     init() {
         loadPlaylists()
         loadTracksFromCache()
-        reloadFiles()
+
+        // Never make the first rendered library screen wait for a filesystem scan.
+        // The scan is intentionally deferred to the next run-loop turn and remains
+        // on a utility task.
+        DispatchQueue.main.async { [weak self] in
+            self?.reloadFiles()
+        }
     }
 
     // MARK: - Scanning
@@ -75,18 +92,22 @@ class LocalLibrary:
         }
 
         let manifestURL = indexManifestURL
-        Task(priority: .utility) {
+        Task(priority: .utility) { [weak self] in
+            // Give SwiftUI one clean frame before touching the document tree.
+            await Task.yield()
             let discovered = await Self.runIncrementalScan(
                 cachedTracks: cachedTracks,
                 manifestURL: manifestURL
             )
 
+            guard let self else { return }
             await MainActor.run {
                 guard !discovered.isEmpty || !cachedTracks.isEmpty else { return }
                 self.tracks = discovered
                 self.rebuildGroups()
                 self.statusMessage = "Indexed \(discovered.count) songs"
                 self.saveTracksToCache()
+                self.scheduleArtworkHydration()
             }
         }
     }
@@ -135,9 +156,19 @@ class LocalLibrary:
         let cachedByPath = Dictionary(uniqueKeysWithValues: cachedTracks.map { ($0.url.standardizedFileURL.path, $0) })
 
         // Fast path: the library has not changed. Do not open a single AVAsset.
+        // Older caches can contain placeholder metadata, so those entries are
+        // deliberately allowed through the metadata repair pass.
+        let cacheNeedsMetadataRepair = cachedTracks.contains { track in
+            track.title.isEmpty
+                || track.artist == "Unknown Artist"
+                || track.album == "Unknown Album"
+                || track.duration <= 0
+        }
+
         if currentManifest == oldManifest,
            files.count == cachedTracks.count,
-           !cachedTracks.isEmpty {
+           !cachedTracks.isEmpty,
+           !cacheNeedsMetadataRepair {
             return cachedTracks
         }
 
@@ -145,9 +176,22 @@ class LocalLibrary:
         result.reserveCapacity(files.count)
         var changed: [(Int, URL, LocalTrack?)] = []
 
+        // Metadata parsing is versioned independently from the file manifest.
+        // This lets us repair tracks that were cached with an older/incorrect
+        // AVFoundation key mapping without forcing a full scan on every launch.
+        let metadataParserVersion = 2
+        let parserVersionKey = "Toyako.MetadataParserVersion"
+        let needsParserMigration = UserDefaults.standard.integer(forKey: parserVersionKey) < metadataParserVersion
+
         for (index, file) in files.enumerated() {
             let path = file.url.standardizedFileURL.path
-            if let cached = cachedByPath[path], oldManifest[path] == file.fingerprint {
+            if let cached = cachedByPath[path],
+               !needsParserMigration,
+               oldManifest[path] == file.fingerprint,
+               !cached.title.isEmpty,
+               cached.artist != "Unknown Artist",
+               cached.album != "Unknown Album",
+               cached.duration > 0 {
                 result.append(cached)
             } else {
                 result.append(cachedByPath[path] ?? LocalTrack(url: file.url, title: file.url.deletingPathExtension().lastPathComponent))
@@ -195,6 +239,7 @@ class LocalLibrary:
         if let data = try? JSONEncoder().encode(currentManifest) {
             try? data.write(to: manifestURL, options: .atomic)
         }
+        UserDefaults.standard.set(metadataParserVersion, forKey: parserVersionKey)
 
         return result
     }
@@ -219,32 +264,29 @@ class LocalLibrary:
         var genre = "Unknown Genre"
         var artworkData: Data?
 
-        // Only load the metadata values that are actually used. commonMetadata is
-        // considerably cheaper than asking AVFoundation for the complete metadata set.
+        // AVFoundation does not expose every container's Vorbis/FLAC keys in
+        // exactly the same way. In particular, relying on `item.key as? String`
+        // misses some FLAC metadata identifiers. Match commonKey, identifier,
+        // and raw key names, and accept the item's loaded value as a fallback
+        // when stringValue is unavailable.
         for item in metadata {
-            let key = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
+            let keys = metadataKeys(for: item)
 
-            if ["title", "TIT2", "©nam"].contains(key),
-               let value = try? await item.load(.stringValue),
-               !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if matchesMetadataKey(keys, aliases: ["title", "tit2", "©nam"]),
+               let value = await metadataStringValue(item), !value.isEmpty {
                 title = value
-            } else if ["artist", "TPE1", "TPE2", "©ART", "aART"].contains(key),
-                      let value = try? await item.load(.stringValue),
-                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if matchesMetadataKey(keys, aliases: ["artist", "albumartist", "album artist", "tpe1", "tpe2", "©art", "aart"]),
+                      let value = await metadataStringValue(item), !value.isEmpty {
                 artist = value
-            } else if ["albumName", "album", "TALB", "©alb"].contains(key),
-                      let value = try? await item.load(.stringValue),
-                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if matchesMetadataKey(keys, aliases: ["album", "albumname", "talb", "©alb"]),
+                      let value = await metadataStringValue(item), !value.isEmpty {
                 album = value
-            } else if ["type", "genre", "TCON", "©gen"].contains(key),
-                      let value = try? await item.load(.stringValue),
-                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if matchesMetadataKey(keys, aliases: ["genre", "type", "tcon", "©gen"]),
+                      let value = await metadataStringValue(item), !value.isEmpty {
                 genre = value
-            } else if ["artwork", "APIC", "covr"].contains(key) {
-                artworkData = try? await item.load(.dataValue)
-                if artworkData == nil, let value = try? await item.load(.value), let data = value as? Data {
-                    artworkData = data
-                }
+            } else if matchesMetadataKey(keys, aliases: ["artwork", "picture", "cover", "apic", "covr"]),
+                      let data = await metadataDataValue(item) {
+                artworkData = downsampleArtwork(data)
             }
         }
 
@@ -259,15 +301,72 @@ class LocalLibrary:
         )
     }
 
+    nonisolated
+    private static func metadataKeys(for item: AVMetadataItem) -> [String] {
+        var keys: [String] = []
+        if let commonKey = item.commonKey?.rawValue { keys.append(commonKey) }
+        if let identifier = item.identifier?.rawValue { keys.append(identifier) }
+        if let rawKey = item.key as? String { keys.append(rawKey) }
+        // Some container-specific keys are bridged as non-String Foundation
+        // objects. String(describing:) still gives us a useful identifier for
+        // matching names such as TITLE / ARTIST / ALBUM.
+        if let rawKey = item.key { keys.append(String(describing: rawKey)) }
+        return Array(Set(keys.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }))
+    }
+
+    nonisolated
+    private static func matchesMetadataKey(_ keys: [String], aliases: [String]) -> Bool {
+        keys.contains { key in
+            aliases.contains { alias in
+                key == alias || key.hasSuffix("/" + alias) || key.hasSuffix("." + alias)
+                    || key.contains(alias)
+            }
+        }
+    }
+
+    nonisolated
+    private static func metadataStringValue(_ item: AVMetadataItem) async -> String? {
+        if let value = try? await item.load(.stringValue),
+           !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        if let value = try? await item.load(.value) {
+            if let string = value as? String,
+               !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return string.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let number = value as? NSNumber {
+                return number.stringValue
+            }
+        }
+        return nil
+    }
+
+    nonisolated
+    private static func metadataDataValue(_ item: AVMetadataItem) async -> Data? {
+        if let data = try? await item.load(.dataValue), let data {
+            return data
+        }
+        if let value = try? await item.load(.value), let data = value as? Data {
+            return data
+        }
+        return nil
+    }
+
     /// Artwork is fetched only for the active track on a cached launch. This keeps
     /// startup fast without leaving Now Playing stuck with a blank cover.
     func refreshArtwork(for track: LocalTrack) {
         guard track.artworkData == nil else { return }
         let url = track.url
 
+        let cacheDirectory = artworkCacheDirectoryURL
         Task(priority: .utility) {
-            let refreshed = await Self.parseArtworkOnly(at: url)
+            let refreshed = Self.cachedArtwork(for: url, in: cacheDirectory)
+                ?? await Self.parseArtworkOnly(at: url)
             guard let artworkData = refreshed else { return }
+            let cacheFile = cacheDirectory.appendingPathComponent(Self.artworkFilename(for: url))
+            try? artworkData.write(to: cacheFile, options: .atomic)
 
             await MainActor.run {
                 guard let index = self.tracks.firstIndex(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) else { return }
@@ -292,12 +391,127 @@ class LocalLibrary:
         let asset = AVURLAsset(url: url)
         let metadata = (try? await asset.load(.commonMetadata)) ?? []
         for item in metadata {
-            let key = item.commonKey?.rawValue ?? (item.key as? String) ?? ""
-            guard ["artwork", "APIC", "covr"].contains(key) else { continue }
-            if let data = try? await item.load(.dataValue) { return data }
-            if let value = try? await item.load(.value), let data = value as? Data { return data }
+            guard matchesMetadataKey(metadataKeys(for: item), aliases: ["artwork", "picture", "cover", "apic", "covr"]) else { continue }
+            if let data = await metadataDataValue(item) {
+                return downsampleArtwork(data)
+            }
         }
         return nil
+    }
+
+    // MARK: - Artwork Cache
+
+    private func scheduleArtworkHydration() {
+        let snapshot = tracks
+        artworkHydrationTask?.cancel()
+
+        let cacheDirectory = artworkCacheDirectoryURL
+        artworkHydrationTask = Task.detached(priority: .utility) { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled, self != nil else { return }
+
+            let results = await Self.hydrateArtwork(snapshot, cacheDirectory: cacheDirectory)
+            guard !results.isEmpty, !Task.isCancelled else { return }
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                var changed = false
+
+                for (url, data) in results {
+                    guard let index = self.tracks.firstIndex(where: {
+                        $0.url.standardizedFileURL == url.standardizedFileURL
+                    }) else { continue }
+
+                    let old = self.tracks[index]
+                    guard old.artworkData == nil else { continue }
+                    self.tracks[index] = LocalTrack(
+                        id: old.id, url: old.url, title: old.title, artist: old.artist,
+                        album: old.album, genre: old.genre, duration: old.duration, artworkData: data
+                    )
+                    changed = true
+                }
+
+                if changed {
+                    self.rebuildGroups()
+                }
+            }
+        }
+    }
+
+    nonisolated
+    private static func hydrateArtwork(
+        _ tracks: [LocalTrack],
+        cacheDirectory: URL
+    ) async -> [(URL, Data)] {
+        try? FileManager.default.createDirectory(
+            at: cacheDirectory,
+            withIntermediateDirectories: true
+        )
+
+        return await withTaskGroup(of: (URL, Data)?.self, returning: [(URL, Data)].self) { group in
+            var pending = 0
+            var results: [(URL, Data)] = []
+
+            func add(_ track: LocalTrack) {
+                pending += 1
+                group.addTask {
+                    if let cached = cachedArtwork(for: track.url, in: cacheDirectory) {
+                        return (track.url, cached)
+                    }
+                    guard let data = await parseArtworkOnly(at: track.url) else { return nil }
+                    let file = cacheDirectory.appendingPathComponent(artworkFilename(for: track.url))
+                    try? data.write(to: file, options: .atomic)
+                    return (track.url, data)
+                }
+            }
+
+            for track in tracks where track.artworkData == nil {
+                add(track)
+                if pending >= 4 {
+                    if let result = await group.next(), let result { results.append(result) }
+                    pending -= 1
+                }
+            }
+
+            while pending > 0 {
+                if let result = await group.next(), let result { results.append(result) }
+                pending -= 1
+            }
+
+            return results
+        }
+    }
+
+    nonisolated
+    private static func artworkFilename(for url: URL) -> String {
+        let digest = SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined() + ".jpg"
+    }
+
+    nonisolated
+    private static func cachedArtwork(for url: URL, in directory: URL) -> Data? {
+        let file = directory.appendingPathComponent(artworkFilename(for: url))
+        return try? Data(contentsOf: file)
+    }
+
+    nonisolated
+    private static func downsampleArtwork(_ data: Data, maxPixel: Int = 512) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return data }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return data
+        }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
+            return data
+        }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.82] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return data }
+        return output as Data
     }
 
     // MARK: - Groups
