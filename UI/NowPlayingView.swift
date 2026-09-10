@@ -10,6 +10,7 @@ struct NowPlayingView: View {
     @State private var playPausePressed = false
     @State private var previousPressed = false
     @State private var nextPressed = false
+    @State private var showQueue = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -50,6 +51,7 @@ struct NowPlayingView: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
+            .animation(.smooth(duration: 0.38), value: audioManager.currentTrack?.id)
             .overlay(alignment: .topLeading) {
                 Button {
                     close(height: geometry.size.height)
@@ -63,6 +65,26 @@ struct NowPlayingView: View {
                 .buttonStyle(.plain)
                 .padding(.leading, 10)
                 .padding(.top, 8)
+            }
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    showQueue = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(width: 52, height: 52)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 10)
+                .padding(.top, 8)
+            }
+            .sheet(isPresented: $showQueue) {
+                QueueView()
+                    .environmentObject(audioManager)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
             .offset(y: isVisible ? dragOffset : geometry.size.height)
         }
@@ -361,7 +383,7 @@ private struct SmoothLyricsView: View {
             .onChange(of: activeID) { _, newID in
                 guard let newID else { return }
 
-                withAnimation(.smooth(duration: 0.42)) {
+                withAnimation(.smooth(duration: 0.55, extraBounce: 0.04)) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
             }
@@ -540,55 +562,88 @@ struct AppleMusicScrubberBar: View {
 
 struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
-    @State private var phase = false
 
     var body: some View {
-        ZStack {
-            Color.black
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
 
-            if let artworkData,
-               let image = UIImage(data: artworkData) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .scaleEffect(phase ? 1.48 : 1.32)
-                    .rotationEffect(.degrees(phase ? 8 : -8))
-                    .offset(x: phase ? 35 : -35, y: phase ? -28 : 28)
-                    .blur(radius: 65, opaque: true)
-                    .saturation(1.35)
-                    .brightness(-0.14)
-                    .opacity(0.82)
+            ZStack {
+                Color.black
 
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .scaleEffect(phase ? 1.30 : 1.50)
-                    .rotationEffect(.degrees(phase ? -10 : 10))
-                    .offset(x: phase ? -30 : 30, y: phase ? 25 : -25)
-                    .blur(radius: 52, opaque: true)
-                    .saturation(1.2)
-                    .brightness(-0.18)
-                    .opacity(0.55)
+                if let artworkData,
+                   let image = UIImage(data: artworkData) {
 
-                Color.black.opacity(0.16)
-            } else {
-                LinearGradient(
-                    colors: [.black, Color(white: 0.08), .black],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                    bleedLayer(
+                        image: image,
+                        time: t,
+                        frequency: 0.071,
+                        phase: 0.0,
+                        scale: 1.42,
+                        blur: 70,
+                        opacity: 0.78
+                    )
+
+                    bleedLayer(
+                        image: image,
+                        time: t,
+                        frequency: 0.053,
+                        phase: 1.9,
+                        scale: 1.54,
+                        blur: 58,
+                        opacity: 0.50
+                    )
+
+                    bleedLayer(
+                        image: image,
+                        time: t,
+                        frequency: 0.037,
+                        phase: 4.1,
+                        scale: 1.68,
+                        blur: 82,
+                        opacity: 0.34
+                    )
+
+                    Color.black.opacity(0.18)
+                } else {
+                    LinearGradient(
+                        colors: [.black, Color(white: 0.08), .black],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
             }
         }
         .clipped()
-        .onAppear {
-            phase = false
+        .drawingGroup(opaque: true)
+        .animation(.smooth(duration: 0.8), value: artworkData?.hashValue)
+    }
 
-            withAnimation(
-                .easeInOut(duration: 16).repeatForever(autoreverses: true)
-            ) {
-                phase = true
-            }
-        }
-        .id(artworkData?.hashValue ?? 0)
+    @ViewBuilder
+    private func bleedLayer(
+        image: UIImage,
+        time: TimeInterval,
+        frequency: Double,
+        phase: Double,
+        scale: CGFloat,
+        blur: CGFloat,
+        opacity: Double
+    ) -> some View {
+        let a = time * frequency + phase
+        let x = CGFloat(sin(a) * 34 + sin(a * 0.43 + 1.2) * 18)
+        let y = CGFloat(cos(a * 0.87) * 30 + sin(a * 0.31 + 2.4) * 20)
+        let rotation = sin(a * 0.67) * 8 + cos(a * 0.29) * 4
+        let dynamicScale = scale + CGFloat(sin(a * 0.53) * 0.08)
+
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .scaleEffect(dynamicScale)
+            .rotationEffect(.degrees(rotation))
+            .offset(x: x, y: y)
+            .blur(radius: blur, opaque: true)
+            .saturation(1.28)
+            .brightness(-0.15)
+            .opacity(opacity)
     }
 }
+
