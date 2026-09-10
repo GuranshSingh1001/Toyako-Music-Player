@@ -22,7 +22,7 @@ private final class AudioLevelMeter: @unchecked Sendable {
         var callbacks = MTAudioProcessingTapCallbacks(
             version: kMTAudioProcessingTapCallbacksVersion_0,
             clientInfo: Unmanaged.passUnretained(self).toOpaque(),
-            init: { _, _, tapStorageOut in
+            init: { _, clientInfo, tapStorageOut in
                 tapStorageOut.pointee = clientInfo
             },
             finalize: { _, _ in },
