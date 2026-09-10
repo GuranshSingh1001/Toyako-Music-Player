@@ -389,7 +389,7 @@ class LocalLibrary:
                 self.rebuildGroups()
             }
         }
-
+    }
     nonisolated
     private static func parseArtworkOnly(at url: URL) async -> Data? {
         let asset = AVURLAsset(url: url)
