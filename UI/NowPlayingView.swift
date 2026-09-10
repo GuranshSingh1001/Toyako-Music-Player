@@ -85,10 +85,13 @@ struct NowPlayingView: View {
                     .environmentObject(audioManager)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+                    .presentationBackground(.ultraThinMaterial)
+                    .presentationCornerRadius(30)
             }
             .offset(y: isVisible ? dragOffset : geometry.size.height)
         }
         .ignoresSafeArea()
+        .statusBarHidden(true)
         .onAppear {
             if isPresented { show() }
         }
