@@ -65,16 +65,15 @@ private struct QueueContent: View, Equatable {
                         sectionTitle("Up Next")
                             .padding(.top, 22)
 
-                        ForEach(Array(queue[start...])) { track in
-                            if let index = queue.firstIndex(where: { $0.id == track.id }) {
-                                QueueRow(
-                                    track: track,
-                                    current: false,
-                                    isPlaying: false,
-                                    onSelect: { onSelect(index) },
-                                    onRemove: { onRemove(index) }
-                                )
-                            }
+                        ForEach(Array(queue[start...].enumerated()), id: \.element.id) { offset, track in
+                            let index = start + offset
+                            QueueRow(
+                                track: track,
+                                current: false,
+                                isPlaying: false,
+                                onSelect: { onSelect(index) },
+                                onRemove: { onRemove(index) }
+                            )
                         }
                     } else if currentTrack != nil {
                         Text("No more songs in the queue")
