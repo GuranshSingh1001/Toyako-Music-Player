@@ -368,7 +368,7 @@ class LocalLibrary:
                 refreshed = cached
             } else {
                 refreshed = await Self.parseArtworkOnly(at: url)
-                
+            }   
             guard let artworkData = refreshed else { return }
             let cacheFile = cacheDirectory.appendingPathComponent(Self.artworkFilename(for: url))
             try? artworkData.write(to: cacheFile, options: .atomic)
