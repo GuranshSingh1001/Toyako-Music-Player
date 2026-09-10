@@ -34,7 +34,8 @@ struct MiniPlayerView: View {
 
                 MiniPlayerActivity(
                     isPlaying: audioManager.isPlaying,
-                    currentTime: audioManager.currentTime
+                    currentTime: audioManager.currentTime,
+                    audioLevel: audioManager.audioLevel
                 )
             }
             .padding(.horizontal, 12)
@@ -71,32 +72,43 @@ struct MiniPlayerView: View {
 private struct MiniPlayerActivity: View {
     let isPlaying: Bool
     let currentTime: TimeInterval
+    let audioLevel: Float
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-            VStack(spacing: 5) {
-                HStack(alignment: .bottom, spacing: 2.5) {
-                    ForEach(0..<5, id: \.self) { index in
-                        Capsule()
-                            .fill(.primary.opacity(isPlaying ? 0.70 : 0.30))
-                            .frame(width: 2.5, height: barHeight(index, time: context.date.timeIntervalSinceReferenceDate))
-                    }
+        VStack(spacing: 5) {
+            HStack(alignment: .bottom, spacing: 2.5) {
+                ForEach(0..<5, id: \.self) { index in
+                    Capsule()
+                        .fill(.primary.opacity(isPlaying ? 0.70 : 0.30))
+                        .frame(width: 2.5, height: barHeight(index))
+                        .animation(.easeOut(duration: 0.08), value: audioLevel)
                 }
-                .frame(height: 20, alignment: .bottom)
-
-                Text(timeString)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
             }
-            .frame(width: 34)
+            .frame(height: 20, alignment: .bottom)
+
+            Text(timeString)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
+        .frame(width: 34)
     }
 
-    private func barHeight(_ index: Int, time: TimeInterval) -> CGFloat {
+    private func barHeight(_ index: Int) -> CGFloat {
         guard isPlaying else { return 7 }
-        let phase = time * (1.7 + Double(index) * 0.13) + Double(index) * 1.18
-        return CGFloat(7 + 9 * ((sin(phase) + 1) * 0.5))
+
+        // Each bar has a slightly different response curve, but every value is
+        // derived from the real PCM level reported by AudioLevelMeter.
+        let response: Float
+        switch index {
+        case 0: response = audioLevel * 0.78
+        case 1: response = audioLevel * 1.08
+        case 2: response = audioLevel
+        case 3: response = audioLevel * 0.92
+        default: response = audioLevel * 0.72
+        }
+
+        return CGFloat(5 + min(max(response, 0), 1) * 15)
     }
 
     private var timeString: String {
