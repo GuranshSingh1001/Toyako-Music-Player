@@ -85,7 +85,7 @@ struct NowPlayingView: View {
                     .environmentObject(audioManager)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
-                    .presentationBackground(.ultraThinMaterial)
+                    .presentationBackground(.clear)
                     .presentationCornerRadius(30)
             }
             .offset(y: isVisible ? dragOffset : geometry.size.height)
