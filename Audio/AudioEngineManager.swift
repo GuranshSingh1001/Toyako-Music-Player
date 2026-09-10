@@ -1,6 +1,133 @@
 import AVFoundation
 import MediaPlayer
 import Combine
+import AudioToolbox
+import MediaToolbox
+
+
+
+// MARK: - Audio-Reactive Mini Player Meter
+//
+// The mini-player bars are driven by the actual PCM samples being rendered by
+// AVPlayer. This avoids the old time/sine animation, which only looked like an
+// audio waveform but had no relationship to the music.
+private final class AudioLevelMeter: @unchecked Sendable {
+    private var tap: MTAudioProcessingTap?
+    private var lastPublishTime: CFTimeInterval = 0
+    private var smoothedLevel: Float = 0
+
+    var onLevel: ((Float) -> Void)?
+
+    func attach(to item: AVPlayerItem, track: AVAssetTrack) {
+        var callbacks = MTAudioProcessingTapCallbacks(
+            version: kMTAudioProcessingTapCallbacksVersion_0,
+            clientInfo: Unmanaged.passUnretained(self).toOpaque(),
+            init: { _, _, tapStorageOut in
+                tapStorageOut.pointee = clientInfo
+            },
+            finalize: { _, _ in },
+            prepare: { _, _, _ in },
+            unprepare: { _ in },
+            process: { tap, numberFrames, _, bufferListInOut, numberFramesOut, flagsOut in
+                let status = MTAudioProcessingTapGetSourceAudio(
+                    tap,
+                    numberFrames,
+                    bufferListInOut,
+                    flagsOut,
+                    nil,
+                    numberFramesOut
+                )
+                guard status == noErr else { return }
+
+                let meter = Unmanaged<AudioLevelMeter>
+                    .fromOpaque(MTAudioProcessingTapGetStorage(tap))
+                    .takeUnretainedValue()
+
+                let buffers = UnsafeMutableAudioBufferListPointer(bufferListInOut)
+                var sumSquares: Double = 0
+                var sampleCount: Int = 0
+
+                for buffer in buffers {
+                    guard let data = buffer.mData else { continue }
+
+                    // AVPlayer normally supplies deinterleaved Float32 PCM to
+                    // processing taps, but handle common integer PCM too.
+                    if buffer.mNumberChannels > 0 {
+                        let bytesPerSample = Int(buffer.mDataByteSize) / max(Int(numberFramesOut.pointee), 1)
+                        if bytesPerSample == MemoryLayout<Float>.size {
+                            let samples = data.assumingMemoryBound(to: Float.self)
+                            let count = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+                            for i in 0..<count {
+                                let sample = Double(samples[i])
+                                sumSquares += sample * sample
+                            }
+                            sampleCount += count
+                        } else if bytesPerSample == MemoryLayout<Int16>.size {
+                            let samples = data.assumingMemoryBound(to: Int16.self)
+                            let count = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+                            for i in 0..<count {
+                                let sample = Double(samples[i]) / 32768.0
+                                sumSquares += sample * sample
+                            }
+                            sampleCount += count
+                        }
+                    }
+                }
+
+                guard sampleCount > 0 else { return }
+
+                let rms = Float(sqrt(sumSquares / Double(sampleCount)))
+                let normalized = min(max(rms * 5.0, 0), 1)
+
+                // Attack quickly, release smoothly so the bars follow drums and
+                // vocals without jittering at the audio callback rate.
+                if normalized > meter.smoothedLevel {
+                    meter.smoothedLevel += (normalized - meter.smoothedLevel) * 0.55
+                } else {
+                    meter.smoothedLevel += (normalized - meter.smoothedLevel) * 0.12
+                }
+
+                let now = CACurrentMediaTime()
+                guard now - meter.lastPublishTime >= (1.0 / 30.0) else { return }
+                meter.lastPublishTime = now
+
+                let level = meter.smoothedLevel
+                DispatchQueue.main.async { [weak meter] in
+                    meter?.onLevel?(level)
+                }
+            }
+        )
+
+        var tapOut: Unmanaged<MTAudioProcessingTap>?
+        let status = MTAudioProcessingTapCreate(
+            kCFAllocatorDefault,
+            &callbacks,
+            kMTAudioProcessingTapCreationFlag_PostEffects,
+            &tapOut
+        )
+
+        guard status == noErr, let tap = tapOut?.takeRetainedValue() else {
+            return
+        }
+
+        self.tap = tap
+
+        let parameters = AVMutableAudioMixInputParameters(track: track)
+        parameters.audioTapProcessor = tap
+
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = [parameters]
+        item.audioMix = mix
+    }
+
+    func reset() {
+        onLevel?(0)
+        onLevel = nil
+        tap = nil
+        smoothedLevel = 0
+        lastPublishTime = 0
+    }
+}
 
 
 private struct PlaybackPersistenceState: Codable {
@@ -21,6 +148,9 @@ class AudioEngineManager: ObservableObject {
     private var endObserverToken: Any?
     private var lastPersistedTime: TimeInterval = -100
     private var didAttemptRestore = false
+    private let audioLevelMeter = AudioLevelMeter()
+
+    @Published var audioLevel: Float = 0
 
     @Published var currentTrack: LocalTrack?
 
@@ -54,8 +184,33 @@ class AudioEngineManager: ObservableObject {
         Bool = true
 
     init() {
+        audioLevelMeter.onLevel = { [weak self] level in
+            self?.audioLevel = level
+        }
         setupRemoteControls()
         setupInterruptionHandling()
+    }
+
+    private func makePlayerItem(url: URL) -> AVPlayerItem {
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
+        )
+        let item = AVPlayerItem(asset: asset)
+
+        if let audioTrack = asset.tracks(withMediaType: .audio).first {
+            audioLevelMeter.attach(to: item, track: audioTrack)
+        }
+
+        return item
+    }
+
+    private func resetAudioMeter() {
+        audioLevelMeter.reset()
+        audioLevel = 0
+        audioLevelMeter.onLevel = { [weak self] level in
+            self?.audioLevel = level
+        }
     }
 
     // MARK: - Persistent Playback / Resume
@@ -160,7 +315,8 @@ class AudioEngineManager: ObservableObject {
         detachTimeObserver()
         detachEndObserver()
 
-        let item = AVPlayerItem(url: current.url)
+        resetAudioMeter()
+        let item = makePlayerItem(url: current.url)
         player.replaceCurrentItem(with: item)
         player.volume = 1.0
         player.seek(to: CMTime(seconds: max(0, min(state.position, current.duration)), preferredTimescale: 600))
@@ -331,8 +487,10 @@ class AudioEngineManager: ObservableObject {
         detachTimeObserver()
         detachEndObserver()
 
+        resetAudioMeter()
+
         let playerItem =
-            AVPlayerItem(
+            makePlayerItem(
                 url:
                     track.url
             )
