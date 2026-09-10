@@ -82,6 +82,55 @@ class AudioEngineManager: ObservableObject {
         }
     }
 
+    /// Replaces cached queue/current-track metadata with the latest library objects.
+    /// The library cache intentionally omits artworkData, so this must run again after
+    /// the asynchronous media scan completes.
+    func synchronizeLibrary(_ libraryTracks: [LocalTrack]) {
+        guard !libraryTracks.isEmpty else { return }
+
+        func resolve(_ track: LocalTrack) -> LocalTrack? {
+            libraryTracks.first(where: { $0.url.standardizedFileURL == track.url.standardizedFileURL })
+                ?? libraryTracks.first(where: { $0.id == track.id })
+        }
+
+        if let current = currentTrack,
+           let refreshed = resolve(current) {
+            let trackChanged = current.title != refreshed.title
+                || current.artist != refreshed.artist
+                || current.album != refreshed.album
+                || current.duration != refreshed.duration
+                || current.artworkData != refreshed.artworkData
+
+            if trackChanged {
+                currentTrack = refreshed
+                loadLyrics(for: refreshed)
+                updateNowPlaying(track: refreshed)
+            }
+        }
+
+        let refreshedQueue = queue.compactMap(resolve)
+        let refreshedOriginal = originalQueue.compactMap(resolve)
+
+        if !refreshedQueue.isEmpty {
+            queue = refreshedQueue
+            if let currentID = currentTrack?.id,
+               let currentIndex = queue.firstIndex(where: { $0.id == currentID }) {
+                queueIndex = currentIndex
+            } else if let currentURL = currentTrack?.url.standardizedFileURL,
+                      let currentIndex = queue.firstIndex(where: { $0.url.standardizedFileURL == currentURL }) {
+                queueIndex = currentIndex
+            }
+        }
+
+        if !refreshedOriginal.isEmpty {
+            originalQueue = refreshedOriginal
+        }
+
+        if currentTrack != nil {
+            savePlaybackState(force: true)
+        }
+    }
+
     func restoreIfPossible(from libraryTracks: [LocalTrack]) {
         guard !didAttemptRestore, !libraryTracks.isEmpty else { return }
         didAttemptRestore = true
