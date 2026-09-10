@@ -107,17 +107,15 @@ struct ContentView: View {
 
         // MARK: - Now Playing
 
+        .statusBarHidden(showNowPlaying)
         .overlay {
-            NowPlayingView(
-                isPresented:
-                    $showNowPlaying
-            )
-            .allowsHitTesting(
-                showNowPlaying
-            )
-            .ignoresSafeArea(
-                .all
-            )
+            if showNowPlaying {
+                NowPlayingView(
+                    isPresented:
+                        $showNowPlaying
+                )
+                .ignoresSafeArea(.all)
+            }
         }
 
         // MARK: - Import
