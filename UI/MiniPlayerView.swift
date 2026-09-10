@@ -223,23 +223,8 @@ struct MiniPlayerView: View {
         )
         .foregroundStyle(.primary)
 
-        // This makes the mini-player's complete
-        // visual area a deliberate hit-test region.
-        .contentShape(Rectangle())
-
-        // IMPORTANT:
-        // Use simultaneousGesture so the playback
-        // buttons retain priority and don't accidentally
-        // trigger Now Playing.
-        .simultaneousGesture(
-            TapGesture()
-                .onEnded {
-                    // The individual Button controls consume
-                    // their own taps. A tap on the remaining
-                    // mini-player surface opens Now Playing.
-                    onOpenNowPlaying()
-                }
-        )
+        // Only the artwork/title/artist button above opens Now Playing.
+        // Playback controls remain completely independent.
 
         .animation(
             .easeInOut(
