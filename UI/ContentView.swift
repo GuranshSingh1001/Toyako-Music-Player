@@ -104,7 +104,6 @@ struct ContentView: View {
         .tabViewStyle(
             .sidebarAdaptable
         )
-        .statusBarHidden(true)
 
         // MARK: - Now Playing
 
