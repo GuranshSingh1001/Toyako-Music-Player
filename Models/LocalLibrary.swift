@@ -345,7 +345,7 @@ class LocalLibrary:
 
     nonisolated
     private static func metadataDataValue(_ item: AVMetadataItem) async -> Data? {
-        if let data = try? await item.load(.dataValue), let data {
+        if let data = try? await item.load(.dataValue) {
             return data
         }
         if let value = try? await item.load(.value), let data = value as? Data {
@@ -362,8 +362,13 @@ class LocalLibrary:
 
         let cacheDirectory = artworkCacheDirectoryURL
         Task(priority: .utility) {
-            let refreshed = Self.cachedArtwork(for: url, in: cacheDirectory)
-                ?? await Self.parseArtworkOnly(at: url)
+            let refreshed: Data?
+            
+            if let cached = Self.cachedArtwork(for: url, in: cacheDirectory) {
+                refreshed = cached
+            } else {
+                refreshed = await Self.parseArtworkOnly(at: url)
+                
             guard let artworkData = refreshed else { return }
             let cacheFile = cacheDirectory.appendingPathComponent(Self.artworkFilename(for: url))
             try? artworkData.write(to: cacheFile, options: .atomic)
