@@ -46,7 +46,9 @@ struct SongListView: View {
                     .padding(.vertical, 10)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        audioManager.startQueue(tracks: allTracks, startIndex: index)
+                        if let queueIndex = allTracks.firstIndex(where: { $0.id == track.id }) {
+                            audioManager.startQueue(tracks: allTracks, startIndex: queueIndex)
+                        }
                     }
                     .contextMenu {
                         if let pID = playlistID {
@@ -54,6 +56,18 @@ struct SongListView: View {
                                 library.removeTrackFromPlaylist(playlistID: pID, trackURL: track.url)
                             } label: { Label("Remove from Playlist", systemImage: "trash") }
                         }
+                        Button {
+                            audioManager.playNext(track)
+                        } label: {
+                            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                        }
+
+                        Button {
+                            audioManager.enqueue([track])
+                        } label: {
+                            Label("Add to Queue", systemImage: "text.badge.plus")
+                        }
+
                         Menu("Add to Playlist") {
                             ForEach(library.playlists) { pl in
                                 Button(pl.name) { library.addTracksToPlaylist(playlistID: pl.id, trackURLs: [track.url]) }
