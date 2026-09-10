@@ -2,11 +2,25 @@ import AVFoundation
 import MediaPlayer
 import Combine
 
+
+private struct PlaybackPersistenceState: Codable {
+    let queue: [LocalTrack]
+    let originalQueue: [LocalTrack]
+    let queueIndex: Int
+    let currentTrackID: UUID?
+    let position: TimeInterval
+    let isPlaying: Bool
+    let isShuffle: Bool
+    let repeatMode: RepeatMode
+}
+
 class AudioEngineManager: ObservableObject {
     private let player = AVPlayer()
 
     private var timeObserverToken: Any?
     private var endObserverToken: Any?
+    private var lastPersistedTime: TimeInterval = -100
+    private var didAttemptRestore = false
 
     @Published var currentTrack: LocalTrack?
 
@@ -44,7 +58,164 @@ class AudioEngineManager: ObservableObject {
         setupInterruptionHandling()
     }
 
+    // MARK: - Persistent Playback / Resume
+
+    private let persistenceKey = "Toyako.PlaybackState.v2"
+
+    func savePlaybackState(force: Bool = false) {
+        guard currentTrack != nil else { return }
+        if !force && abs(currentTime - lastPersistedTime) < 2.0 { return }
+        lastPersistedTime = currentTime
+
+        let state = PlaybackPersistenceState(
+            queue: queue,
+            originalQueue: originalQueue,
+            queueIndex: queueIndex,
+            currentTrackID: currentTrack?.id,
+            position: currentTime,
+            isPlaying: isPlaying,
+            isShuffle: isShuffle,
+            repeatMode: repeatMode
+        )
+        if let data = try? JSONEncoder().encode(state) {
+            UserDefaults.standard.set(data, forKey: persistenceKey)
+        }
+    }
+
+    func restoreIfPossible(from libraryTracks: [LocalTrack]) {
+        guard !didAttemptRestore, !libraryTracks.isEmpty else { return }
+        didAttemptRestore = true
+        guard let data = UserDefaults.standard.data(forKey: persistenceKey),
+              let state = try? JSONDecoder().decode(PlaybackPersistenceState.self, from: data),
+              let savedCurrentID = state.currentTrackID else { return }
+
+        func resolve(_ saved: LocalTrack) -> LocalTrack? {
+            libraryTracks.first(where: { $0.id == saved.id })
+                ?? libraryTracks.first(where: { $0.url.standardizedFileURL == saved.url.standardizedFileURL })
+        }
+
+        let restoredQueue = state.queue.compactMap(resolve)
+        let restoredOriginal = state.originalQueue.compactMap(resolve)
+        guard let current = libraryTracks.first(where: { $0.id == savedCurrentID })
+                ?? restoredQueue.first(where: { $0.id == savedCurrentID }) else { return }
+
+        originalQueue = restoredOriginal.isEmpty ? [current] : restoredOriginal
+        queue = restoredQueue.isEmpty ? [current] : restoredQueue
+        if !queue.contains(where: { $0.id == current.id }) { queue.insert(current, at: 0) }
+        queueIndex = queue.firstIndex(where: { $0.id == current.id }) ?? min(max(state.queueIndex, 0), max(queue.count - 1, 0))
+        isShuffle = state.isShuffle
+        repeatMode = state.repeatMode
+
+        currentTrack = current
+        loadLyrics(for: current)
+        detachTimeObserver()
+        detachEndObserver()
+
+        let item = AVPlayerItem(url: current.url)
+        player.replaceCurrentItem(with: item)
+        player.volume = 1.0
+        player.seek(to: CMTime(seconds: max(0, min(state.position, current.duration)), preferredTimescale: 600))
+        currentTime = max(0, min(state.position, current.duration))
+        playbackProgress = current.duration > 0 ? currentTime / current.duration : 0
+        isPlaying = state.isPlaying
+        if state.isPlaying { player.play() }
+        updateNowPlaying(track: current)
+        attachTimeObserver(duration: current.duration)
+        endObserverToken = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in self?.handleTrackEnded() }
+        savePlaybackState(force: true)
+    }
+
     // MARK: - Queue
+
+    func enqueue(_ tracks: [LocalTrack]) {
+        guard !tracks.isEmpty else { return }
+        if queue.isEmpty {
+            originalQueue = tracks
+            queue = tracks
+            queueIndex = 0
+            play(track: tracks[0])
+            savePlaybackState(force: true)
+            return
+        }
+
+        let existingIDs = Set(queue.map(\.id))
+        let additions = tracks.filter { !existingIDs.contains($0.id) }
+        queue.append(contentsOf: additions)
+        originalQueue = queue
+        savePlaybackState(force: true)
+    }
+
+    func playNext(_ track: LocalTrack) {
+        guard !queue.isEmpty else {
+            enqueue([track])
+            return
+        }
+        if queue.contains(where: { $0.id == track.id }) { return }
+        let insertionIndex = min(queueIndex + 1, queue.count)
+        queue.insert(track, at: insertionIndex)
+        originalQueue = queue
+        savePlaybackState(force: true)
+    }
+
+    func removeFromQueue(at offsets: IndexSet) {
+        let currentID = currentTrack?.id
+        let removedCurrent = offsets.contains(queueIndex)
+        queue.remove(atOffsets: offsets)
+        guard !queue.isEmpty else {
+            if let current = currentTrack {
+                queue = [current]
+                queueIndex = 0
+            } else {
+                queueIndex = 0
+            }
+            originalQueue = queue
+            savePlaybackState(force: true)
+            return
+        }
+
+        if removedCurrent, let currentID,
+           let newIndex = queue.firstIndex(where: { $0.id == currentID }) {
+            queueIndex = newIndex
+        } else {
+            let removedBeforeCurrent = offsets.filter { $0 < queueIndex }.count
+            queueIndex = max(0, min(queueIndex - removedBeforeCurrent, queue.count - 1))
+        }
+        originalQueue = queue
+        savePlaybackState(force: true)
+    }
+
+    func moveQueue(from source: IndexSet, to destination: Int) {
+        guard !source.isEmpty else { return }
+        let currentID = currentTrack?.id
+        queue.move(fromOffsets: source, toOffset: destination)
+        queueIndex = currentID.flatMap { id in queue.firstIndex(where: { $0.id == id }) } ?? 0
+        originalQueue = queue
+        savePlaybackState(force: true)
+    }
+
+    func clearQueue() {
+        guard let current = currentTrack else {
+            queue.removeAll()
+            originalQueue.removeAll()
+            queueIndex = 0
+            savePlaybackState(force: true)
+            return
+        }
+        queue = [current]
+        originalQueue = [current]
+        queueIndex = 0
+        savePlaybackState(force: true)
+    }
+
+    func playQueuedTrack(at index: Int) {
+        guard queue.indices.contains(index) else { return }
+        queueIndex = index
+        play(track: queue[index])
+    }
 
     func startQueue(
         tracks: [LocalTrack],
@@ -261,6 +432,8 @@ class AudioEngineManager: ObservableObject {
                 track.duration
         )
 
+        savePlaybackState(force: true)
+
         endObserverToken =
             NotificationCenter.default.addObserver(
                 forName:
@@ -357,6 +530,7 @@ class AudioEngineManager: ObservableObject {
                     $0.id == current.id
                 } ?? 0
         }
+        savePlaybackState(force: true)
     }
 
     // MARK: - Repeat
@@ -376,6 +550,7 @@ class AudioEngineManager: ObservableObject {
             repeatMode =
                 .off
         }
+        savePlaybackState(force: true)
     }
 
     // MARK: - Play / Pause
@@ -396,6 +571,7 @@ class AudioEngineManager: ObservableObject {
         }
 
         updatePlaybackState()
+        savePlaybackState(force: true)
     }
 
     // MARK: - Next
@@ -513,6 +689,7 @@ class AudioEngineManager: ObservableObject {
             clampedTime / duration
 
         updatePlaybackState()
+        savePlaybackState(force: true)
     }
 
     // MARK: - Lyrics
@@ -626,6 +803,8 @@ class AudioEngineManager: ObservableObject {
                             duration
                         )
                     )
+
+                self.savePlaybackState()
 
                 self.playbackProgress =
                     max(
@@ -881,6 +1060,7 @@ class AudioEngineManager: ObservableObject {
     }
 
     deinit {
+        savePlaybackState(force: true)
         detachTimeObserver()
         detachEndObserver()
     }
