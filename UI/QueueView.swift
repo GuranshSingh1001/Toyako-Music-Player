@@ -47,8 +47,11 @@ struct QueueView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
                 }
             }
+            .background(Color.clear)
             .navigationTitle("Queue")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -97,6 +100,7 @@ struct QueueView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
     }
 
     @ViewBuilder
