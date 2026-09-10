@@ -155,9 +155,17 @@ class LocalLibrary:
         let currentManifest = Dictionary(uniqueKeysWithValues: files.map { ($0.url.standardizedFileURL.path, $0.fingerprint) })
         let cachedByPath = Dictionary(uniqueKeysWithValues: cachedTracks.map { ($0.url.standardizedFileURL.path, $0) })
 
-        // Fast path: the library has not changed. Do not open a single AVAsset.
-        // Older caches can contain placeholder metadata, so those entries are
-        // deliberately allowed through the metadata repair pass.
+        // Metadata parsing is versioned independently from the file manifest.
+        // A parser upgrade must invalidate the fast path even when the audio
+        // files themselves have not changed; otherwise an old cached track can
+        // keep placeholder metadata forever.
+        let metadataParserVersion = 4
+        let parserVersionKey = "Toyako.MetadataParserVersion"
+        let needsParserMigration = UserDefaults.standard.integer(forKey: parserVersionKey) < metadataParserVersion
+
+        // Fast path: the library has not changed and the metadata parser has
+        // already processed this cache version. Otherwise, reopen the assets
+        // and repair/rebuild their metadata.
         let cacheNeedsMetadataRepair = cachedTracks.contains { track in
             track.title.isEmpty
                 || track.artist == "Unknown Artist"
@@ -168,20 +176,14 @@ class LocalLibrary:
         if currentManifest == oldManifest,
            files.count == cachedTracks.count,
            !cachedTracks.isEmpty,
-           !cacheNeedsMetadataRepair {
+           !cacheNeedsMetadataRepair,
+           !needsParserMigration {
             return cachedTracks
         }
 
         var result: [LocalTrack] = []
         result.reserveCapacity(files.count)
         var changed: [(Int, URL, LocalTrack?)] = []
-
-        // Metadata parsing is versioned independently from the file manifest.
-        // This lets us repair tracks that were cached with an older/incorrect
-        // AVFoundation key mapping without forcing a full scan on every launch.
-        let metadataParserVersion = 3
-        let parserVersionKey = "Toyako.MetadataParserVersion"
-        let needsParserMigration = UserDefaults.standard.integer(forKey: parserVersionKey) < metadataParserVersion
 
         for (index, file) in files.enumerated() {
             let path = file.url.standardizedFileURL.path
