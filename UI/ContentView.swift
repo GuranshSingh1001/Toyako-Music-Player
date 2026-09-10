@@ -12,6 +12,8 @@ struct ContentView: View {
     @EnvironmentObject var audioManager:
         AudioEngineManager
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @StateObject private var library =
         LocalLibrary()
 
@@ -241,6 +243,17 @@ struct ContentView: View {
 
                 playlistToRename =
                     nil
+            }
+        }
+        .onAppear {
+            audioManager.restoreIfPossible(from: library.tracks)
+        }
+        .onChange(of: library.tracks) { _, tracks in
+            audioManager.restoreIfPossible(from: tracks)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                audioManager.savePlaybackState(force: true)
             }
         }
     }
