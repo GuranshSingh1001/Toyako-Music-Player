@@ -122,8 +122,7 @@ class LocalLibrary:
                     docs,
                 includingPropertiesForKeys:
                     [
-                        .isRegularFileKey,
-                        .isReadableKey
+                        .isRegularFileKey
                     ],
                 options:
                     [
@@ -148,41 +147,47 @@ class LocalLibrary:
                     continue
                 }
 
-                if let values =
-                    try? url.resourceValues(
-                        forKeys:
-                            [
-                                .isRegularFileKey,
-                                .isReadableKey
-                            ]
-                    ),
-                   values.isRegularFile == false {
+                // Avoid an extra filesystem metadata lookup for every file.
+                // The enumerator already gives us the URL; directories with an
+                // audio-looking suffix are simply ignored.
+                guard !url.hasDirectoryPath else {
                     continue
                 }
 
-                discoveredURLs.append(
-                    url
-                )
+                discoveredURLs.append(url)
             }
         }
 
-        var discovered:
-            [LocalTrack] = []
+        // Parse multiple audio files concurrently. A bounded task group keeps
+        // indexing fast without creating hundreds of AVAsset operations at once.
+        let concurrencyLimit = min(8, max(1, discoveredURLs.count))
+        var discovered: [LocalTrack] = []
+        discovered.reserveCapacity(discoveredURLs.count)
 
-        discovered.reserveCapacity(
-            discoveredURLs.count
-        )
+        await withTaskGroup(of: (Int, LocalTrack).self) { group in
+            var nextIndex = 0
 
-        for url in discoveredURLs {
-            let track =
-                await parseAsset(
-                    at:
-                        url
-                )
+            for _ in 0..<concurrencyLimit {
+                let index = nextIndex
+                nextIndex += 1
+                let url = discoveredURLs[index]
+                group.addTask {
+                    (index, await LocalLibrary.parseAsset(at: url))
+                }
+            }
 
-            discovered.append(
-                track
-            )
+            while let result = await group.next() {
+                discovered.append(result.1)
+
+                if nextIndex < discoveredURLs.count {
+                    let index = nextIndex
+                    nextIndex += 1
+                    let url = discoveredURLs[index]
+                    group.addTask {
+                        (index, await LocalLibrary.parseAsset(at: url))
+                    }
+                }
+            }
         }
 
         discovered.sort {
@@ -198,37 +203,32 @@ class LocalLibrary:
     }
 
     nonisolated
-    private func parseAsset(
+    private static func parseAsset(
         at url:
             URL
     ) async -> LocalTrack {
 
         let asset =
             AVURLAsset(
-                url:
-                    url
+                url: url,
+                options: [
+                    AVURLAssetPreferPreciseDurationAndTimingKey: false
+                ]
             )
 
+        async let durationValue = asset.load(.duration)
+        async let metadataValue = asset.load(.metadata)
+
         let durationSeconds =
-            (
-                try? await asset
-                    .load(.duration)
-                    .seconds
-            ) ?? 0
+            (try? await durationValue)?.seconds ?? 0
 
         let duration =
             durationSeconds.isFinite
-            ? max(
-                0,
-                durationSeconds
-            )
+            ? max(0, durationSeconds)
             : 0
 
         let metadata =
-            (
-                try? await asset
-                    .load(.metadata)
-            ) ?? []
+            (try? await metadataValue) ?? []
 
         var title =
             url
