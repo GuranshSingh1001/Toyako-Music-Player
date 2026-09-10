@@ -109,8 +109,8 @@ struct MiniPlayerView: View {
                 )
                 .animation(
                     .spring(
-                        response: 0.20,
-                        dampingFraction: 0.58
+                        response: 0.28,
+                        dampingFraction: 0.72
                     ),
                     value:
                         previousPressed
@@ -157,8 +157,8 @@ struct MiniPlayerView: View {
                 )
                 .animation(
                     .spring(
-                        response: 0.20,
-                        dampingFraction: 0.58
+                        response: 0.28,
+                        dampingFraction: 0.72
                     ),
                     value:
                         playPausePressed
@@ -200,8 +200,8 @@ struct MiniPlayerView: View {
                 )
                 .animation(
                     .spring(
-                        response: 0.20,
-                        dampingFraction: 0.58
+                        response: 0.28,
+                        dampingFraction: 0.72
                     ),
                     value:
                         nextPressed
