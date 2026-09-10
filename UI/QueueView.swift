@@ -6,69 +6,104 @@ struct QueueView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack {
-            Color.clear
+        QueueContent(
+            currentTrack: audioManager.currentTrack,
+            queue: audioManager.queue,
+            queueIndex: audioManager.queueIndex,
+            isPlaying: audioManager.isPlaying,
+            onSelect: { index in audioManager.playQueuedTrack(at: index) },
+            onRemove: { index in audioManager.removeFromQueue(at: IndexSet(integer: index)) },
+            onClear: { audioManager.clearQueue() },
+            onDismiss: { dismiss() }
+        )
+        .equatable()
+    }
+}
 
-            VStack(spacing: 0) {
-                header
+private struct QueueContent: View, Equatable {
+    let currentTrack: LocalTrack?
+    let queue: [LocalTrack]
+    let queueIndex: Int
+    let isPlaying: Bool
 
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        if let current = audioManager.currentTrack {
-                            sectionTitle("Playing")
-                            queueRow(current, current: true)
-                        }
+    let onSelect: (Int) -> Void
+    let onRemove: (Int) -> Void
+    let onClear: () -> Void
+    let onDismiss: () -> Void
 
-                        let start = min(
-                            audioManager.queueIndex + 1,
-                            audioManager.queue.count
+    static func == (lhs: QueueContent, rhs: QueueContent) -> Bool {
+        lhs.queueIndex == rhs.queueIndex &&
+        lhs.isPlaying == rhs.isPlaying &&
+        trackFingerprint(lhs.currentTrack) == trackFingerprint(rhs.currentTrack) &&
+        lhs.queue.map(trackFingerprint) == rhs.queue.map(trackFingerprint)
+    }
+
+    private static func trackFingerprint(_ track: LocalTrack?) -> String {
+        guard let track else { return "nil" }
+        return "\(track.id.uuidString)|\(track.title)|\(track.artist)|\(track.album)|\(track.artworkData != nil)"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if let currentTrack {
+                        sectionTitle("Playing")
+                        QueueRow(
+                            track: currentTrack,
+                            current: true,
+                            isPlaying: isPlaying,
+                            onSelect: nil,
+                            onRemove: nil
                         )
-                        let upcoming = Array(audioManager.queue.dropFirst(start))
-
-                        if !upcoming.isEmpty {
-                            sectionTitle("Up Next")
-                                .padding(.top, 22)
-
-                            ForEach(upcoming) { track in
-                                if let index = audioManager.queue.firstIndex(where: { $0.id == track.id }) {
-                                    queueRow(track, current: false, index: index)
-                                }
-                            }
-                        } else if audioManager.currentTrack != nil {
-                            Text("No more songs in the queue")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 20)
-                                .padding(.horizontal, 22)
-                        }
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 22)
+
+                    let start = min(queueIndex + 1, queue.count)
+                    if start < queue.count {
+                        sectionTitle("Up Next")
+                            .padding(.top, 22)
+
+                        ForEach(Array(queue[start...])) { track in
+                            if let index = queue.firstIndex(where: { $0.id == track.id }) {
+                                QueueRow(
+                                    track: track,
+                                    current: false,
+                                    isPlaying: false,
+                                    onSelect: { onSelect(index) },
+                                    onRemove: { onRemove(index) }
+                                )
+                            }
+                        }
+                    } else if currentTrack != nil {
+                        Text("No more songs in the queue")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 20)
+                            .padding(.horizontal, 22)
+                    }
                 }
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.basedOnSize)
-                .transaction { transaction in
-                    // Do not let row animations participate in scrolling.
-                    transaction.animation = nil
-                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 22)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-            .glassEffect(
-                .regular.interactive(),
-                in: RoundedRectangle(cornerRadius: 30, style: .continuous)
-            )
-            .padding(8)
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .glassEffect(
+            .regular.interactive(),
+            in: RoundedRectangle(cornerRadius: 30, style: .continuous)
+        )
+        .padding(8)
         .background(Color.clear)
     }
 
     private var header: some View {
         HStack {
-            Button("Done") {
-                dismiss()
-            }
-            .buttonStyle(.glass)
+            Button("Done", action: onDismiss)
+                .buttonStyle(.glass)
 
             Spacer()
 
@@ -77,15 +112,11 @@ struct QueueView: View {
 
             Spacer()
 
-            if audioManager.queue.count > 1 {
-                Button("Clear", role: .destructive) {
-                    audioManager.clearQueue()
-                }
-                .buttonStyle(.glass)
+            if queue.count > 1 {
+                Button("Clear", role: .destructive, action: onClear)
+                    .buttonStyle(.glass)
             } else {
-                // Keep the title visually centered.
-                Color.clear
-                    .frame(width: 64, height: 1)
+                Color.clear.frame(width: 64, height: 1)
             }
         }
         .padding(.horizontal, 16)
@@ -101,15 +132,18 @@ struct QueueView: View {
             .padding(.horizontal, 4)
             .padding(.bottom, 8)
     }
+}
 
-    @ViewBuilder
-    private func queueRow(
-        _ track: LocalTrack,
-        current: Bool,
-        index: Int? = nil
-    ) -> some View {
+private struct QueueRow: View {
+    let track: LocalTrack
+    let current: Bool
+    let isPlaying: Bool
+    let onSelect: (() -> Void)?
+    let onRemove: (() -> Void)?
+
+    var body: some View {
         HStack(spacing: 12) {
-            artwork(for: track)
+            artwork
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)
@@ -125,23 +159,17 @@ struct QueueView: View {
             Spacer(minLength: 8)
 
             if current {
-                Image(systemName: audioManager.isPlaying ? "waveform" : "pause.fill")
+                Image(systemName: isPlaying ? "waveform" : "pause.fill")
                     .foregroundStyle(.tint)
                     .contentTransition(.symbolEffect(.replace))
             }
         }
         .frame(minHeight: 64)
         .contentShape(Rectangle())
-        .onTapGesture {
-            if let index {
-                audioManager.playQueuedTrack(at: index)
-            }
-        }
+        .onTapGesture { onSelect?() }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if let index, !current {
-                Button(role: .destructive) {
-                    audioManager.removeFromQueue(at: IndexSet(integer: index))
-                } label: {
+            if let onRemove {
+                Button(role: .destructive, action: onRemove) {
                     Label("Remove", systemImage: "trash")
                 }
             }
@@ -155,7 +183,7 @@ struct QueueView: View {
     }
 
     @ViewBuilder
-    private func artwork(for track: LocalTrack) -> some View {
+    private var artwork: some View {
         if let data = track.artworkData, let image = UIImage(data: data) {
             Image(uiImage: image)
                 .resizable()
@@ -166,10 +194,7 @@ struct QueueView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(.secondary.opacity(0.14))
                 .frame(width: 44, height: 44)
-                .overlay {
-                    Image(systemName: "music.note")
-                        .foregroundStyle(.secondary)
-                }
+                .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
         }
     }
 }
