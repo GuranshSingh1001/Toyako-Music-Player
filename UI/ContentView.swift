@@ -248,12 +248,18 @@ struct ContentView: View {
         .onAppear {
             audioManager.restoreIfPossible(from: library.tracks)
             audioManager.synchronizeLibrary(library.tracks)
+            if let current = audioManager.currentTrack {
+                library.refreshArtwork(for: current)
+            }
         }
         .onChange(of: library.tracks) { _, tracks in
             // First restore playback from the cache, then refresh it with the
             // fully scanned metadata/artwork. The cache intentionally has no artwork.
             audioManager.restoreIfPossible(from: tracks)
             audioManager.synchronizeLibrary(tracks)
+            if let current = audioManager.currentTrack {
+                library.refreshArtwork(for: current)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
