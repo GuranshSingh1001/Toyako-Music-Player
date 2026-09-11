@@ -25,7 +25,7 @@ private final class AudioLevelMeter: @unchecked Sendable {
         // assigning each field after a default initializer. Construct the
         // callbacks with the typed initializer instead so Swift gets the
         // exact MediaToolbox callback signatures from the SDK.
-        let callbacks = MTAudioProcessingTapCallbacks(
+        var callbacks = MTAudioProcessingTapCallbacks(
             version: kMTAudioProcessingTapCallbacksVersion_0,
             clientInfo: Unmanaged.passUnretained(self).toOpaque(),
             init: { _, clientInfo, tapStorageOut in
