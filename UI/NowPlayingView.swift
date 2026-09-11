@@ -4,7 +4,8 @@ import UIKit
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
-
+    let transitionNamespace: Namespace.ID
+    
     @State private var dragOffset: CGFloat = 0
     @State private var isVisible = false
     @State private var playPausePressed = false
