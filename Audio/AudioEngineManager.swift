@@ -6,7 +6,9 @@ import MediaToolbox
 
 // MARK: - Audio-Reactive Mini Player Meter
 // Uses MTAudioProcessingTap on AVPlayer's audio pipeline.
+
 private final class AudioLevelMeter: @unchecked Sendable {
+
     private var tap: MTAudioProcessingTap?
     private var lastPublishTime: CFTimeInterval = 0
     private var smoothedLevel: Float = 0
@@ -14,177 +16,36 @@ private final class AudioLevelMeter: @unchecked Sendable {
 
     var onLevel: ((Float) -> Void)?
 
-    func attach(to item: AVPlayerItem, track: AVAssetTrack) {
+    func attach(
+        to item: AVPlayerItem,
+        track: AVAssetTrack
+    ) {
+
         generation &+= 1
-        let generation = self.generation
 
         var callbacks = MTAudioProcessingTapCallbacks(
-            version: kMTAudioProcessingTapCallbacksVersion_0,
+            version:
+                kMTAudioProcessingTapCallbacksVersion_0,
 
-            clientInfo: Unmanaged.passUnretained(self).toOpaque(),
+            clientInfo:
+                Unmanaged.passUnretained(self).toOpaque(),
 
-            init: { _, clientInfo, tapStorageOut in
-                tapStorageOut.pointee = clientInfo
-            },
+            init:
+                audioTapInit,
 
-            finalize: { _ in
-            },
+            finalize:
+                audioTapFinalize,
 
-            prepare: { _, _, _ in
-            },
+            prepare:
+                audioTapPrepare,
 
-            unprepare: { _ in
-            },
+            unprepare:
+                audioTapUnprepare,
 
-            process: {
-                tap,
-                numberFrames,
-                flags,
-                bufferListInOut,
-                numberFramesOut,
-                flagsOut in
-
-                // Pull the actual audio samples from the source.
-                let status = MTAudioProcessingTapGetSourceAudio(
-                    tap,
-                    numberFrames,
-                    bufferListInOut,
-                    flagsOut,
-                    nil,
-                    numberFramesOut
-                )
-
-                guard status == noErr else {
-                    return
-                }
-
-                let meter = Unmanaged<AudioLevelMeter>
-                    .fromOpaque(
-                        MTAudioProcessingTapGetStorage(tap)
-                    )
-                    .takeUnretainedValue()
-
-                let buffers =
-                    UnsafeMutableAudioBufferListPointer(
-                        bufferListInOut
-                    )
-
-                var sumSquares: Double = 0
-                var sampleCount = 0
-
-                for buffer in buffers {
-                    guard let data = buffer.mData else {
-                        continue
-                    }
-
-                    let frames =
-                        Int(numberFramesOut.pointee)
-
-                    guard frames > 0 else {
-                        continue
-                    }
-
-                    let channels =
-                        max(
-                            Int(buffer.mNumberChannels),
-                            1
-                        )
-
-                    let floatCount =
-                        Int(buffer.mDataByteSize)
-                        / MemoryLayout<Float>.size
-
-                    guard floatCount >= frames * channels else {
-                        continue
-                    }
-
-                    let samples =
-                        data.assumingMemoryBound(
-                            to: Float.self
-                        )
-
-                    let count =
-                        min(
-                            floatCount,
-                            frames * channels
-                        )
-
-                    for index in 0..<count {
-                        let sample =
-                            Double(samples[index])
-
-                        sumSquares +=
-                            sample * sample
-                    }
-
-                    sampleCount += count
-                }
-
-                guard sampleCount > 0 else {
-                    return
-                }
-
-                // Calculate RMS audio level.
-                let rms =
-                    Float(
-                        sqrt(
-                            sumSquares
-                            / Double(sampleCount)
-                        )
-                    )
-
-                // Normalize RMS to 0...1.
-                let normalized =
-                    min(
-                        max(
-                            rms * 4.0,
-                            0
-                        ),
-                        1
-                    )
-
-                // Fast attack / slow release smoothing.
-                if normalized > meter.smoothedLevel {
-                    meter.smoothedLevel +=
-                        (normalized - meter.smoothedLevel)
-                        * 0.55
-                } else {
-                    meter.smoothedLevel +=
-                        (normalized - meter.smoothedLevel)
-                        * 0.12
-                }
-
-                // Publish approximately 30 updates per second.
-                let now =
-                    CACurrentMediaTime()
-
-                guard
-                    now - meter.lastPublishTime
-                    >= (1.0 / 30.0)
-                else {
-                    return
-                }
-
-                meter.lastPublishTime =
-                    now
-
-                let level =
-                    meter.smoothedLevel
-
-                DispatchQueue.main.async { [weak meter] in
-                    guard
-                        let meter,
-                        meter.generation == generation
-                    else {
-                        return
-                    }
-
-                    meter.onLevel?(level)
-                }
-            }
+            process:
+                audioTapProcess
         )
 
-        // Create the audio processing tap.
         var tapOut: MTAudioProcessingTap?
 
         let status =
@@ -223,7 +84,9 @@ private final class AudioLevelMeter: @unchecked Sendable {
     }
 
     func reset() {
+
         generation &+= 1
+
         smoothedLevel = 0
         lastPublishTime = 0
 
@@ -232,12 +95,246 @@ private final class AudioLevelMeter: @unchecked Sendable {
         onLevel = nil
         tap = nil
     }
+
+    fileprivate func process(
+        tap: MTAudioProcessingTap,
+        numberFrames: CMItemCount,
+        bufferListInOut:
+            UnsafeMutablePointer<AudioBufferList>,
+        numberFramesOut:
+            UnsafeMutablePointer<CMItemCount>,
+        flagsOut:
+            UnsafeMutablePointer<MTAudioProcessingTapFlags>
+    ) {
+
+        let status =
+            MTAudioProcessingTapGetSourceAudio(
+                tap,
+                numberFrames,
+                bufferListInOut,
+                flagsOut,
+                nil,
+                numberFramesOut
+            )
+
+        guard status == noErr else {
+            return
+        }
+
+        let buffers =
+            UnsafeMutableAudioBufferListPointer(
+                bufferListInOut
+            )
+
+        var sumSquares: Double = 0
+        var sampleCount = 0
+
+        for buffer in buffers {
+
+            guard
+                let data = buffer.mData
+            else {
+                continue
+            }
+
+            let frames =
+                Int(numberFramesOut.pointee)
+
+            guard frames > 0 else {
+                continue
+            }
+
+            let channels =
+                max(
+                    Int(buffer.mNumberChannels),
+                    1
+                )
+
+            let floatCount =
+                Int(buffer.mDataByteSize)
+                / MemoryLayout<Float>.size
+
+            guard
+                floatCount >=
+                    frames * channels
+            else {
+                continue
+            }
+
+            let samples =
+                data.assumingMemoryBound(
+                    to: Float.self
+                )
+
+            let count =
+                min(
+                    floatCount,
+                    frames * channels
+                )
+
+            for index in 0..<count {
+
+                let sample =
+                    Double(samples[index])
+
+                sumSquares +=
+                    sample * sample
+            }
+
+            sampleCount += count
+        }
+
+        guard sampleCount > 0 else {
+            return
+        }
+
+        let rms =
+            Float(
+                sqrt(
+                    sumSquares /
+                    Double(sampleCount)
+                )
+            )
+
+        let normalized =
+            min(
+                max(
+                    rms * 4.0,
+                    0
+                ),
+                1
+            )
+
+        if normalized > smoothedLevel {
+
+            smoothedLevel +=
+                (normalized - smoothedLevel)
+                * 0.55
+
+        } else {
+
+            smoothedLevel +=
+                (normalized - smoothedLevel)
+                * 0.12
+        }
+
+        let now =
+            CACurrentMediaTime()
+
+        guard
+            now - lastPublishTime >=
+                (1.0 / 30.0)
+        else {
+            return
+        }
+
+        lastPublishTime =
+            now
+
+        let level =
+            smoothedLevel
+
+        let generation =
+            self.generation
+
+        DispatchQueue.main.async { [weak self] in
+
+            guard
+                let self,
+                self.generation == generation
+            else {
+                return
+            }
+
+            self.onLevel?(level)
+        }
+    }
+}
+
+
+// MARK: - C-Compatible Audio Tap Callbacks
+
+private func audioTapInit(
+    _ tap: MTAudioProcessingTap,
+    _ clientInfo: UnsafeMutableRawPointer?,
+    _ tapStorageOut:
+        UnsafeMutablePointer<UnsafeMutableRawPointer?>
+) {
+
+    tapStorageOut.pointee =
+        clientInfo
+}
+
+
+private func audioTapFinalize(
+    _ tap: MTAudioProcessingTap
+) {
+}
+
+
+private func audioTapPrepare(
+    _ tap: MTAudioProcessingTap,
+    _ maxFrames: CMItemCount,
+    _ processingFormat:
+        UnsafePointer<AudioStreamBasicDescription>
+) {
+}
+
+
+private func audioTapUnprepare(
+    _ tap: MTAudioProcessingTap
+) {
+}
+
+
+private func audioTapProcess(
+    _ tap: MTAudioProcessingTap,
+    _ numberFrames: CMItemCount,
+    _ flags:
+        UnsafeMutablePointer<MTAudioProcessingTapFlags>,
+    _ bufferListInOut:
+        UnsafeMutablePointer<AudioBufferList>,
+    _ numberFramesOut:
+        UnsafeMutablePointer<CMItemCount>,
+    _ flagsOut:
+        UnsafeMutablePointer<MTAudioProcessingTapFlags>
+) {
+
+    guard
+        let storage =
+            MTAudioProcessingTapGetStorage(tap)
+    else {
+        return
+    }
+
+    let meter =
+        Unmanaged<AudioLevelMeter>
+            .fromOpaque(storage)
+            .takeUnretainedValue()
+
+    meter.process(
+        tap:
+            tap,
+
+        numberFrames:
+            numberFrames,
+
+        bufferListInOut:
+            bufferListInOut,
+
+        numberFramesOut:
+            numberFramesOut,
+
+        flagsOut:
+            flagsOut
+    )
 }
 
 
 // MARK: - Playback Persistence
 
 private struct PlaybackPersistenceState: Codable {
+
     let queue: [LocalTrack]
     let originalQueue: [LocalTrack]
     let queueIndex: Int
@@ -253,14 +350,20 @@ private struct PlaybackPersistenceState: Codable {
 
 class AudioEngineManager: ObservableObject {
 
-    private let player = AVPlayer()
+    private let player =
+        AVPlayer()
 
-    private var timeObserverToken: Any?
-    private var endObserverToken: Any?
+    private var timeObserverToken:
+        Any?
 
-    private var lastPersistedTime: TimeInterval = -100
+    private var endObserverToken:
+        Any?
 
-    private var didAttemptRestore = false
+    private var lastPersistedTime:
+        TimeInterval = -100
+
+    private var didAttemptRestore =
+        false
 
     private let audioLevelMeter =
         AudioLevelMeter()
@@ -268,29 +371,41 @@ class AudioEngineManager: ObservableObject {
 
     // MARK: Published State
 
-    @Published var audioLevel: Float = 0
+    @Published var audioLevel:
+        Float = 0
 
-    @Published var currentTrack: LocalTrack?
+    @Published var currentTrack:
+        LocalTrack?
 
-    @Published var isPlaying: Bool = false
+    @Published var isPlaying:
+        Bool = false
 
-    @Published var currentTime: TimeInterval = 0.0
+    @Published var currentTime:
+        TimeInterval = 0.0
 
-    @Published var playbackProgress: Double = 0.0
+    @Published var playbackProgress:
+        Double = 0.0
 
-    @Published var currentLyrics: [LyricLine] = []
+    @Published var currentLyrics:
+        [LyricLine] = []
 
-    @Published var queue: [LocalTrack] = []
+    @Published var queue:
+        [LocalTrack] = []
 
-    @Published var originalQueue: [LocalTrack] = []
+    @Published var originalQueue:
+        [LocalTrack] = []
 
-    @Published var queueIndex: Int = 0
+    @Published var queueIndex:
+        Int = 0
 
-    @Published var isShuffle: Bool = false
+    @Published var isShuffle:
+        Bool = false
 
-    @Published var repeatMode: RepeatMode = .off
+    @Published var repeatMode:
+        RepeatMode = .off
 
-    @Published var crossfadeEnabled: Bool = true
+    @Published var crossfadeEnabled:
+        Bool = true
 
 
     // MARK: Initialization
@@ -300,7 +415,8 @@ class AudioEngineManager: ObservableObject {
         audioLevelMeter.onLevel = {
             [weak self] level in
 
-            self?.audioLevel = level
+            self?.audioLevel =
+                level
         }
 
         setupRemoteControls()
@@ -310,7 +426,9 @@ class AudioEngineManager: ObservableObject {
 
     // MARK: Player Item
 
-    private func makePlayerItem(url: URL) -> AVPlayerItem {
+    private func makePlayerItem(
+        url: URL
+    ) -> AVPlayerItem {
 
         let asset =
             AVURLAsset(
@@ -326,15 +444,17 @@ class AudioEngineManager: ObservableObject {
                 asset: asset
             )
 
-        // Attach the audio meter before playback starts.
         if let audioTrack =
             asset.tracks(
                 withMediaType: .audio
             ).first {
 
             audioLevelMeter.attach(
-                to: item,
-                track: audioTrack
+                to:
+                    item,
+
+                track:
+                    audioTrack
             )
         }
 
@@ -351,7 +471,8 @@ class AudioEngineManager: ObservableObject {
         audioLevelMeter.onLevel = {
             [weak self] level in
 
-            self?.audioLevel = level
+            self?.audioLevel =
+                level
         }
     }
 
@@ -362,14 +483,19 @@ class AudioEngineManager: ObservableObject {
         "Toyako.PlaybackState.v2"
 
 
-    func savePlaybackState(force: Bool = false) {
+    func savePlaybackState(
+        force: Bool = false
+    ) {
 
         guard currentTrack != nil else {
             return
         }
 
         if !force &&
-            abs(currentTime - lastPersistedTime) < 2.0 {
+            abs(
+                currentTime -
+                lastPersistedTime
+            ) < 2.0 {
 
             return
         }
@@ -379,18 +505,34 @@ class AudioEngineManager: ObservableObject {
 
         let state =
             PlaybackPersistenceState(
-                queue: queue,
-                originalQueue: originalQueue,
-                queueIndex: queueIndex,
-                currentTrackID: currentTrack?.id,
-                position: currentTime,
-                isPlaying: isPlaying,
-                isShuffle: isShuffle,
-                repeatMode: repeatMode
+                queue:
+                    queue,
+
+                originalQueue:
+                    originalQueue,
+
+                queueIndex:
+                    queueIndex,
+
+                currentTrackID:
+                    currentTrack?.id,
+
+                position:
+                    currentTime,
+
+                isPlaying:
+                    isPlaying,
+
+                isShuffle:
+                    isShuffle,
+
+                repeatMode:
+                    repeatMode
             )
 
         if let data =
-            try? JSONEncoder().encode(state) {
+            try? JSONEncoder()
+                .encode(state) {
 
             UserDefaults.standard.set(
                 data,
@@ -407,7 +549,9 @@ class AudioEngineManager: ObservableObject {
         _ libraryTracks: [LocalTrack]
     ) {
 
-        guard !libraryTracks.isEmpty else {
+        guard
+            !libraryTracks.isEmpty
+        else {
             return
         }
 
@@ -417,7 +561,7 @@ class AudioEngineManager: ObservableObject {
 
             libraryTracks.first {
                 $0.url.standardizedFileURL ==
-                track.url.standardizedFileURL
+                    track.url.standardizedFileURL
             }
             ??
             libraryTracks.first {
@@ -427,18 +571,24 @@ class AudioEngineManager: ObservableObject {
 
 
         if let current = currentTrack,
-           let refreshed = resolve(current) {
+           let refreshed =
+                resolve(current) {
 
             let trackChanged =
-                current.title != refreshed.title
+                current.title !=
+                    refreshed.title
                 ||
-                current.artist != refreshed.artist
+                current.artist !=
+                    refreshed.artist
                 ||
-                current.album != refreshed.album
+                current.album !=
+                    refreshed.album
                 ||
-                current.duration != refreshed.duration
+                current.duration !=
+                    refreshed.duration
                 ||
-                current.artworkData != refreshed.artworkData
+                current.artworkData !=
+                    refreshed.artworkData
 
             if trackChanged {
 
@@ -476,7 +626,10 @@ class AudioEngineManager: ObservableObject {
                let currentIndex =
                 queue.firstIndex(
                     where:
-                        { $0.id == currentID }
+                        {
+                            $0.id ==
+                                currentID
+                        }
                 ) {
 
                 queueIndex =
@@ -486,13 +639,14 @@ class AudioEngineManager: ObservableObject {
                 currentTrack?.url.standardizedFileURL,
 
                       let currentIndex =
-                queue.firstIndex(
-                    where:
-                        {
-                            $0.url.standardizedFileURL ==
-                            currentURL
-                        }
-                ) {
+                        queue.firstIndex(
+                            where:
+                                {
+                                    $0.url
+                                        .standardizedFileURL ==
+                                        currentURL
+                                }
+                        ) {
 
                 queueIndex =
                     currentIndex
@@ -501,12 +655,14 @@ class AudioEngineManager: ObservableObject {
 
 
         if !refreshedOriginal.isEmpty {
+
             originalQueue =
                 refreshedOriginal
         }
 
 
         if currentTrack != nil {
+
             savePlaybackState(
                 force:
                     true
@@ -561,7 +717,7 @@ class AudioEngineManager: ObservableObject {
             ??
             libraryTracks.first {
                 $0.url.standardizedFileURL ==
-                saved.url.standardizedFileURL
+                    saved.url.standardizedFileURL
             }
         }
 
@@ -573,17 +729,33 @@ class AudioEngineManager: ObservableObject {
             state.originalQueue.compactMap(resolve)
 
 
-        let current: LocalTrack?
+        let current:
+            LocalTrack?
 
-        if let libraryCurrent = libraryTracks.first(where: {
-            $0.id == savedCurrentID
-        }) {
-            current = libraryCurrent
+        if let libraryCurrent =
+            libraryTracks.first(
+                where:
+                    {
+                        $0.id ==
+                            savedCurrentID
+                    }
+            ) {
+
+            current =
+                libraryCurrent
+
         } else {
-            current = restoredQueue.first(where: {
-                $0.id == savedCurrentID
-            })
+
+            current =
+                restoredQueue.first(
+                    where:
+                        {
+                            $0.id ==
+                                savedCurrentID
+                        }
+                )
         }
+
 
         guard let current else {
             return
@@ -603,7 +775,10 @@ class AudioEngineManager: ObservableObject {
 
         if !queue.contains(
             where:
-                { $0.id == current.id }
+                {
+                    $0.id ==
+                        current.id
+                }
         ) {
 
             queue.insert(
@@ -617,7 +792,10 @@ class AudioEngineManager: ObservableObject {
         queueIndex =
             queue.firstIndex(
                 where:
-                    { $0.id == current.id }
+                    {
+                        $0.id ==
+                            current.id
+                    }
             )
             ??
             min(
@@ -692,11 +870,11 @@ class AudioEngineManager: ObservableObject {
 
         playbackProgress =
             current.duration > 0
-            ? currentTime / current.duration
+            ? currentTime /
+                current.duration
             : 0
 
 
-        // Never automatically start playback after relaunch.
         isPlaying =
             false
 
@@ -717,10 +895,13 @@ class AudioEngineManager: ObservableObject {
             NotificationCenter.default.addObserver(
                 forName:
                     .AVPlayerItemDidPlayToEndTime,
+
                 object:
                     item,
+
                 queue:
                     .main
+
             ) { [weak self] _ in
 
                 self?.handleTrackEnded()
@@ -740,7 +921,9 @@ class AudioEngineManager: ObservableObject {
         _ tracks: [LocalTrack]
     ) {
 
-        guard !tracks.isEmpty else {
+        guard
+            !tracks.isEmpty
+        else {
             return
         }
 
@@ -777,7 +960,9 @@ class AudioEngineManager: ObservableObject {
 
         let additions =
             tracks.filter {
-                !existingIDs.contains($0.id)
+                !existingIDs.contains(
+                    $0.id
+                )
             }
 
         queue.append(
@@ -799,7 +984,9 @@ class AudioEngineManager: ObservableObject {
         _ track: LocalTrack
     ) {
 
-        guard !queue.isEmpty else {
+        guard
+            !queue.isEmpty
+        else {
 
             enqueue(
                 [track]
@@ -811,7 +998,10 @@ class AudioEngineManager: ObservableObject {
 
         if queue.contains(
             where:
-                { $0.id == track.id }
+                {
+                    $0.id ==
+                        track.id
+                }
         ) {
             return
         }
@@ -857,7 +1047,9 @@ class AudioEngineManager: ObservableObject {
         )
 
 
-        guard !queue.isEmpty else {
+        guard
+            !queue.isEmpty
+        else {
 
             if let current =
                 currentTrack {
@@ -889,10 +1081,13 @@ class AudioEngineManager: ObservableObject {
         if removedCurrent,
            let currentID,
            let newIndex =
-            queue.firstIndex(
-                where:
-                    { $0.id == currentID }
-            ) {
+                queue.firstIndex(
+                    where:
+                        {
+                            $0.id ==
+                                currentID
+                        }
+                ) {
 
             queueIndex =
                 newIndex
@@ -909,7 +1104,7 @@ class AudioEngineManager: ObservableObject {
                     0,
                     min(
                         queueIndex -
-                        removedBeforeCurrent,
+                            removedBeforeCurrent,
                         queue.count - 1
                     )
                 )
@@ -931,7 +1126,9 @@ class AudioEngineManager: ObservableObject {
         to destination: Int
     ) {
 
-        guard !source.isEmpty else {
+        guard
+            !source.isEmpty
+        else {
             return
         }
 
@@ -941,6 +1138,7 @@ class AudioEngineManager: ObservableObject {
         queue.move(
             fromOffsets:
                 source,
+
             toOffset:
                 destination
         )
@@ -948,9 +1146,11 @@ class AudioEngineManager: ObservableObject {
         queueIndex =
             currentID.flatMap {
                 id in
+
                 queue.firstIndex {
                     $0.id == id
                 }
+
             }
             ??
             0
@@ -967,12 +1167,15 @@ class AudioEngineManager: ObservableObject {
 
     func clearQueue() {
 
-        guard let current =
-            currentTrack
+        guard
+            let current =
+                currentTrack
         else {
 
             queue.removeAll()
+
             originalQueue.removeAll()
+
             queueIndex =
                 0
 
@@ -1005,7 +1208,8 @@ class AudioEngineManager: ObservableObject {
         at index: Int
     ) {
 
-        guard queue.indices.contains(index)
+        guard
+            queue.indices.contains(index)
         else {
             return
         }
@@ -1027,7 +1231,9 @@ class AudioEngineManager: ObservableObject {
 
         guard
             !tracks.isEmpty,
-            tracks.indices.contains(startIndex)
+            tracks.indices.contains(
+                startIndex
+            )
         else {
             return
         }
@@ -1051,7 +1257,8 @@ class AudioEngineManager: ObservableObject {
             shuffled.shuffle()
 
             queue =
-                [selected] + shuffled
+                [selected] +
+                shuffled
 
             queueIndex =
                 0
@@ -1114,6 +1321,7 @@ class AudioEngineManager: ObservableObject {
             fadeOutAndSwitch(
                 to:
                     playerItem,
+
                 track:
                     track
             )
@@ -1133,6 +1341,7 @@ class AudioEngineManager: ObservableObject {
             finalizePlay(
                 track:
                     track,
+
                 playerItem:
                     playerItem
             )
@@ -1145,6 +1354,7 @@ class AudioEngineManager: ObservableObject {
     private func fadeOutAndSwitch(
         to newItem:
             AVPlayerItem,
+
         track:
             LocalTrack
     ) {
@@ -1156,11 +1366,15 @@ class AudioEngineManager: ObservableObject {
         Timer.scheduledTimer(
             withTimeInterval:
                 0.04,
+
             repeats:
                 true
+
         ) { [weak self] timer in
 
-            guard let self else {
+            guard
+                let self
+            else {
 
                 timer.invalidate()
                 return
@@ -1187,6 +1401,7 @@ class AudioEngineManager: ObservableObject {
                 self.finalizePlay(
                     track:
                         track,
+
                     playerItem:
                         newItem
                 )
@@ -1212,11 +1427,15 @@ class AudioEngineManager: ObservableObject {
         Timer.scheduledTimer(
             withTimeInterval:
                 0.04,
+
             repeats:
                 true
+
         ) { [weak self] timer in
 
-            guard let self else {
+            guard
+                let self
+            else {
 
                 timer.invalidate()
                 return
@@ -1248,6 +1467,7 @@ class AudioEngineManager: ObservableObject {
     private func finalizePlay(
         track:
             LocalTrack,
+
         playerItem:
             AVPlayerItem
     ) {
@@ -1284,10 +1504,13 @@ class AudioEngineManager: ObservableObject {
             NotificationCenter.default.addObserver(
                 forName:
                     .AVPlayerItemDidPlayToEndTime,
+
                 object:
                     playerItem,
+
                 queue:
                     .main
+
             ) { [weak self] _ in
 
                 self?.handleTrackEnded()
@@ -1354,8 +1577,9 @@ class AudioEngineManager: ObservableObject {
         isShuffle.toggle()
 
 
-        guard let current =
-            currentTrack
+        guard
+            let current =
+                currentTrack
         else {
             return
         }
@@ -1371,7 +1595,8 @@ class AudioEngineManager: ObservableObject {
             pool.shuffle()
 
             queue =
-                [current] + pool
+                [current] +
+                pool
 
             queueIndex =
                 0
@@ -1383,7 +1608,8 @@ class AudioEngineManager: ObservableObject {
 
             queueIndex =
                 queue.firstIndex {
-                    $0.id == current.id
+                    $0.id ==
+                        current.id
                 }
                 ??
                 0
@@ -1404,14 +1630,17 @@ class AudioEngineManager: ObservableObject {
         switch repeatMode {
 
         case .off:
+
             repeatMode =
                 .all
 
         case .all:
+
             repeatMode =
                 .one
 
         case .one:
+
             repeatMode =
                 .off
         }
@@ -1468,7 +1697,8 @@ class AudioEngineManager: ObservableObject {
                     queue[queueIndex]
             )
 
-        } else if repeatMode == .all &&
+        } else if repeatMode ==
+                    .all &&
                     !queue.isEmpty {
 
             queueIndex =
@@ -1503,7 +1733,8 @@ class AudioEngineManager: ObservableObject {
                     queue[queueIndex]
             )
 
-        } else if repeatMode == .all &&
+        } else if repeatMode ==
+                    .all &&
                     !queue.isEmpty {
 
             queueIndex =
@@ -1534,6 +1765,7 @@ class AudioEngineManager: ObservableObject {
         guard
             let duration =
                 currentTrack?.duration,
+
             duration > 0
         else {
             return
@@ -1554,6 +1786,7 @@ class AudioEngineManager: ObservableObject {
             CMTime(
                 seconds:
                     clampedTime,
+
                 preferredTimescale:
                     600
             )
@@ -1562,8 +1795,10 @@ class AudioEngineManager: ObservableObject {
         player.seek(
             to:
                 cmTime,
+
             toleranceBefore:
                 .zero,
+
             toleranceAfter:
                 .zero
         )
@@ -1573,7 +1808,8 @@ class AudioEngineManager: ObservableObject {
             clampedTime
 
         playbackProgress =
-            clampedTime / duration
+            clampedTime /
+            duration
 
 
         updatePlaybackState()
@@ -1604,6 +1840,7 @@ class AudioEngineManager: ObservableObject {
             try? String(
                 contentsOf:
                     lrcURL,
+
                 encoding:
                     .utf8
             ) {
@@ -1659,7 +1896,9 @@ class AudioEngineManager: ObservableObject {
             TimeInterval
     ) {
 
-        guard duration > 0 else {
+        guard
+            duration > 0
+        else {
             return
         }
 
@@ -1668,6 +1907,7 @@ class AudioEngineManager: ObservableObject {
             CMTime(
                 seconds:
                     0.25,
+
                 preferredTimescale:
                     600
             )
@@ -1677,11 +1917,14 @@ class AudioEngineManager: ObservableObject {
             player.addPeriodicTimeObserver(
                 forInterval:
                     interval,
+
                 queue:
                     .main
+
             ) { [weak self] time in
 
-                guard let self
+                guard
+                    let self
                 else {
                     return
                 }
@@ -1693,7 +1936,8 @@ class AudioEngineManager: ObservableObject {
                     )
 
 
-                guard seconds.isFinite
+                guard
+                    seconds.isFinite
                 else {
                     return
                 }
@@ -1702,6 +1946,7 @@ class AudioEngineManager: ObservableObject {
                 self.currentTime =
                     max(
                         0,
+
                         min(
                             seconds,
                             duration
@@ -1715,8 +1960,11 @@ class AudioEngineManager: ObservableObject {
                 self.playbackProgress =
                     max(
                         0,
+
                         min(
-                            seconds / duration,
+                            seconds /
+                                duration,
+
                             1
                         )
                     )
@@ -1834,10 +2082,13 @@ class AudioEngineManager: ObservableObject {
         NotificationCenter.default.addObserver(
             forName:
                 AVAudioSession.interruptionNotification,
+
             object:
                 nil,
+
             queue:
                 .main
+
         ) { [weak self] notification in
 
             guard
@@ -1939,7 +2190,8 @@ class AudioEngineManager: ObservableObject {
 
     private func updatePlaybackState() {
 
-        guard currentTrack != nil
+        guard
+            currentTrack != nil
         else {
             return
         }
@@ -1975,6 +2227,7 @@ class AudioEngineManager: ObservableObject {
 
         if let duration =
             currentTrack?.duration,
+
            duration > 0 {
 
             info[
