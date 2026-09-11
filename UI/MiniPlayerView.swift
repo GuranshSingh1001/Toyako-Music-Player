@@ -97,10 +97,16 @@ private struct MiniPlayerActivity: View {
     private func barHeight(_ index: Int) -> CGFloat {
         guard isPlaying else { return 7 }
 
-        // Each bar is driven by a different part of the actual spectrum:
-        // bass -> low-mid -> mid -> upper-mid -> treble.
-        let response = index < audioBands.count ? audioBands[index] : 0
-        return CGFloat(4.5 + min(max(response, 0), 1) * 15.5)
+        let response =
+            index < audioBands.count
+            ? min(max(audioBands[index], 0), 1)
+            : 0
+
+        // Keep a small floor so the visualizer remains visible while
+        // preserving a strong difference between quiet and loud bands.
+        let eased = pow(response, 0.72)
+
+        return CGFloat(4.0 + eased * 16.0)
     }
 
     private var timeString: String {
