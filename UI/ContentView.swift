@@ -388,7 +388,7 @@ struct ContentView: View {
                 .frame(height: 64)
             }
         }
-
+    }
 
     // MARK: - Detail Content
 
