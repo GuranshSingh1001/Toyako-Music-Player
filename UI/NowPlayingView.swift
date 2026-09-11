@@ -91,7 +91,6 @@ struct NowPlayingView: View {
             .offset(y: dragOffset)
         }
         .ignoresSafeArea()
-        .statusBarHidden(true)
         .onChange(of: isPresented) { _, presented in
             if presented {
                 dragOffset = 0
