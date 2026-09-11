@@ -573,16 +573,19 @@ class AudioEngineManager: ObservableObject {
             state.originalQueue.compactMap(resolve)
 
 
-        guard
-            let current =
-                libraryTracks.first {
-                    $0.id == savedCurrentID
-                }
-                ??
-                restoredQueue.first {
-                    $0.id == savedCurrentID
-                }
-        else {
+        let current: LocalTrack?
+
+        if let libraryCurrent = libraryTracks.first(where: {
+            $0.id == savedCurrentID
+        }) {
+            current = libraryCurrent
+        } else {
+            current = restoredQueue.first(where: {
+                $0.id == savedCurrentID
+            })
+        }
+
+        guard let current else {
             return
         }
 
