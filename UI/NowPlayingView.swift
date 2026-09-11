@@ -574,13 +574,7 @@ struct AppleMusicScrubberBar: View {
                     }
                 )
             }
-            .transaction { transaction in
-                // Playback progress is a live value; never
-                // interpolate it through an inherited SwiftUI
-                // animation. Only the explicit hold animation
-                // below is allowed to animate this control.
-                transaction.animation = nil
-            }
+            .frame(height: 20)
 
             HStack {
                 Text(
