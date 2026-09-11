@@ -29,6 +29,9 @@ struct ContentView: View {
     @State private var
         showNowPlaying = false
 
+    @Namespace private var
+        playerTransition
+
     @State private var
         showNewPlaylistAlert = false
 
@@ -49,18 +52,11 @@ struct ContentView: View {
     @State private var
         renameText = ""
 
-    @State private var permanentTopInset: CGFloat = 24
-
     var body: some View {
-        GeometryReader { rootGeometry in
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: permanentTopInset)
-
-                TabView(
-                    selection:
-                        $selectedCategory
-                ) {
+        TabView(
+            selection:
+                $selectedCategory
+        ) {
 
             Tab(
                 "Songs",
@@ -110,23 +106,10 @@ struct ContentView: View {
                 )
             }
         }
-                .tabViewStyle(
-                    .sidebarAdaptable
-                )
-            }
-            .frame(
-                width: rootGeometry.size.width,
-                height: rootGeometry.size.height,
-                alignment: .top
-            )
-            .onAppear {
-                // Capture the normal status-bar safe-area once. This value
-                // deliberately does NOT change when Now Playing hides the
-                // status bar, so the library never reflows vertically.
-                permanentTopInset = max(rootGeometry.safeAreaInsets.top, 24)
-            }
-        }
-        .ignoresSafeArea(.container, edges: .top)
+        .tabViewStyle(
+            .sidebarAdaptable
+        )
+
 
         // MARK: - Now Playing
 
@@ -135,9 +118,15 @@ struct ContentView: View {
             if showNowPlaying {
                 NowPlayingView(
                     isPresented:
-                        $showNowPlaying
+                        $showNowPlaying,
+                    transitionNamespace:
+                        playerTransition
                 )
                 .ignoresSafeArea(.all)
+                .transition(
+                    .move(edge: .bottom)
+                )
+                .zIndex(100)
             }
         }
 
@@ -369,35 +358,38 @@ struct ContentView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            // Exactly one mini-player is installed: only the selected tab owns
-            // the inset. Its width is fixed, so the sidebar can only move it;
-            // it cannot stretch or create a second copy.
+            // IMPORTANT: the mini-player keeps one fixed width.
+            // The inset itself belongs to the current content column, so when
+            // the adaptive sidebar collapses, the player is re-centered in the
+            // larger content area instead of becoming wider.
             if selectedCategory == category && audioManager.currentTrack != nil {
                 GeometryReader { proxy in
-                    ZStack {
-                        MiniPlayerView {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                                showNowPlaying = true
-                            }
+                    MiniPlayerView(
+                        transitionNamespace: playerTransition,
+                        isNowPlayingPresented: showNowPlaying
+                    ) {
+                        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                            showNowPlaying = true
                         }
-                        .frame(width: 670, height: 55)
-                        .glassEffect(
-                            .regular.interactive(),
-                            in: .capsule
-                        )
-                        .shadow(
-                            color: .black.opacity(0.15),
-                            radius: 12,
-                            y: 6
-                        )
                     }
-                    .frame(width: proxy.size.width, height: 55, alignment: .center)
-                    .transaction { transaction in
-                        transaction.animation = .smooth(duration: 0.30)
-                    }
+                    .glassEffect(
+                        .regular.interactive(),
+                        in: .capsule
+                    )
+                    .shadow(
+                        color: .black.opacity(0.15),
+                        radius: 15,
+                        y: 8
+                    )
+                    .frame(width: 1000)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 12)
+                    // The geometry change is the sidebar transition signal.
+                    // Animating this container makes the fixed-size player slide
+                    // horizontally rather than resize.
+                    .animation(.smooth(duration: 0.35), value: proxy.size.width)
                 }
-                .frame(height: 59)
-                .padding(.bottom, 6)
+                .frame(height: 64)
             }
         }
     }
