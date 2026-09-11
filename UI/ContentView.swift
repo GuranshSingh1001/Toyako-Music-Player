@@ -107,6 +107,13 @@ struct ContentView: View {
             .sidebarAdaptable
         )
 
+        // The status bar is hidden by Now Playing, which normally changes the
+        // root safe area and makes the library jump upward. Keep the library
+        // out of the system top safe-area calculation and reserve a permanent
+        // 24pt status-bar-height space instead. Now Playing still covers the
+        // entire screen independently.
+        .ignoresSafeArea(.container, edges: .top)
+        .padding(.top, 24)
 
         // MARK: - Now Playing
 
