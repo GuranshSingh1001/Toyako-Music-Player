@@ -4,7 +4,6 @@ import UIKit
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
-    let transitionNamespace: Namespace.ID
 
     @State private var dragOffset: CGFloat = 0
     @State private var isVisible = false
@@ -186,13 +185,6 @@ struct NowPlayingView: View {
                 .frame(maxHeight: maxHeight)
                 .clipShape(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                )
-                .matchedGeometryEffect(
-                    id: "nowPlayingArtwork",
-                    in: transitionNamespace,
-                    properties: .frame,
-                    anchor: .center,
-                    isSource: false
                 )
                 .shadow(color: .black.opacity(0.32), radius: 24, y: 12)
                 .id(audioManager.currentTrack?.id)
