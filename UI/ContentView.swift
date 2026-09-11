@@ -49,11 +49,18 @@ struct ContentView: View {
     @State private var
         renameText = ""
 
+    @State private var permanentTopInset: CGFloat = 24
+
     var body: some View {
-        TabView(
-            selection:
-                $selectedCategory
-        ) {
+        GeometryReader { rootGeometry in
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: permanentTopInset)
+
+                TabView(
+                    selection:
+                        $selectedCategory
+                ) {
 
             Tab(
                 "Songs",
@@ -103,17 +110,23 @@ struct ContentView: View {
                 )
             }
         }
-        .tabViewStyle(
-            .sidebarAdaptable
-        )
-
-        // The status bar is hidden by Now Playing, which normally changes the
-        // root safe area and makes the library jump upward. Keep the library
-        // out of the system top safe-area calculation and reserve a permanent
-        // 24pt status-bar-height space instead. Now Playing still covers the
-        // entire screen independently.
+                .tabViewStyle(
+                    .sidebarAdaptable
+                )
+            }
+            .frame(
+                width: rootGeometry.size.width,
+                height: rootGeometry.size.height,
+                alignment: .top
+            )
+            .onAppear {
+                // Capture the normal status-bar safe-area once. This value
+                // deliberately does NOT change when Now Playing hides the
+                // status bar, so the library never reflows vertically.
+                permanentTopInset = max(rootGeometry.safeAreaInsets.top, 24)
+            }
+        }
         .ignoresSafeArea(.container, edges: .top)
-        .padding(.top, 24)
 
         // MARK: - Now Playing
 
