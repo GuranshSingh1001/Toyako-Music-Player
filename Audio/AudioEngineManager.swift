@@ -290,8 +290,7 @@ private func audioTapUnprepare(
 private func audioTapProcess(
     _ tap: MTAudioProcessingTap,
     _ numberFrames: CMItemCount,
-    _ flags:
-        UnsafeMutablePointer<MTAudioProcessingTapFlags>,
+    _ flags: MTAudioProcessingTapFlags,
     _ bufferListInOut:
         UnsafeMutablePointer<AudioBufferList>,
     _ numberFramesOut:
@@ -300,12 +299,7 @@ private func audioTapProcess(
         UnsafeMutablePointer<MTAudioProcessingTapFlags>
 ) {
 
-    guard
-        let storage =
-            MTAudioProcessingTapGetStorage(tap)
-    else {
-        return
-    }
+    let storage = MTAudioProcessingTapGetStorage(tap)
 
     let meter =
         Unmanaged<AudioLevelMeter>
