@@ -66,6 +66,7 @@ Toyako-Music-Player/
 │   ├── NowPlayingView.swift
 │   ├── PlaylistAddSongsSheet.swift
 │   ├── PlaylistHeaderView.swift
+│   ├── QueueView.swift
 │   └── SongListView.swift
 │
 └── .github/
