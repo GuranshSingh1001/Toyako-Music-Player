@@ -49,18 +49,11 @@ struct ContentView: View {
     @State private var
         renameText = ""
 
-    @State private var permanentTopInset: CGFloat = 24
-
     var body: some View {
-        GeometryReader { rootGeometry in
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: permanentTopInset)
-
-                TabView(
-                    selection:
-                        $selectedCategory
-                ) {
+        TabView(
+            selection:
+                $selectedCategory
+        ) {
 
             Tab(
                 "Songs",
@@ -110,35 +103,30 @@ struct ContentView: View {
                 )
             }
         }
-                .tabViewStyle(
-                    .sidebarAdaptable
-                )
-            }
-            .frame(
-                width: rootGeometry.size.width,
-                height: rootGeometry.size.height,
-                alignment: .top
-            )
-            .onAppear {
-                // Capture the normal status-bar safe-area once. This value
-                // deliberately does NOT change when Now Playing hides the
-                // status bar, so the library never reflows vertically.
-                permanentTopInset = max(rootGeometry.safeAreaInsets.top, 24)
-            }
-        }
-        .ignoresSafeArea(.container, edges: .top)
+        .tabViewStyle(
+            .sidebarAdaptable
+        )
 
         // MARK: - Now Playing
-
-        .statusBarHidden(showNowPlaying)
-        .overlay {
-            if showNowPlaying {
-                NowPlayingView(
-                    isPresented:
-                        $showNowPlaying
-                )
-                .ignoresSafeArea(.all)
-            }
+        //
+        // IMPORTANT:
+        // Do not put Now Playing in an overlay on this root view.
+        // An overlay that also hides the status bar changes the root
+        // safe-area geometry, which causes sidebarAdaptable/NavigationStack
+        // to recalculate and visibly jitter.
+        //
+        // A full-screen cover is a separate presentation layer. The library
+        // underneath keeps its exact geometry while Now Playing takes over
+        // the screen. This removes the root-layout resize entirely.
+        .fullScreenCover(
+            isPresented:
+                $showNowPlaying
+        ) {
+            NowPlayingView(
+                isPresented:
+                    $showNowPlaying
+            )
+            .ignoresSafeArea(.all)
         }
 
         // MARK: - Import
