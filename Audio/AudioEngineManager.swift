@@ -31,17 +31,15 @@ private final class AudioLevelMeter: @unchecked Sendable {
             init: { _, clientInfo, tapStorageOut in
                 tapStorageOut.pointee = clientInfo
             },
-            finalize: { _ in },
-            prepare: { _, _, _ in },
-            unprepare: { _ in },
-            process: { tap, numberFrames, _, bufferListInOut, numberFramesOut, flagsOut in
+            finalize: { tap in },
+            prepare: { tap, maxFrames, processingFormat in },
+            unprepare: { tap in },
+            process: { tap, numberFrames, flags, bufferListInOut, numberFramesOut, flagsOut in
             let status = MTAudioProcessingTapGetSourceAudio(
-                tap,
-                numberFrames,
-                bufferListInOut,
-                flagsOut,
-                nil,
-                numberFramesOut
+                kCFAllocatorDefault,
+                &callbacks,
+                kMTAudioPrpcessingTapCreationFlag_PostEffects,
+                &tapOut
             )
             guard status == noErr else { return }
 
