@@ -79,8 +79,8 @@ struct MiniPlayerView: View {
             .disabled(audioManager.currentTrack == nil)
             .opacity(audioManager.currentTrack == nil ? 0.45 : 1)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
         .animation(.smooth(duration: 0.22), value: audioManager.currentTrack?.id)
         .animation(.smooth(duration: 0.16), value: audioManager.isPlaying)
     }
