@@ -6,7 +6,6 @@ struct NowPlayingView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
 
     @State private var dragOffset: CGFloat = 0
-    @State private var isVisible = false
     @State private var playPausePressed = false
     @State private var previousPressed = false
     @State private var nextPressed = false
@@ -88,41 +87,23 @@ struct NowPlayingView: View {
                     .presentationBackground(.clear)
                     .presentationCornerRadius(30)
             }
-            .offset(y: isVisible ? dragOffset : geometry.size.height)
+            .offset(y: dragOffset)
         }
         .ignoresSafeArea()
         .statusBarHidden(true)
         .onAppear {
-            if isPresented { show() }
-        }
-        .onChange(of: isPresented) { _, presented in
-            if presented {
-                show()
-            } else {
-                dragOffset = 0
-                isVisible = false
-            }
+            dragOffset = 0
         }
     }
 
     // MARK: - Presentation
 
-    private func show() {
-        dragOffset = 0
-
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-            isVisible = true
-        }
-    }
-
     private func close(height: CGFloat) {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
-            dragOffset = height
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
-            isPresented = false
-        }
+        // Do not animate the view out and then wait before dismissing the
+        // fullScreenCover. That creates a second, black transition layer.
+        // Let fullScreenCover perform the single dismissal animation.
+        dragOffset = 0
+        isPresented = false
     }
 
     private func dismissGesture(height: CGFloat) -> some Gesture {
@@ -522,12 +503,6 @@ struct AppleMusicScrubberBar: View {
                     )
             }
             .frame(height: 20)
-            .transaction { transaction in
-                // Playback progress is a live value; never interpolate it through
-                // an inherited SwiftUI animation. Only the explicit hold animation
-                // below is allowed to animate this control.
-                transaction.animation = nil
-            }
 
             HStack {
                 Text(formatTime(displayedTime))
