@@ -146,6 +146,8 @@ struct NowPlayingView: View {
                 progress: audioManager.playbackProgress,
                 duration: audioManager.currentTrack?.duration ?? 0,
                 currentTime: audioManager.currentTime
+                transitionNamespace: transitionNamespace
+                isNowPlayingPresented: true
             ) { progress in
                 guard let duration = audioManager.currentTrack?.duration,
                       duration > 0 else { return }
@@ -438,6 +440,8 @@ struct AppleMusicScrubberBar: View {
     let progress: Double
     let duration: TimeInterval
     let currentTime: TimeInterval
+    let transitionNamespace: Namespace.ID
+    let isNowPlayingPresented: Bool
     let onSeek: (Double) -> Void
 
     @State private var isHolding = false
