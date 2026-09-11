@@ -35,7 +35,7 @@ struct MiniPlayerView: View {
                 MiniPlayerActivity(
                     isPlaying: audioManager.isPlaying,
                     currentTime: audioManager.currentTime,
-                    audioLevel: audioManager.audioLevel
+                    audioBands: audioManager.audioBands
                 )
             }
             .padding(.horizontal, 12)
@@ -72,7 +72,7 @@ struct MiniPlayerView: View {
 private struct MiniPlayerActivity: View {
     let isPlaying: Bool
     let currentTime: TimeInterval
-    let audioLevel: Float
+    let audioBands: [Float]
 
     var body: some View {
         VStack(spacing: 5) {
@@ -81,7 +81,7 @@ private struct MiniPlayerActivity: View {
                     Capsule()
                         .fill(.primary.opacity(isPlaying ? 0.70 : 0.30))
                         .frame(width: 2.5, height: barHeight(index))
-                        .animation(.easeOut(duration: 0.08), value: audioLevel)
+                        .animation(.easeOut(duration: 0.08), value: audioBands)
                 }
             }
             .frame(height: 20, alignment: .bottom)
@@ -97,18 +97,10 @@ private struct MiniPlayerActivity: View {
     private func barHeight(_ index: Int) -> CGFloat {
         guard isPlaying else { return 7 }
 
-        // Each bar has a slightly different response curve, but every value is
-        // derived from the real PCM level reported by AudioLevelMeter.
-        let response: Float
-        switch index {
-        case 0: response = audioLevel * 0.78
-        case 1: response = audioLevel * 1.08
-        case 2: response = audioLevel
-        case 3: response = audioLevel * 0.92
-        default: response = audioLevel * 0.72
-        }
-
-        return CGFloat(5 + min(max(response, 0), 1) * 15)
+        // Each bar is driven by a different part of the actual spectrum:
+        // bass -> low-mid -> mid -> upper-mid -> treble.
+        let response = index < audioBands.count ? audioBands[index] : 0
+        return CGFloat(4.5 + min(max(response, 0), 1) * 15.5)
     }
 
     private var timeString: String {
