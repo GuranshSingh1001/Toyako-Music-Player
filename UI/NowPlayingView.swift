@@ -574,7 +574,6 @@ struct AppleMusicScrubberBar: View {
                     }
                 )
             }
-            .frame(height: 20)
             .transaction { transaction in
                 // Playback progress is a live value; never
                 // interpolate it through an inherited SwiftUI
