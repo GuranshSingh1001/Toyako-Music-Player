@@ -1,256 +1,264 @@
 import AVFoundation
+import Accelerate
 import MediaPlayer
 import Combine
 import AudioToolbox
 import MediaToolbox
 
-// MARK: - Audio-Reactive Mini Player Meter
-// Uses MTAudioProcessingTap on AVPlayer's audio pipeline.
+// MARK: - Audio-Reactive Mini Player Spectrum
+// Extracts five frequency-band amplitudes from the actual PCM audio flowing
+// through AVPlayer. The bands are intentionally broad and perceptual rather
+// than a full spectrum: they drive the five mini-player waves independently.
 
 private final class AudioLevelMeter: @unchecked Sendable {
 
+    private static let fftSize = 512
+    private static let log2FFTSize: vDSP_Length = 9
+
+    // Approximate perceptual bands for the five visible waves.
+    // [sub/bass, bass, low-mid, high-mid, treble]
+    private static let bands: [(Float, Float)] = [
+        (20, 120),
+        (120, 350),
+        (350, 1_500),
+        (1_500, 5_000),
+        (5_000, 16_000)
+    ]
+
     private var tap: MTAudioProcessingTap?
     private var lastPublishTime: CFTimeInterval = 0
-    private var smoothedLevel: Float = 0
     private var generation: UInt = 0
 
-    var onLevel: ((Float) -> Void)?
+    // Reusable DSP buffers. The tap callback runs on an audio-processing
+    // thread, so these are allocated once instead of per callback.
+    private let fftSetup = vDSP_create_fftsetup(
+        log2FFTSize,
+        FFTRadix(kFFTRadix2)
+    )
+    private var fftInput = [Float](repeating: 0, count: fftSize)
+    private var window = [Float](repeating: 0, count: fftSize)
+    private var splitReal = [Float](repeating: 0, count: fftSize / 2)
+    private var splitImag = [Float](repeating: 0, count: fftSize / 2)
+    private var magnitudes = [Float](repeating: 0, count: fftSize / 2)
+
+    private var smoothedBands = [Float](repeating: 0, count: 5)
+    private var sampleRate: Float = 44_100
+
+    var onBands: (([Float]) -> Void)?
+
+    init() {
+        window = vDSP.window(
+            ofType: Float.self,
+            usingSequence: .hanningDenormalized,
+            count: Self.fftSize,
+            isHalfWindow: false
+        )
+    }
+
+    deinit {
+        if let fftSetup {
+            vDSP_destroy_fftsetup(fftSetup)
+        }
+    }
 
     func attach(
         to item: AVPlayerItem,
         track: AVAssetTrack
     ) {
-
         generation &+= 1
 
         var callbacks = MTAudioProcessingTapCallbacks(
-            version:
-                kMTAudioProcessingTapCallbacksVersion_0,
-
-            clientInfo:
-                Unmanaged.passUnretained(self).toOpaque(),
-
-            init:
-                audioTapInit,
-
-            finalize:
-                audioTapFinalize,
-
-            prepare:
-                audioTapPrepare,
-
-            unprepare:
-                audioTapUnprepare,
-
-            process:
-                audioTapProcess
+            version: kMTAudioProcessingTapCallbacksVersion_0,
+            clientInfo: Unmanaged.passUnretained(self).toOpaque(),
+            init: audioTapInit,
+            finalize: audioTapFinalize,
+            prepare: audioTapPrepare,
+            unprepare: audioTapUnprepare,
+            process: audioTapProcess
         )
 
         var tapOut: MTAudioProcessingTap?
+        let status = MTAudioProcessingTapCreate(
+            kCFAllocatorDefault,
+            &callbacks,
+            kMTAudioProcessingTapCreationFlag_PostEffects,
+            &tapOut
+        )
 
-        let status =
-            MTAudioProcessingTapCreate(
-                kCFAllocatorDefault,
-                &callbacks,
-                kMTAudioProcessingTapCreationFlag_PostEffects,
-                &tapOut
-            )
-
-        guard
-            status == noErr,
-            let tap = tapOut
-        else {
-            return
-        }
+        guard status == noErr, let tap = tapOut else { return }
 
         self.tap = tap
 
-        let parameters =
-            AVMutableAudioMixInputParameters(
-                track: track
-            )
+        let parameters = AVMutableAudioMixInputParameters(track: track)
+        parameters.audioTapProcessor = tap
 
-        parameters.audioTapProcessor =
-            tap
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = [parameters]
+        item.audioMix = mix
+    }
 
-        let mix =
-            AVMutableAudioMix()
-
-        mix.inputParameters =
-            [parameters]
-
-        item.audioMix =
-            mix
+    func prepare(format: UnsafePointer<AudioStreamBasicDescription>) {
+        sampleRate = Float(format.pointee.mSampleRate)
     }
 
     func reset() {
-
         generation &+= 1
-
-        smoothedLevel = 0
         lastPublishTime = 0
-
-        onLevel?(0)
-
-        onLevel = nil
+        smoothedBands = Array(repeating: 0, count: 5)
+        onBands?([0, 0, 0, 0, 0])
+        onBands = nil
         tap = nil
     }
 
     fileprivate func process(
         tap: MTAudioProcessingTap,
         numberFrames: CMItemCount,
-        bufferListInOut:
-            UnsafeMutablePointer<AudioBufferList>,
-        numberFramesOut:
-            UnsafeMutablePointer<CMItemCount>,
-        flagsOut:
-            UnsafeMutablePointer<MTAudioProcessingTapFlags>
+        bufferListInOut: UnsafeMutablePointer<AudioBufferList>,
+        numberFramesOut: UnsafeMutablePointer<CMItemCount>,
+        flagsOut: UnsafeMutablePointer<MTAudioProcessingTapFlags>
     ) {
+        let status = MTAudioProcessingTapGetSourceAudio(
+            tap,
+            numberFrames,
+            bufferListInOut,
+            flagsOut,
+            nil,
+            numberFramesOut
+        )
 
-        let status =
-            MTAudioProcessingTapGetSourceAudio(
-                tap,
-                numberFrames,
-                bufferListInOut,
-                flagsOut,
-                nil,
-                numberFramesOut
-            )
+        guard status == noErr, let fftSetup else { return }
 
-        guard status == noErr else {
-            return
-        }
+        let buffers = UnsafeMutableAudioBufferListPointer(bufferListInOut)
+        let frames = min(Int(numberFramesOut.pointee), Self.fftSize)
+        guard frames > 0 else { return }
 
-        let buffers =
-            UnsafeMutableAudioBufferListPointer(
-                bufferListInOut
-            )
-
-        var sumSquares: Double = 0
-        var sampleCount = 0
-
-        for buffer in buffers {
-
-            guard
-                let data = buffer.mData
-            else {
-                continue
+        fftInput.withUnsafeMutableBufferPointer { input in
+            for i in 0..<Self.fftSize {
+                input[i] = 0
             }
 
-            let frames =
-                Int(numberFramesOut.pointee)
-
-            guard frames > 0 else {
-                continue
+            var totalChannels = 0
+            for buffer in buffers {
+                totalChannels += max(Int(buffer.mNumberChannels), 1)
             }
+            guard totalChannels > 0 else { return }
 
-            let channels =
-                max(
-                    Int(buffer.mNumberChannels),
-                    1
-                )
+            for buffer in buffers {
+                guard let data = buffer.mData else { continue }
 
-            let floatCount =
-                Int(buffer.mDataByteSize)
-                / MemoryLayout<Float>.size
+                let channels = max(Int(buffer.mNumberChannels), 1)
+                let floatCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+                let availableFrames = min(frames, floatCount / channels)
+                guard availableFrames > 0 else { continue }
 
-            guard
-                floatCount >=
-                    frames * channels
-            else {
-                continue
+                let samples = data.assumingMemoryBound(to: Float.self)
+                for frame in 0..<availableFrames {
+                    var sum: Float = 0
+                    for channel in 0..<channels {
+                        sum += samples[frame * channels + channel]
+                    }
+                    input[frame] += sum / Float(totalChannels)
+                }
             }
-
-            let samples =
-                data.assumingMemoryBound(
-                    to: Float.self
-                )
-
-            let count =
-                min(
-                    floatCount,
-                    frames * channels
-                )
-
-            for index in 0..<count {
-
-                let sample =
-                    Double(samples[index])
-
-                sumSquares +=
-                    sample * sample
-            }
-
-            sampleCount += count
         }
 
-        guard sampleCount > 0 else {
-            return
-        }
+        // Window the time-domain samples before the FFT to reduce spectral leakage.
+        vDSP.multiply(fftInput, window, result: &fftInput)
 
-        let rms =
-            Float(
-                sqrt(
-                    sumSquares /
-                    Double(sampleCount)
-                )
-            )
+        splitReal.withUnsafeMutableBufferPointer { real in
+            splitImag.withUnsafeMutableBufferPointer { imag in
+                magnitudes.withUnsafeMutableBufferPointer { mags in
+                    var split = DSPSplitComplex(
+                        realp: real.baseAddress!,
+                        imagp: imag.baseAddress!
+                    )
 
-        let normalized =
-            min(
-                max(
-                    rms * 4.0,
-                    0
-                ),
-                1
-            )
+                    fftInput.withUnsafeBufferPointer { input in
+                        input.baseAddress!.withMemoryRebound(
+                            to: DSPComplex.self,
+                            capacity: Self.fftSize / 2
+                        ) { complexInput in
+                            vDSP_ctoz(
+                                complexInput,
+                                2,
+                                &split,
+                                1,
+                                vDSP_Length(Self.fftSize / 2)
+                            )
+                        }
+                    }
 
-        if normalized > smoothedLevel {
+                    vDSP_fft_zrip(
+                        fftSetup,
+                        &split,
+                        1,
+                        Self.log2FFTSize,
+                        FFTDirection(FFT_FORWARD)
+                    )
 
-            smoothedLevel +=
-                (normalized - smoothedLevel)
-                * 0.55
+                    vDSP_zvmags(
+                        &split,
+                        1,
+                        mags.baseAddress!,
+                        1,
+                        vDSP_Length(Self.fftSize / 2)
+                    )
 
-        } else {
+                    let binWidth = sampleRate / Float(Self.fftSize)
 
-            smoothedLevel +=
-                (normalized - smoothedLevel)
-                * 0.12
-        }
+                    var levels = [Float](repeating: 0, count: 5)
+                    for bandIndex in 0..<Self.bands.count {
+                        let (lowHz, highHz) = Self.bands[bandIndex]
+                        let firstBin = max(1, Int(lowHz / binWidth))
+                        let lastBin = min(
+                            Self.fftSize / 2 - 1,
+                            Int(highHz / binWidth)
+                        )
 
-        let now =
-            CACurrentMediaTime()
+                        guard lastBin >= firstBin else { continue }
 
-        guard
-            now - lastPublishTime >=
-                (1.0 / 30.0)
-        else {
-            return
-        }
+                        var sum: Float = 0
+                        var count = 0
+                        for bin in firstBin...lastBin {
+                            sum += mags[bin]
+                            count += 1
+                        }
 
-        lastPublishTime =
-            now
+                        let power = sum / Float(max(count, 1))
+                        // sqrt(power) gives amplitude; the multiplier makes
+                        // normal music occupy a useful visual range.
+                        let amplitude = sqrt(max(power, 0)) * 8.0
+                        levels[bandIndex] = min(max(amplitude, 0), 1)
+                    }
 
-        let level =
-            smoothedLevel
+                    for i in levels.indices {
+                        // Fast attack / slower release, similar to Apple's
+                        // compact music visualizer behavior.
+                        let target = levels[i]
+                        if target > smoothedBands[i] {
+                            smoothedBands[i] += (target - smoothedBands[i]) * 0.58
+                        } else {
+                            smoothedBands[i] += (target - smoothedBands[i]) * 0.16
+                        }
+                        levels[i] = smoothedBands[i]
+                    }
 
-        let generation =
-            self.generation
+                    let now = CACurrentMediaTime()
+                    guard now - lastPublishTime >= (1.0 / 30.0) else { return }
+                    lastPublishTime = now
 
-        DispatchQueue.main.async { [weak self] in
+                    let published = levels
+                    let generation = self.generation
 
-            guard
-                let self,
-                self.generation == generation
-            else {
-                return
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.generation == generation else { return }
+                        self.onBands?(published)
+                    }
+                }
             }
-
-            self.onLevel?(level)
         }
     }
 }
-
 
 // MARK: - C-Compatible Audio Tap Callbacks
 
@@ -278,6 +286,11 @@ private func audioTapPrepare(
     _ processingFormat:
         UnsafePointer<AudioStreamBasicDescription>
 ) {
+    let storage = MTAudioProcessingTapGetStorage(tap)
+    let meter = Unmanaged<AudioLevelMeter>
+        .fromOpaque(storage)
+        .takeUnretainedValue()
+    meter.prepare(format: processingFormat)
 }
 
 
@@ -365,8 +378,8 @@ class AudioEngineManager: ObservableObject {
 
     // MARK: Published State
 
-    @Published var audioLevel:
-        Float = 0
+    @Published var audioBands:
+        [Float] = [0, 0, 0, 0, 0]
 
     @Published var currentTrack:
         LocalTrack?
@@ -406,11 +419,10 @@ class AudioEngineManager: ObservableObject {
 
     init() {
 
-        audioLevelMeter.onLevel = {
-            [weak self] level in
+        audioLevelMeter.onBands = {
+            [weak self] bands in
 
-            self?.audioLevel =
-                level
+            self?.audioBands = bands
         }
 
         setupRemoteControls()
@@ -460,13 +472,12 @@ class AudioEngineManager: ObservableObject {
 
         audioLevelMeter.reset()
 
-        audioLevel = 0
+        audioBands = [0, 0, 0, 0, 0]
 
-        audioLevelMeter.onLevel = {
-            [weak self] level in
+        audioLevelMeter.onBands = {
+            [weak self] bands in
 
-            self?.audioLevel =
-                level
+            self?.audioBands = bands
         }
     }
 
