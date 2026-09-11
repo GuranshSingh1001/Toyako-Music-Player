@@ -374,6 +374,9 @@ struct ContentView: View {
                     y:
                         8
                 )
+                .frame(
+                    maxWidth: 1450
+                )
                 .padding(
                     .horizontal,
                     16
