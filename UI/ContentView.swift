@@ -377,19 +377,19 @@ struct ContentView: View {
                         in: .capsule
                     )
                     .shadow(
-                        color: .black.opacity(0.15),
+                        color: .black.opacity(0.10),
                         radius: 15,
                         y: 8
                     )
-                    .frame(width: 1000)
+                    .frame(width: 670)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 7)
                     // The geometry change is the sidebar transition signal.
                     // Animating this container makes the fixed-size player slide
                     // horizontally rather than resize.
                     .animation(.smooth(duration: 0.35), value: proxy.size.width)
                 }
-                .frame(height: 64)
+                .frame(height: 75)
             }
         }
     }
