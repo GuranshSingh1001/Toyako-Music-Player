@@ -918,9 +918,6 @@ class AudioEngineManager: ObservableObject {
             return
         }
 
-        didAttemptRestore =
-            true
-
         guard
             let data =
                 UserDefaults.standard.data(
@@ -995,6 +992,14 @@ class AudioEngineManager: ObservableObject {
         guard let current else {
             return
         }
+
+
+        // The library can be populated asynchronously. Do not mark restore as
+        // completed until the saved state has actually been decoded and its
+        // current track has been resolved. Otherwise an early call made while
+        // the library is empty prevents the real restore on the next update.
+        didAttemptRestore =
+            true
 
 
         originalQueue =
