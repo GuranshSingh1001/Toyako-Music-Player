@@ -113,7 +113,6 @@ struct ContentView: View {
 
         // MARK: - Now Playing
 
-        .statusBarHidden(showNowPlaying)
         .overlay {
             if showNowPlaying {
                 NowPlayingView(
