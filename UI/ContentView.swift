@@ -27,6 +27,9 @@ struct ContentView: View {
     @State private var
         showNowPlaying = false
 
+    @Namespace private var
+        playerTransition
+
     @State private var
         showNewPlaylistAlert = false
 
@@ -112,7 +115,9 @@ struct ContentView: View {
             if showNowPlaying {
                 NowPlayingView(
                     isPresented:
-                        $showNowPlaying
+                        $showNowPlaying,
+                    transitionNamespace:
+                        playerTransition
                 )
                 .ignoresSafeArea(.all)
             }
@@ -355,9 +360,15 @@ struct ContentView: View {
             if audioManager.currentTrack
                 != nil {
 
-                MiniPlayerView {
-                    showNowPlaying =
-                        true
+                MiniPlayerView(
+                    transitionNamespace:
+                        playerTransition,
+                    isNowPlayingPresented:
+                        showNowPlaying
+                ) {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                        showNowPlaying = true
+                    }
                 }
                 .glassEffect(
                     .regular.interactive(),
