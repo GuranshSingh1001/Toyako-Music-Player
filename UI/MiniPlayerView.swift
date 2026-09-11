@@ -97,7 +97,7 @@ struct MiniPlayerView: View {
             .opacity(audioManager.currentTrack == nil ? 0.45 : 1)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
         // Only animate actual control/content changes. Do not animate the
         // high-frequency playback time/progress updates.
         .animation(.smooth(duration: 0.20), value: audioManager.currentTrack?.id)
