@@ -452,11 +452,16 @@ struct AppleMusicScrubberBar: View {
     private let dragThreshold: CGFloat = 8
 
     private var safeProgress: Double {
-        min(1, max(0, progress))
+        min(
+            1,
+            max(0, progress)
+        )
     }
 
     private var shownProgress: Double {
-        isHolding ? dragProgress : safeProgress
+        isHolding
+            ? dragProgress
+            : safeProgress
     }
 
     private var displayedTime: TimeInterval {
@@ -466,83 +471,170 @@ struct AppleMusicScrubberBar: View {
     var body: some View {
         VStack(spacing: 7) {
             GeometryReader { geometry in
-                Capsule()
-                    .fill(.white.opacity(isHolding ? 0.30 : 0.18))
-                    .frame(height: isHolding ? 9 : 5)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(.white.opacity(isHolding ? 1.0 : 0.88))
-                            .frame(
-                                width: geometry.size.width * CGFloat(shownProgress),
-                                height: isHolding ? 9 : 5
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(
+                            .white.opacity(
+                                isHolding ? 0.30 : 0.18
                             )
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                if !isHolding {
-                                    isHolding = true
-                                    dragStartProgress = safeProgress
-                                    dragProgress = safeProgress
-                                    dragStartX = value.startLocation.x
-                                }
+                        )
+                        .frame(
+                            height: isHolding ? 9 : 5
+                        )
 
-                                // A tap/hold does not jump the slider. The drag is
-                                // interpreted relative to the position where the finger
-                                // first touched the control.
-                                let deltaX = value.location.x - dragStartX
-                                let delta = geometry.size.width > 0
-                                    ? Double(deltaX / geometry.size.width)
-                                    : 0
-
-                                dragProgress = min(
-                                    1,
-                                    max(0, dragStartProgress + delta)
-                                )
-                            }
-                            .onEnded { _ in
-                                let finalProgress = min(1, max(0, dragProgress))
-
-                                // A pure tap/hold produces no meaningful horizontal
-                                // movement, so leave playback exactly where it was.
-                                if abs(dragProgress - dragStartProgress) >= 0.002 {
-                                    onSeek(finalProgress)
-                                }
-
-                                withAnimation(.easeOut(duration: 0.16)) {
-                                    isHolding = false
-                                }
-                            }
+                    Capsule()
+                        .fill(
+                            .white.opacity(
+                                isHolding ? 1.0 : 0.88
+                            )
+                        )
+                        .frame(
+                            width:
+                                geometry.size.width
+                                * CGFloat(shownProgress),
+                            height: isHolding ? 9 : 5
+                        )
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .center
+                )
+                .matchedGeometryEffect(
+                    id: "nowPlayingProgressTrack",
+                    in: transitionNamespace,
+                    properties: .frame,
+                    anchor: .center,
+                    isSource: isNowPlayingPresented
+                )
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(
+                        minimumDistance: 0
                     )
+                    .onChanged { value in
+                        if !isHolding {
+                            isHolding = true
+                            dragStartProgress =
+                                safeProgress
+                            dragProgress =
+                                safeProgress
+                            dragStartX =
+                                value.startLocation.x
+                        }
+
+                        // A tap/hold does not jump the slider.
+                        // The drag is interpreted relative to
+                        // the position where the finger first
+                        // touched the control.
+                        let deltaX =
+                            value.location.x
+                            - dragStartX
+
+                        let delta =
+                            geometry.size.width > 0
+                                ? Double(
+                                    deltaX
+                                    / geometry.size.width
+                                )
+                                : 0
+
+                        dragProgress = min(
+                            1,
+                            max(
+                                0,
+                                dragStartProgress + delta
+                            )
+                        )
+                    }
+                    .onEnded { _ in
+                        let finalProgress = min(
+                            1,
+                            max(
+                                0,
+                                dragProgress
+                            )
+                        )
+
+                        // A pure tap/hold produces no meaningful
+                        // horizontal movement, so leave playback
+                        // exactly where it was.
+                        if abs(
+                            dragProgress
+                            - dragStartProgress
+                        ) >= 0.002 {
+                            onSeek(finalProgress)
+                        }
+
+                        withAnimation(
+                            .easeOut(duration: 0.16)
+                        ) {
+                            isHolding = false
+                        }
+                    }
+                )
             }
             .frame(height: 20)
             .transaction { transaction in
-                // Playback progress is a live value; never interpolate it through
-                // an inherited SwiftUI animation. Only the explicit hold animation
+                // Playback progress is a live value; never
+                // interpolate it through an inherited SwiftUI
+                // animation. Only the explicit hold animation
                 // below is allowed to animate this control.
                 transaction.animation = nil
             }
 
             HStack {
-                Text(formatTime(displayedTime))
+                Text(
+                    formatTime(displayedTime)
+                )
+
                 Spacer()
-                Text("-" + formatTime(max(0, duration - displayedTime)))
+
+                Text(
+                    "-"
+                    + formatTime(
+                        max(
+                            0,
+                            duration - displayedTime
+                        )
+                    )
+                )
             }
-            .font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.62))
+            .font(
+                .system(
+                    size: 12,
+                    weight: .medium,
+                    design: .monospaced
+                )
+            )
+            .foregroundStyle(
+                .white.opacity(0.62)
+            )
             .monospacedDigit()
         }
     }
 
-    private func formatTime(_ time: TimeInterval) -> String {
-        guard time.isFinite else { return "0:00" }
+    private func formatTime(
+        _ time: TimeInterval
+    ) -> String {
+        guard time.isFinite else {
+            return "0:00"
+        }
 
-        let seconds = max(0, Int(time.rounded(.down)))
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+        let seconds = max(
+            0,
+            Int(
+                time.rounded(.down)
+            )
+        )
+
+        return String(
+            format: "%d:%02d",
+            seconds / 60,
+            seconds % 60
+        )
     }
-}
+} 
 
 // MARK: - Moving Artwork Background
 
