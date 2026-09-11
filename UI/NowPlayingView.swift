@@ -448,82 +448,78 @@ struct AppleMusicScrubberBar: View {
     let currentTime: TimeInterval
     let onSeek: (Double) -> Void
 
-    @State private var dragging = false
+    @State private var isHolding = false
+    @State private var dragStartProgress = 0.0
+    @State private var dragStartX: CGFloat = 0
     @State private var dragProgress = 0.0
 
+    private let dragThreshold: CGFloat = 8
+
+    private var safeProgress: Double {
+        min(1, max(0, progress))
+    }
+
     private var shownProgress: Double {
-        min(1, max(0, dragging ? dragProgress : progress))
+        isHolding ? dragProgress : safeProgress
     }
 
     private var displayedTime: TimeInterval {
-        dragging ? duration * dragProgress : currentTime
+        duration * shownProgress
     }
 
     var body: some View {
         VStack(spacing: 7) {
             GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.white.opacity(dragging ? 0.30 : 0.18))
-                        .frame(height: dragging ? 9 : 5)
-
-                    Capsule()
-                        .fill(.white.opacity(dragging ? 1 : 0.88))
-                        .frame(
-                            width: geometry.size.width * CGFloat(shownProgress),
-                            height: dragging ? 9 : 5
-                        )
-
-                    if dragging {
-                        Circle()
-                            .fill(.white)
-                            .frame(width: 15, height: 15)
-                            .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
-                            .position(
-                                x: thumbPosition(width: geometry.size.width),
-                                y: geometry.size.height / 2
+                Capsule()
+                    .fill(.white.opacity(isHolding ? 0.30 : 0.18))
+                    .frame(height: isHolding ? 9 : 5)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(.white.opacity(isHolding ? 1.0 : 0.88))
+                            .frame(
+                                width: geometry.size.width * CGFloat(shownProgress),
+                                height: isHolding ? 9 : 5
                             )
-                            .transition(.scale.combined(with: .opacity))
                     }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if !dragging {
-                                withAnimation(
-                                    .spring(response: 0.20, dampingFraction: 0.78)
-                                ) {
-                                    dragging = true
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if !isHolding {
+                                    isHolding = true
+                                    dragStartProgress = safeProgress
+                                    dragProgress = safeProgress
+                                    dragStartX = value.startLocation.x
+                                }
+
+                                // A tap/hold does not jump the slider. The drag is
+                                // interpreted relative to the position where the finger
+                                // first touched the control.
+                                let deltaX = value.location.x - dragStartX
+                                let delta = geometry.size.width > 0
+                                    ? Double(deltaX / geometry.size.width)
+                                    : 0
+
+                                dragProgress = min(
+                                    1,
+                                    max(0, dragStartProgress + delta)
+                                )
+                            }
+                            .onEnded { _ in
+                                let finalProgress = min(1, max(0, dragProgress))
+
+                                // A pure tap/hold produces no meaningful horizontal
+                                // movement, so leave playback exactly where it was.
+                                if abs(dragProgress - dragStartProgress) >= 0.002 {
+                                    onSeek(finalProgress)
+                                }
+
+                                withAnimation(.easeOut(duration: 0.16)) {
+                                    isHolding = false
                                 }
                             }
-
-                            dragProgress = progressForX(
-                                value.location.x,
-                                width: geometry.size.width
-                            )
-                        }
-                        .onEnded { value in
-                            let newProgress = progressForX(
-                                value.location.x,
-                                width: geometry.size.width
-                            )
-
-                            dragProgress = newProgress
-                            onSeek(newProgress)
-
-                            withAnimation(
-                                .spring(response: 0.27, dampingFraction: 0.82)
-                            ) {
-                                dragging = false
-                            }
-                        }
-                )
-                .animation(
-                    .spring(response: 0.22, dampingFraction: 0.82),
-                    value: dragging
-                )
+                    )
             }
             .frame(height: 20)
 
@@ -538,25 +534,10 @@ struct AppleMusicScrubberBar: View {
         }
     }
 
-    private func progressForX(_ x: CGFloat, width: CGFloat) -> Double {
-        guard width > 0 else { return 0 }
-        return max(0, min(1, Double(x / width)))
-    }
-
-    private func thumbPosition(width: CGFloat) -> CGFloat {
-        let radius: CGFloat = 7.5
-        guard width > radius * 2 else { return width / 2 }
-
-        return max(
-            radius,
-            min(width - radius, width * CGFloat(shownProgress))
-        )
-    }
-
     private func formatTime(_ time: TimeInterval) -> String {
         guard time.isFinite else { return "0:00" }
 
-        let seconds = max(0, Int(time))
+        let seconds = max(0, Int(time.rounded(.down)))
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
