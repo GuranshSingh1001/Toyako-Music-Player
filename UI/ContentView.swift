@@ -360,7 +360,7 @@ struct ContentView: View {
                                 showNowPlaying = true
                             }
                         }
-                        .frame(width: 1000, height: 52)
+                        .frame(width: 670, height: 55)
                         .glassEffect(
                             .regular.interactive(),
                             in: .capsule
@@ -371,12 +371,12 @@ struct ContentView: View {
                             y: 6
                         )
                     }
-                    .frame(width: proxy.size.width, height: 52, alignment: .center)
+                    .frame(width: proxy.size.width, height: 55, alignment: .center)
                     .transaction { transaction in
                         transaction.animation = .smooth(duration: 0.30)
                     }
                 }
-                .frame(height: 56)
+                .frame(height: 59)
                 .padding(.bottom, 6)
             }
         }
