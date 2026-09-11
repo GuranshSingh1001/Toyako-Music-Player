@@ -122,19 +122,18 @@ struct ContentView: View {
                     }
                     .glassEffect(.regular.interactive(), in: .capsule)
                     .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
-                    .frame(width: 670, height: 55)
+                    .frame(width: 670, height: 60)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 7)
                     .animation(.smooth(duration: 0.35), value: proxy.size.width)
                 }
-                .frame(height: 67)
+                .frame(height: 75)
             }
         }
 
 
         // MARK: - Now Playing
 
-        .statusBarHidden(showNowPlaying)
         .overlay {
             if showNowPlaying {
                 NowPlayingView(
