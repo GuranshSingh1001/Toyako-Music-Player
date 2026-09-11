@@ -20,14 +20,21 @@ private final class AudioLevelMeter: @unchecked Sendable {
         generation &+= 1
         let generation = self.generation
 
-        var callbacks = MTAudioProcessingTapCallbacks()
-        callbacks.version = kMTAudioProcessingTapCallbacksVersion_0
-        callbacks.clientInfo = Unmanaged.passUnretained(self).toOpaque()
-        callbacks.init = { _, _, _ in }
-        callbacks.finalize = { _ in }
-        callbacks.prepare = { _, _, _ in }
-        callbacks.unprepare = { _ in }
-        callbacks.process = { tap, numberFrames, _, bufferListInOut, numberFramesOut, flagsOut in
+        // Xcode 26 / iOS 26 no longer reliably infers the C callback
+        // parameter types when MTAudioProcessingTapCallbacks is built by
+        // assigning each field after a default initializer. Construct the
+        // callbacks with the typed initializer instead so Swift gets the
+        // exact MediaToolbox callback signatures from the SDK.
+        let callbacks = MTAudioProcessingTapCallbacks(
+            version: kMTAudioProcessingTapCallbacksVersion_0,
+            clientInfo: Unmanaged.passUnretained(self).toOpaque(),
+            init: { _, clientInfo, tapStorageOut in
+                tapStorageOut.pointee = clientInfo
+            },
+            finalize: { _ in },
+            prepare: { _, _, _ in },
+            unprepare: { _ in },
+            process: { tap, numberFrames, _, bufferListInOut, numberFramesOut, flagsOut in
             let status = MTAudioProcessingTapGetSourceAudio(
                 tap,
                 numberFrames,
@@ -85,6 +92,7 @@ private final class AudioLevelMeter: @unchecked Sendable {
                 meter.onLevel?(level)
             }
         }
+        )
 
         var tapOut: MTAudioProcessingTap?
         let status = MTAudioProcessingTapCreate(
