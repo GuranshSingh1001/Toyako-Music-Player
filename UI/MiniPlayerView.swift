@@ -3,6 +3,8 @@ import UIKit
 
 struct MiniPlayerView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
+    let transitionNamespace: Namespace.ID
+    let isNowPlayingPresented: Bool
     let onOpenNowPlaying: () -> Void
 
     var body: some View {
@@ -83,6 +85,8 @@ struct MiniPlayerView: View {
         .padding(.vertical, 6)
         .animation(.smooth(duration: 0.22), value: audioManager.currentTrack?.id)
         .animation(.smooth(duration: 0.16), value: audioManager.isPlaying)
+        .opacity(isNowPlayingPresented ? 0.001 : 1)
+        .allowsHitTesting(!isNowPlayingPresented)
     }
 
     @ViewBuilder
@@ -95,6 +99,13 @@ struct MiniPlayerView: View {
                 .scaledToFill()
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .matchedGeometryEffect(
+                    id: "nowPlayingArtwork",
+                    in: transitionNamespace,
+                    properties: .frame,
+                    anchor: .center,
+                    isSource: !isNowPlayingPresented
+                )
                 .id(track.id)
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
         } else {
