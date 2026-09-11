@@ -573,6 +573,13 @@ class AudioEngineManager: ObservableObject {
     private var timeObserverToken:
         Any?
 
+    // Invalidates callbacks already queued by AVPlayer when the item/observer changes.
+    private var timeObserverGeneration: UInt = 0
+
+    // Prevents a queued pre-seek callback from overwriting the requested position.
+    private var pendingSeekTarget: TimeInterval?
+    private var pendingSeekTrackID: UUID?
+
     private var endObserverToken:
         Any?
 
@@ -1059,6 +1066,9 @@ class AudioEngineManager: ObservableObject {
         currentTrack =
             current
 
+        pendingSeekTarget = nil
+        pendingSeekTrackID = nil
+
         loadLyrics(
             for:
                 current
@@ -1529,6 +1539,9 @@ class AudioEngineManager: ObservableObject {
 
         currentTrack =
             track
+
+        pendingSeekTarget = nil
+        pendingSeekTrackID = nil
 
         currentTime =
             0
@@ -2032,6 +2045,9 @@ class AudioEngineManager: ObservableObject {
             )
 
 
+        pendingSeekTarget = clampedTime
+        pendingSeekTrackID = currentTrack?.id
+
         player.seek(
             to:
                 cmTime,
@@ -2103,6 +2119,11 @@ class AudioEngineManager: ObservableObject {
 
     private func detachTimeObserver() {
 
+        // AVPlayer can already have a callback queued on the main queue.
+        // Invalidate this observer before removing it so that callback cannot
+        // mutate the UI state after a new item/observer is installed.
+        timeObserverGeneration &+= 1
+
         if let token =
             timeObserverToken {
 
@@ -2137,30 +2158,32 @@ class AudioEngineManager: ObservableObject {
     ) {
 
         guard
-            duration > 0
+            duration > 0,
+            let observedItem = player.currentItem
         else {
             return
         }
 
+        // Capture both the observer generation and the exact AVPlayerItem.
+        // This makes stale callbacks harmless after a track change.
+        timeObserverGeneration &+= 1
+        let observerGeneration = timeObserverGeneration
+        let observedTrackID = currentTrack?.id
 
         let interval =
             CMTime(
                 seconds:
                     0.25,
-
                 preferredTimescale:
                     600
             )
-
 
         timeObserverToken =
             player.addPeriodicTimeObserver(
                 forInterval:
                     interval,
-
                 queue:
                     .main
-
             ) { [weak self] time in
 
                 guard
@@ -2169,12 +2192,19 @@ class AudioEngineManager: ObservableObject {
                     return
                 }
 
+                // Ignore callbacks belonging to an old item or old observer.
+                guard
+                    self.timeObserverGeneration == observerGeneration,
+                    self.player.currentItem === observedItem,
+                    self.currentTrack?.id == observedTrackID
+                else {
+                    return
+                }
 
                 let seconds =
                     CMTimeGetSeconds(
                         time
                     )
-
 
                 guard
                     seconds.isFinite
@@ -2182,34 +2212,42 @@ class AudioEngineManager: ObservableObject {
                     return
                 }
 
+                // A seek is published immediately by seek(). AVPlayer can then
+                // deliver a callback from just before the seek completed. Ignore
+                // that stale value until the player reaches the requested point.
+                if let target = self.pendingSeekTarget,
+                   self.pendingSeekTrackID == observedTrackID {
+                    if abs(seconds - target) > 0.75 {
+                        return
+                    }
 
-                self.currentTime =
+                    self.pendingSeekTarget = nil
+                    self.pendingSeekTrackID = nil
+                }
+
+                let clampedSeconds =
                     max(
                         0,
-
                         min(
                             seconds,
                             duration
                         )
                     )
 
-
-                self.savePlaybackState()
-
+                self.currentTime =
+                    clampedSeconds
 
                 self.playbackProgress =
                     max(
                         0,
-
                         min(
-                            seconds /
+                            clampedSeconds /
                                 duration,
-
                             1
                         )
                     )
 
-
+                self.savePlaybackState()
                 self.updatePlaybackState()
             }
     }
