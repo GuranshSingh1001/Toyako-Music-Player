@@ -3,17 +3,31 @@ import UIKit
 
 struct MiniPlayerView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
-    let transitionNamespace: Namespace.ID
-    let isNowPlayingPresented: Bool
     let onOpenNowPlaying: () -> Void
+
+    private var progress: Double {
+        guard
+            let duration = audioManager.currentTrack?.duration,
+            duration.isFinite,
+            duration > 0,
+            audioManager.currentTime.isFinite
+        else {
+            return 0
+        }
+
+        return min(
+            max(audioManager.currentTime / duration, 0),
+            1
+        )
+    }
 
     var body: some View {
         HStack(spacing: 10) {
             Button(action: onOpenNowPlaying) {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     artwork
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(audioManager.currentTrack?.title ?? "Not Playing")
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
@@ -24,20 +38,21 @@ struct MiniPlayerView: View {
                             .lineLimit(1)
 
                         GeometryReader { proxy in
-                            Capsule()
-                                .fill(.primary.opacity(0.11))
-                                .overlay(alignment: .leading) {
-                                    Capsule()
-                                        .fill(.primary.opacity(0.52))
-                                        .frame(
-                                            width: proxy.size.width * min(
-                                                max(audioManager.playbackProgress, 0),
-                                                1
-                                            )
-                                        )
-                                }
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(.primary.opacity(0.11))
+
+                                Capsule()
+                                    .fill(.primary.opacity(0.52))
+                                    .frame(width: proxy.size.width * progress)
+                            }
+                            // Playback position is a live value. It must never
+                            // inherit a layout animation from the surrounding view.
+                            .transaction { transaction in
+                                transaction.animation = nil
+                            }
                         }
-                        .frame(height: 2.5)
+                        .frame(height: 2)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -51,8 +66,8 @@ struct MiniPlayerView: View {
                     audioManager.backward()
                 } label: {
                     Image(systemName: "backward.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 32, height: 44)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 30, height: 36)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -61,8 +76,8 @@ struct MiniPlayerView: View {
                     audioManager.togglePlayPause()
                 } label: {
                     Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 38, height: 44)
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 34, height: 36)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -71,8 +86,8 @@ struct MiniPlayerView: View {
                     audioManager.forward()
                 } label: {
                     Image(systemName: "forward.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 32, height: 44)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 30, height: 36)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -81,12 +96,12 @@ struct MiniPlayerView: View {
             .disabled(audioManager.currentTrack == nil)
             .opacity(audioManager.currentTrack == nil ? 0.45 : 1)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .animation(.smooth(duration: 0.22), value: audioManager.currentTrack?.id)
-        .animation(.smooth(duration: 0.16), value: audioManager.isPlaying)
-        .opacity(isNowPlayingPresented ? 0.001 : 1)
-        .allowsHitTesting(!isNowPlayingPresented)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        // Only animate actual control/content changes. Do not animate the
+        // high-frequency playback time/progress updates.
+        .animation(.smooth(duration: 0.20), value: audioManager.currentTrack?.id)
+        .animation(.smooth(duration: 0.14), value: audioManager.isPlaying)
     }
 
     @ViewBuilder
@@ -97,23 +112,17 @@ struct MiniPlayerView: View {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .matchedGeometryEffect(
-                    id: "nowPlayingArtwork",
-                    in: transitionNamespace,
-                    properties: .frame,
-                    anchor: .center,
-                    isSource: !isNowPlayingPresented
-                )
+                .frame(width: 36, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .id(track.id)
-                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
         } else {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(.secondary.opacity(0.16))
-                .frame(width: 44, height: 44)
+                .frame(width: 36, height: 36)
                 .overlay {
                     Image(systemName: "music.note")
+                        .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
         }
