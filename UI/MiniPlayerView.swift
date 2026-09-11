@@ -37,7 +37,7 @@ struct MiniPlayerView: View {
                                         )
                                 }
                         }
-                        .frame(height: 2.5)
+                        .frame(height: 3)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
