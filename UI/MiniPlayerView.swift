@@ -24,18 +24,29 @@ struct MiniPlayerView: View {
                             .lineLimit(1)
 
                         GeometryReader { proxy in
-                            Capsule()
-                                .fill(.primary.opacity(0.11))
-                                .overlay(alignment: .leading) {
-                                    Capsule()
-                                        .fill(.primary.opacity(0.52))
-                                        .frame(
-                                            width: proxy.size.width * min(
-                                                max(audioManager.playbackProgress, 0),
-                                                1
-                                            )
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(.primary.opacity(0.11))
+
+                                Capsule()
+                                    .fill(.primary.opacity(0.52))
+                                    .frame(
+                                        width: proxy.size.width * min(
+                                            max(audioManager.playbackProgress, 0),
+                                            1
                                         )
-                                }
+                                    )
+                            }
+                            .matchedGeometryEffect(
+                                id: "nowPlayingProgressTrack",
+                                in: transitionNamespace,
+                                properties: .frame,
+                                anchor: .center,
+                                isSource: !isNowPlayingPresented
+                            )
+                            .transaction { transaction in
+                                transaction.animation = nil
+                            }
                         }
                         .frame(height: 3)
                     }
