@@ -9,7 +9,7 @@ import CryptoKit
 class LocalLibrary:
     ObservableObject {
 
-    private struct FileFingerprint: Codable, Equatable {
+    private struct FileFingerprint: Equatable {
         let size: UInt64
         let modified: TimeInterval
     }
@@ -28,6 +28,8 @@ class LocalLibrary:
 
     @Published var statusMessage:
         String = "Scanning..."
+
+    private var cachedFingerprints: [String: FileFingerprint] = [:]
 
     private var playlistsCacheURL:
         URL {
@@ -53,11 +55,17 @@ class LocalLibrary:
                     .userDomainMask
             )[0]
             .appendingPathComponent(
-                "tracks_cache.json"
+                "tracks_cache.bin"
             )
     }
 
-    private var indexManifestURL: URL {
+    private var legacyTracksCacheURL: URL {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("tracks_cache.json")
+    }
+
+    private var legacyIndexManifestURL: URL {
         FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("tracks_index_manifest.json")
@@ -87,25 +95,31 @@ class LocalLibrary:
 
     func reloadFiles() {
         let cachedTracks = tracks
+        let fingerprints = cachedFingerprints
+
         if cachedTracks.isEmpty {
             statusMessage = "Scanning..."
         }
 
-        let manifestURL = indexManifestURL
         Task(priority: .utility) { [weak self] in
-            // Give SwiftUI one clean frame before touching the document tree.
+            // Let the cached library render first. The filesystem scan never
+            // blocks the first SwiftUI frame.
             await Task.yield()
-            let discovered = await Self.runIncrementalScan(
+
+            let scan = await Self.runIncrementalScan(
                 cachedTracks: cachedTracks,
-                manifestURL: manifestURL
+                cachedFingerprints: fingerprints
             )
 
             guard let self else { return }
+
             await MainActor.run {
-                guard !discovered.isEmpty || !cachedTracks.isEmpty else { return }
-                self.tracks = discovered
+                guard !scan.tracks.isEmpty || !cachedTracks.isEmpty else { return }
+
+                self.tracks = scan.tracks
+                self.cachedFingerprints = scan.fingerprints
                 self.rebuildGroups()
-                self.statusMessage = "Indexed \(discovered.count) songs"
+                self.statusMessage = "Indexed \(scan.tracks.count) songs"
                 self.saveTracksToCache()
                 self.scheduleArtworkHydration()
             }
@@ -115,11 +129,11 @@ class LocalLibrary:
     nonisolated
     private static func runIncrementalScan(
         cachedTracks: [LocalTrack],
-        manifestURL: URL
-    ) async -> [LocalTrack] {
+        cachedFingerprints: [String: FileFingerprint]
+    ) async -> (tracks: [LocalTrack], fingerprints: [String: FileFingerprint]) {
         let fileManager = FileManager.default
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            return cachedTracks
+            return (cachedTracks, cachedFingerprints)
         }
 
         let audioExtensions: Set<String> = [
@@ -134,8 +148,10 @@ class LocalLibrary:
         ) {
             while let url = enumerator.nextObject() as? URL {
                 guard audioExtensions.contains(url.pathExtension.lowercased()) else { continue }
-                guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
-                      values.isRegularFile == true else { continue }
+                guard let values = try? url.resourceValues(
+                    forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
+                ), values.isRegularFile == true else { continue }
+
                 files.append((
                     url,
                     FileFingerprint(
@@ -146,26 +162,17 @@ class LocalLibrary:
             }
         }
 
-        var oldManifest: [String: FileFingerprint] = [:]
-        if let data = try? Data(contentsOf: manifestURL),
-           let decoded = try? JSONDecoder().decode([String: FileFingerprint].self, from: data) {
-            oldManifest = decoded
-        }
+        let currentFingerprints = Dictionary(
+            uniqueKeysWithValues: files.map {
+                ($0.url.standardizedFileURL.path, $0.fingerprint)
+            }
+        )
+        let cachedByPath = Dictionary(
+            uniqueKeysWithValues: cachedTracks.map {
+                ($0.url.standardizedFileURL.path, $0)
+            }
+        )
 
-        let currentManifest = Dictionary(uniqueKeysWithValues: files.map { ($0.url.standardizedFileURL.path, $0.fingerprint) })
-        let cachedByPath = Dictionary(uniqueKeysWithValues: cachedTracks.map { ($0.url.standardizedFileURL.path, $0) })
-
-        // Metadata parsing is versioned independently from the file manifest.
-        // A parser upgrade must invalidate the fast path even when the audio
-        // files themselves have not changed; otherwise an old cached track can
-        // keep placeholder metadata forever.
-        let metadataParserVersion = 4
-        let parserVersionKey = "Toyako.MetadataParserVersion"
-        let needsParserMigration = UserDefaults.standard.integer(forKey: parserVersionKey) < metadataParserVersion
-
-        // Fast path: the library has not changed and the metadata parser has
-        // already processed this cache version. Otherwise, reopen the assets
-        // and repair/rebuild their metadata.
         let cacheNeedsMetadataRepair = cachedTracks.contains { track in
             track.title.isEmpty
                 || track.artist == "Unknown Artist"
@@ -173,51 +180,72 @@ class LocalLibrary:
                 || track.duration <= 0
         }
 
-        if currentManifest == oldManifest,
+        // Fast path: the binary cache already contains the exact file set and
+        // fingerprints. No AVAsset is opened at all.
+        if currentFingerprints == cachedFingerprints,
            files.count == cachedTracks.count,
            !cachedTracks.isEmpty,
-           !cacheNeedsMetadataRepair,
-           !needsParserMigration {
-            return cachedTracks
+           !cacheNeedsMetadataRepair {
+            return (cachedTracks, cachedFingerprints)
         }
 
         var result: [LocalTrack] = []
         result.reserveCapacity(files.count)
         var changed: [(Int, URL, LocalTrack?)] = []
 
+        let metadataParserVersion = 2
+        let parserVersionKey = "Toyako.MetadataParserVersion"
+        let needsParserMigration =
+            UserDefaults.standard.integer(forKey: parserVersionKey) < metadataParserVersion
+
         for (index, file) in files.enumerated() {
             let path = file.url.standardizedFileURL.path
+
             if let cached = cachedByPath[path],
                !needsParserMigration,
-               oldManifest[path] == file.fingerprint,
+               cachedFingerprints[path] == file.fingerprint,
                !cached.title.isEmpty,
                cached.artist != "Unknown Artist",
                cached.album != "Unknown Album",
                cached.duration > 0 {
                 result.append(cached)
             } else {
-                result.append(cachedByPath[path] ?? LocalTrack(url: file.url, title: file.url.deletingPathExtension().lastPathComponent))
+                result.append(
+                    cachedByPath[path]
+                        ?? LocalTrack(
+                            url: file.url,
+                            title: file.url.deletingPathExtension().lastPathComponent
+                        )
+                )
                 changed.append((index, file.url, cachedByPath[path]))
             }
         }
 
         if !changed.isEmpty {
-            let parsed = await withTaskGroup(of: (Int, LocalTrack).self, returning: [Int: LocalTrack].self) { group in
+            let parsed = await withTaskGroup(
+                of: (Int, LocalTrack).self,
+                returning: [Int: LocalTrack].self
+            ) { group in
                 for (index, url, cached) in changed {
                     group.addTask {
                         let parsed = await Self.parseAsset(at: url)
+
                         if let cached {
-                            return (index, LocalTrack(
-                                id: cached.id,
-                                url: parsed.url,
-                                title: parsed.title,
-                                artist: parsed.artist,
-                                album: parsed.album,
-                                genre: parsed.genre,
-                                duration: parsed.duration,
-                                artworkData: parsed.artworkData
-                            ))
+                            return (
+                                index,
+                                LocalTrack(
+                                    id: cached.id,
+                                    url: parsed.url,
+                                    title: parsed.title,
+                                    artist: parsed.artist,
+                                    album: parsed.album,
+                                    genre: parsed.genre,
+                                    duration: parsed.duration,
+                                    artworkData: parsed.artworkData
+                                )
+                            )
                         }
+
                         return (index, parsed)
                     }
                 }
@@ -238,12 +266,12 @@ class LocalLibrary:
             $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
         }
 
-        if let data = try? JSONEncoder().encode(currentManifest) {
-            try? data.write(to: manifestURL, options: .atomic)
-        }
-        UserDefaults.standard.set(metadataParserVersion, forKey: parserVersionKey)
+        UserDefaults.standard.set(
+            metadataParserVersion,
+            forKey: parserVersionKey
+        )
 
-        return result
+        return (result, currentFingerprints)
     }
 
     nonisolated
@@ -254,7 +282,7 @@ class LocalLibrary:
         )
 
         async let durationValue = asset.load(.duration)
-        async let metadataValue = asset.load(.metadata)
+        async let metadataValue = asset.load(.commonMetadata)
 
         let durationSeconds = (try? await durationValue)?.seconds ?? 0
         let duration = durationSeconds.isFinite ? max(0, durationSeconds) : 0
@@ -370,7 +398,8 @@ class LocalLibrary:
                 refreshed = cached
             } else {
                 refreshed = await Self.parseArtworkOnly(at: url)
-            }   
+            }
+
             guard let artworkData = refreshed else { return }
             let cacheFile = cacheDirectory.appendingPathComponent(Self.artworkFilename(for: url))
             try? artworkData.write(to: cacheFile, options: .atomic)
@@ -395,7 +424,7 @@ class LocalLibrary:
     nonisolated
     private static func parseArtworkOnly(at url: URL) async -> Data? {
         let asset = AVURLAsset(url: url)
-        let metadata = (try? await asset.load(.metadata)) ?? []
+        let metadata = (try? await asset.load(.commonMetadata)) ?? []
         for item in metadata {
             guard matchesMetadataKey(metadataKeys(for: item), aliases: ["artwork", "picture", "cover", "apic", "covr"]) else { continue }
             if let data = await metadataDataValue(item) {
@@ -975,58 +1004,218 @@ class LocalLibrary:
     // MARK: - Cache
 
     private func saveTracksToCache() {
+        let currentTracks = tracks
+        let fingerprints = cachedFingerprints
+        let cacheURL = tracksCacheURL
 
-        let currentTracks =
-            tracks
-
-        let cacheURL =
-            tracksCacheURL
-
-        DispatchQueue.global(
-            qos:
-                .background
-        ).async {
-
-            if let data =
-                try? JSONEncoder()
-                    .encode(
-                        currentTracks
-                    ) {
-
-                try? data.write(
-                    to:
-                        cacheURL,
-                    options:
-                        .atomic
-                )
+        Task.detached(priority: .utility) {
+            guard let data = Self.encodeBinaryCache(
+                tracks: currentTracks,
+                fingerprints: fingerprints
+            ) else {
+                return
             }
+
+            try? data.write(to: cacheURL, options: .atomic)
         }
     }
 
     private func loadTracksFromCache() {
+        // New binary cache: a single compact read + decode.
+        if let data = try? Data(contentsOf: tracksCacheURL),
+           let decoded = Self.decodeBinaryCache(data) {
+            tracks = decoded.tracks
+            cachedFingerprints = decoded.fingerprints
+            rebuildGroups()
+            statusMessage = "Indexed \(decoded.tracks.count) songs"
+            return
+        }
 
-        guard let data =
-            try? Data(
-                contentsOf:
-                    tracksCacheURL
-            ),
-              let decoded =
-                try? JSONDecoder()
-                    .decode(
-                        [LocalTrack].self,
-                        from:
-                            data
-                    )
+        // One-time migration from the previous JSON cache. The old cache is
+        // never used again after this succeeds.
+        guard let data = try? Data(contentsOf: legacyTracksCacheURL),
+              let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data)
         else {
             return
         }
 
-        tracks =
-            decoded
+        var fingerprints: [String: FileFingerprint] = [:]
+        if let manifestData = try? Data(contentsOf: legacyIndexManifestURL),
+           let manifest = try? JSONDecoder().decode([String: LegacyFingerprint].self, from: manifestData) {
+            fingerprints = manifest.mapValues {
+                FileFingerprint(size: $0.size, modified: $0.modified)
+            }
+        }
 
+        tracks = decoded
+        cachedFingerprints = fingerprints
         rebuildGroups()
+        statusMessage = "Indexed \(decoded.count) songs"
 
-        statusMessage =
-            "Indexed \(decoded.count) songs"
+        // Immediately convert the old representation to the binary format.
+        saveTracksToCache()
+
+        try? FileManager.default.removeItem(at: legacyTracksCacheURL)
+        try? FileManager.default.removeItem(at: legacyIndexManifestURL)
     }
+
+    private struct LegacyFingerprint: Codable {
+        let size: UInt64
+        let modified: TimeInterval
+    }
+
+    nonisolated
+    private static func encodeBinaryCache(
+        tracks: [LocalTrack],
+        fingerprints: [String: FileFingerprint]
+    ) -> Data? {
+        var data = Data()
+        data.append(contentsOf: [0x54, 0x4F, 0x59, 0x41, 0x4B, 0x4F, 0x42, 0x31]) // TOYAKOB1
+        append(UInt32(1), to: &data)
+        append(UInt32(tracks.count), to: &data)
+
+        for track in tracks {
+            let path = track.url.standardizedFileURL.path
+            let fingerprint = fingerprints[path] ?? FileFingerprint(size: 0, modified: 0)
+
+            appendUUID(track.id, to: &data)
+            appendString(path, to: &data)
+            appendString(track.title, to: &data)
+            appendString(track.artist, to: &data)
+            appendString(track.album, to: &data)
+            appendString(track.genre, to: &data)
+            append(track.duration, to: &data)
+            append(fingerprint.size, to: &data)
+            append(fingerprint.modified, to: &data)
+        }
+
+        return data
+    }
+
+    nonisolated
+    private static func decodeBinaryCache(
+        _ data: Data
+    ) -> (tracks: [LocalTrack], fingerprints: [String: FileFingerprint])? {
+        var reader = BinaryReader(data: data)
+
+        guard let magic = reader.readBytes(count: 8),
+              magic == [0x54, 0x4F, 0x59, 0x41, 0x4B, 0x4F, 0x42, 0x31],
+              reader.readUInt32() == 1,
+              let count = reader.readUInt32()
+        else {
+            return nil
+        }
+
+        var tracks: [LocalTrack] = []
+        var fingerprints: [String: FileFingerprint] = [:]
+        tracks.reserveCapacity(Int(count))
+
+        for _ in 0..<count {
+            guard let id = reader.readUUID(),
+                  let path = reader.readString(),
+                  let title = reader.readString(),
+                  let artist = reader.readString(),
+                  let album = reader.readString(),
+                  let genre = reader.readString(),
+                  let duration = reader.readDouble(),
+                  let size = reader.readUInt64(),
+                  let modified = reader.readDouble()
+            else {
+                return nil
+            }
+
+            let url = URL(fileURLWithPath: path)
+            tracks.append(
+                LocalTrack(
+                    id: id,
+                    url: url,
+                    title: title,
+                    artist: artist,
+                    album: album,
+                    genre: genre,
+                    duration: duration,
+                    artworkData: nil
+                )
+            )
+            fingerprints[url.standardizedFileURL.path] = FileFingerprint(
+                size: size,
+                modified: modified
+            )
+        }
+
+        return (tracks, fingerprints)
+    }
+
+    nonisolated
+    private static func append<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var little = value.littleEndian
+        withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
+    }
+
+    nonisolated
+    private static func append(_ value: Double, to data: inout Data) {
+        var bits = value.bitPattern.littleEndian
+        withUnsafeBytes(of: &bits) { data.append(contentsOf: $0) }
+    }
+
+    nonisolated
+    private static func appendUUID(_ uuid: UUID, to data: inout Data) {
+        var uuid = uuid
+        withUnsafeBytes(of: &uuid) { data.append(contentsOf: $0) }
+    }
+
+    nonisolated
+    private static func appendString(_ value: String, to data: inout Data) {
+        let bytes = Array(value.utf8)
+        append(UInt32(bytes.count), to: &data)
+        data.append(contentsOf: bytes)
+    }
+
+    private struct BinaryReader {
+        let data: Data
+        var offset: Int = 0
+
+        mutating func readBytes(count: Int) -> [UInt8]? {
+            guard count >= 0, offset + count <= data.count else { return nil }
+            let result = Array(data[offset..<(offset + count)])
+            offset += count
+            return result
+        }
+
+        mutating func readUInt32() -> UInt32? {
+            guard let bytes = readBytes(count: 4) else { return nil }
+            return bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian }
+        }
+
+        mutating func readUInt64() -> UInt64? {
+            guard let bytes = readBytes(count: 8) else { return nil }
+            return bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt64.self).littleEndian }
+        }
+
+        mutating func readDouble() -> Double? {
+            guard let bits = readUInt64() else { return nil }
+            return Double(bitPattern: bits)
+        }
+
+        mutating func readUUID() -> UUID? {
+            guard let bytes = readBytes(count: 16) else { return nil }
+            return UUID(uuid: (
+                bytes[0], bytes[1], bytes[2], bytes[3],
+                bytes[4], bytes[5], bytes[6], bytes[7],
+                bytes[8], bytes[9], bytes[10], bytes[11],
+                bytes[12], bytes[13], bytes[14], bytes[15]
+            ))
+        }
+
+        mutating func readString() -> String? {
+            guard let count = readUInt32(),
+                  count <= UInt32(data.count - offset),
+                  let bytes = readBytes(count: Int(count))
+            else {
+                return nil
+            }
+            return String(bytes: bytes, encoding: .utf8)
+        }
+    }
+
 }
