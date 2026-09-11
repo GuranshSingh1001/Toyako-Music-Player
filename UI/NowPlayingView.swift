@@ -145,8 +145,8 @@ struct NowPlayingView: View {
             AppleMusicScrubberBar(
                 progress: audioManager.playbackProgress,
                 duration: audioManager.currentTrack?.duration ?? 0,
-                currentTime: audioManager.currentTime
-                transitionNamespace: transitionNamespace
+                currentTime: audioManager.currentTime,
+                transitionNamespace: transitionNamespace,
                 isNowPlayingPresented: true
             ) { progress in
                 guard let duration = audioManager.currentTrack?.duration,
