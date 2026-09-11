@@ -186,6 +186,13 @@ struct NowPlayingView: View {
                 .clipShape(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
+                .matchedGeometryEffect(
+                    id: "nowPlayingArtwork",
+                    in: transitionNamespace,
+                    properties: .frame,
+                    anchor: .center,
+                    isSource: false
+                )
                 .shadow(color: .black.opacity(0.32), radius: 24, y: 12)
                 .id(audioManager.currentTrack?.id)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
