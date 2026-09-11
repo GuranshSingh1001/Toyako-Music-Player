@@ -12,8 +12,8 @@ import MediaToolbox
 
 private final class AudioLevelMeter: @unchecked Sendable {
 
-    private static let fftSize = 512
-    private static let log2FFTSize: vDSP_Length = 9
+    private static let fftSize = 1024
+    private static let log2FFTSize: vDSP_Length = 10
 
     // Approximate perceptual bands for the five visible waves.
     // [sub/bass, bass, low-mid, high-mid, treble]
@@ -206,9 +206,11 @@ private final class AudioLevelMeter: @unchecked Sendable {
 
                     let binWidth = sampleRate / Float(Self.fftSize)
 
-                    var levels = [Float](repeating: 0, count: 5)
+                    var levels = [Float](repeating: 0, count: Self.bands.count)
+
                     for bandIndex in 0..<Self.bands.count {
                         let (lowHz, highHz) = Self.bands[bandIndex]
+
                         let firstBin = max(1, Int(lowHz / binWidth))
                         let lastBin = min(
                             Self.fftSize / 2 - 1,
@@ -217,29 +219,50 @@ private final class AudioLevelMeter: @unchecked Sendable {
 
                         guard lastBin >= firstBin else { continue }
 
-                        var sum: Float = 0
+                        var powerSum: Float = 0
                         var count = 0
+
                         for bin in firstBin...lastBin {
-                            sum += mags[bin]
+                            powerSum += mags[bin]
                             count += 1
                         }
 
-                        let power = sum / Float(max(count, 1))
-                        // sqrt(power) gives amplitude; the multiplier makes
-                        // normal music occupy a useful visual range.
-                        let amplitude = sqrt(max(power, 0)) * 8.0
-                        levels[bandIndex] = min(max(amplitude, 0), 1)
+                        guard count > 0 else { continue }
+
+                        // Average the squared FFT magnitude across the band.
+                        let meanPower = powerSum / Float(count)
+
+                        // Convert the normalized FFT magnitude to amplitude.
+                        let amplitude = sqrt(max(meanPower, 0)) *
+                            (2.0 / Float(Self.fftSize))
+
+                        // Work in dB so quiet frequency content remains visible.
+                        let db = 20.0 * log10(max(amplitude, 0.000001))
+
+                        // Map roughly -70...-15 dB into 0...1.
+                        let normalized = (db + 70.0) / 55.0
+
+                        levels[bandIndex] = min(max(normalized, 0), 1)
                     }
 
+                    // Slightly emphasize bass and treble so the five narrow
+                    // visual bars remain perceptually distinct.
+                    let gains: [Float] = [1.12, 1.05, 0.96, 1.00, 1.08]
+
                     for i in levels.indices {
-                        // Fast attack / slower release, similar to Apple's
-                        // compact music visualizer behavior.
+                        levels[i] = min(max(levels[i] * gains[i], 0), 1)
+
+                        // Fast attack / slower release.
                         let target = levels[i]
+
                         if target > smoothedBands[i] {
-                            smoothedBands[i] += (target - smoothedBands[i]) * 0.58
+                            smoothedBands[i] +=
+                                (target - smoothedBands[i]) * 0.65
                         } else {
-                            smoothedBands[i] += (target - smoothedBands[i]) * 0.16
+                            smoothedBands[i] +=
+                                (target - smoothedBands[i]) * 0.12
                         }
+
                         levels[i] = smoothedBands[i]
                     }
 
