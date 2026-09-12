@@ -21,6 +21,7 @@ struct NowPlayingView: View {
     // (set true in .onAppear, below) makes the artwork visibly slide up
     // and fade in together with the panel every time it opens.
     @State private var artworkVisible = false
+    @State private var nowPlayingArtworkData: Data?
 
     var body: some View {
         GeometryReader { geometry in
@@ -30,7 +31,7 @@ struct NowPlayingView: View {
                 Color.black.ignoresSafeArea()
 
                 AppleMusicMovingBleedBackground(
-                    artworkData: audioManager.currentTrack?.artworkData
+                    artworkData: nowPlayingArtworkData
                 )
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
@@ -102,12 +103,21 @@ struct NowPlayingView: View {
         }
         .ignoresSafeArea()
         .onAppear {
-            // Matches the spring MiniPlayerView uses to open this panel
-            // (see ContentView's onOpenNowPlaying), with a hair of delay so
-            // the artwork reads as following the panel up rather than
-            // racing it.
             withAnimation(.spring(response: 0.42, dampingFraction: 0.88).delay(0.04)) {
                 artworkVisible = true
+            }
+        }
+        .task(id: audioManager.currentTrack?.id) {
+            guard let url = audioManager.currentTrack?.url else {
+                nowPlayingArtworkData = nil
+                return
+            }
+
+            let loaded = await ArtworkStore.shared.data(for: url)
+            guard !Task.isCancelled else { return }
+
+            withAnimation(.easeOut(duration: 0.35)) {
+                nowPlayingArtworkData = loaded
             }
         }
         .onChange(of: isPresented) { _, presented in
@@ -124,7 +134,7 @@ struct NowPlayingView: View {
             dragOffset = height
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
             isPresented = false
         }
     }
@@ -188,6 +198,11 @@ struct NowPlayingView: View {
                 // deliberately no shared geometry/hero transition with the mini-player.
                 LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
                     .frame(maxHeight: maxHeight)
+                    .scaleEffect(audioManager.isPlaying ? 1.0 : 0.85, anchor: .center)
+                    .animation(
+                        .spring(response: 0.48, dampingFraction: 0.82),
+                        value: audioManager.isPlaying
+                    )
             } else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.secondary.opacity(0.12))
@@ -269,10 +284,10 @@ struct NowPlayingView: View {
                 .font(.system(size: 38, weight: .medium))
                 .foregroundStyle(.white)
                 .frame(width: 50, height: 50)
-                .scaleEffect(playPausePressed ? 0.76 : 1)
                 .contentTransition(.symbolEffect(.replace))
+                .scaleEffect(playPausePressed ? 0.80 : 1.0)
                 .animation(
-                    .spring(response: 0.22, dampingFraction: 0.58),
+                    .spring(response: 0.24, dampingFraction: 0.64),
                     value: playPausePressed
                 )
             }
@@ -633,7 +648,7 @@ struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 14.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
 
             ZStack {
