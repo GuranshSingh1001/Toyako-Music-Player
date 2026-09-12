@@ -116,11 +116,16 @@ class LocalLibrary:
             await MainActor.run {
                 guard !scan.tracks.isEmpty || !cachedTracks.isEmpty else { return }
 
-                self.tracks = scan.tracks
-                self.cachedFingerprints = scan.fingerprints
-                self.rebuildGroups()
-                self.statusMessage = "Indexed \(scan.tracks.count) tracks"
-                self.saveTracksToCache()
+                let libraryChanged = scan.tracks != cachedTracks || scan.fingerprints != fingerprints
+
+                if libraryChanged {
+                    self.tracks = scan.tracks
+                    self.cachedFingerprints = scan.fingerprints
+                    self.rebuildGroups()
+                    self.statusMessage = "Indexed \(scan.tracks.count) tracks"
+                    self.saveTracksToCache()
+                }
+
                 self.scheduleArtworkHydration()
             }
         }
@@ -472,7 +477,7 @@ class LocalLibrary:
         // Do not hydrate the whole library immediately. Hundreds of embedded
         // covers can compete with SwiftUI's first frames and make tab changes
         // hitch. The Home screen only needs a small representative set.
-        let snapshot = Array(tracks.prefix(48))
+        let snapshot = Array(tracks.prefix(20))
         artworkHydrationTask?.cancel()
 
         let cacheDirectory = artworkCacheDirectoryURL
@@ -487,25 +492,39 @@ class LocalLibrary:
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
+
+                // Apply the whole artwork batch in one @Published update.
+                // Rebuilding album/artist groups once instead of once per cover
+                // prevents dozens of full Home-tree invalidations during hydration.
+                let artworkByPath = Dictionary(uniqueKeysWithValues: results.map {
+                    ($0.0.standardizedFileURL.path, $0.1)
+                })
+
+                var updatedTracks = self.tracks
                 var changed = false
 
-                for (url, data) in results {
-                    guard let index = self.tracks.firstIndex(where: {
-                        $0.url.standardizedFileURL == url.standardizedFileURL
-                    }) else { continue }
+                for index in updatedTracks.indices {
+                    guard updatedTracks[index].artworkData == nil,
+                          let data = artworkByPath[updatedTracks[index].url.standardizedFileURL.path]
+                    else { continue }
 
-                    let old = self.tracks[index]
-                    guard old.artworkData == nil else { continue }
-                    self.tracks[index] = LocalTrack(
-                        id: old.id, url: old.url, title: old.title, artist: old.artist,
-                        album: old.album, genre: old.genre, duration: old.duration, artworkData: data
+                    let old = updatedTracks[index]
+                    updatedTracks[index] = LocalTrack(
+                        id: old.id,
+                        url: old.url,
+                        title: old.title,
+                        artist: old.artist,
+                        album: old.album,
+                        genre: old.genre,
+                        duration: old.duration,
+                        artworkData: data
                     )
                     changed = true
                 }
 
-                if changed {
-                    self.rebuildGroups()
-                }
+                guard changed else { return }
+                self.tracks = updatedTracks
+                self.rebuildGroups()
             }
         }
     }
