@@ -634,6 +634,11 @@ class AudioEngineManager: ObservableObject {
     @Published var crossfadeEnabled:
         Bool = true
 
+    /// Small local history used by the Home screen. Artwork is intentionally
+    /// not persisted, so loading it adds essentially no startup cost.
+    @Published private(set) var recentlyPlayed:
+        [LocalTrack] = []
+
 
     // MARK: Initialization
 
@@ -653,6 +658,7 @@ class AudioEngineManager: ObservableObject {
                 bands
         }
 
+        loadRecentlyPlayed()
         setupRemoteControls()
         setupInterruptionHandling()
     }
@@ -718,6 +724,36 @@ class AudioEngineManager: ObservableObject {
         }
     }
 
+
+    // MARK: - Recently Played
+
+    private let recentlyPlayedKey = "Toyako.RecentlyPlayed.v1"
+    private let recentlyPlayedLimit = 12
+
+    private func loadRecentlyPlayed() {
+        guard let data = UserDefaults.standard.data(forKey: recentlyPlayedKey),
+              let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data) else {
+            return
+        }
+
+        recentlyPlayed = decoded
+    }
+
+    private func recordRecentlyPlayed(_ track: LocalTrack) {
+        recentlyPlayed.removeAll {
+            $0.url.standardizedFileURL == track.url.standardizedFileURL
+        }
+
+        recentlyPlayed.insert(track, at: 0)
+
+        if recentlyPlayed.count > recentlyPlayedLimit {
+            recentlyPlayed.removeLast(recentlyPlayed.count - recentlyPlayedLimit)
+        }
+
+        if let data = try? JSONEncoder().encode(recentlyPlayed) {
+            UserDefaults.standard.set(data, forKey: recentlyPlayedKey)
+        }
+    }
 
     // MARK: - Persistent Playback / Resume
 
@@ -1539,6 +1575,8 @@ class AudioEngineManager: ObservableObject {
 
         currentTrack =
             track
+
+        recordRecentlyPlayed(track)
 
         pendingSeekTarget = nil
         pendingSeekTrackID = nil
