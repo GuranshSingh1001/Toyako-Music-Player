@@ -254,7 +254,7 @@ struct NowPlayingView: View {
                 previousPressed = true
                 audioManager.backward()
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                     previousPressed = false
                 }
             } label: {
@@ -264,7 +264,7 @@ struct NowPlayingView: View {
                     .scaleEffect(previousPressed ? 0.76 : 1)
                     .offset(x: previousPressed ? -2 : 0)
                     .animation(
-                        .spring(response: 0.14, dampingFraction: 0.58),
+                        .spring(response: 0.22, dampingFraction: 0.58),
                         value: previousPressed
                     )
             }
@@ -278,16 +278,27 @@ struct NowPlayingView: View {
                     playPausePressed = false
                 }
             } label: {
-                Image(
-                    systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
-                )
-                .font(.system(size: 38, weight: .medium))
-                .foregroundStyle(.white)
+                ZStack {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 38, weight: .medium))
+                        .foregroundStyle(.white)
+                        .opacity(audioManager.isPlaying ? 0 : 1)
+                        .scaleEffect(audioManager.isPlaying ? 0.82 : 1.0)
+
+                     Image(systemName: "pause.fill")
+                        .font(.system(size: 38, weight: .medium))
+                        .foregroundStyle(.white)
+                        .opacity(audioManager.isPlaying ? 1 : 0)
+                        .scaleEffect(audioManager.isPlaying ? 1.0 : 0.82)
+                 }
                 .frame(width: 50, height: 50)
-                .contentTransition(.symbolEffect(.replace))
-                .scaleEffect(playPausePressed ? 0.80 : 1.0)
+                .scaleEffect(playPausePressed ? 0.88 : 1.0)
                 .animation(
-                    .spring(response: 0.14, dampingFraction: 0.62),
+                    .easeOut(duration: 0.12),
+                    value: audioManager.isPlaying
+                )
+                .animation(
+                    .spring(response: 0.16, dampingFraction: 0.78),
                     value: playPausePressed
                 )
             }
@@ -662,8 +673,9 @@ struct AppleMusicMovingBleedBackground: View {
                         time: t,
                         frequency: 0.071,
                         phase: 0.0,
-                        scale: 1.5,
-                        blur: 78,
+                        swirl: 1.00,
+                        scale: 1.42,
+                        blur: 68,
                         opacity: 0.78
                     )
 
@@ -672,9 +684,10 @@ struct AppleMusicMovingBleedBackground: View {
                         time: t,
                         frequency: 0.053,
                         phase: 1.9,
-                        scale: 1.73,
-                        blur: 52,
-                        opacity: 0.50
+                        swirl: 1.22,
+                        scale: 1.54,
+                        blur: 56,
+                        opacity: 0.48
                     )
 
                     bleedLayer(
@@ -682,9 +695,10 @@ struct AppleMusicMovingBleedBackground: View {
                         time: t,
                         frequency: 0.037,
                         phase: 4.1,
-                        scale: 1.9,
-                        blur: 86,
-                        opacity: 0.34
+                        swirl: 1.45,
+                        scale: 1.68,
+                        blur: 78,
+                        opacity: 0.32
                     )
 
                     Color.black.opacity(0.18)
@@ -708,15 +722,40 @@ struct AppleMusicMovingBleedBackground: View {
         time: TimeInterval,
         frequency: Double,
         phase: Double,
+        swirl: Double,
         scale: CGFloat,
         blur: CGFloat,
         opacity: Double
     ) -> some View {
         let a = time * frequency + phase
-        let x = CGFloat(sin(a) * 34 + sin(a * 0.43 + 1.2) * 18)
-        let y = CGFloat(cos(a * 0.87) * 30 + sin(a * 0.31 + 2.4) * 20)
-        let rotation = sin(a * 0.67) * 8 + cos(a * 0.29) * 4
-        let dynamicScale = scale + CGFloat(sin(a * 0.53) * 0.08)
+
+        // Layered, non-repeating orbital motion. The different frequencies keep
+        // the artwork feeling organic instead of following one obvious path.
+        let orbit = a * swirl
+        let radiusX = 28.0 + 14.0 * sin(orbit * 0.37 + phase)
+        let radiusY = 24.0 + 16.0 * cos(orbit * 0.29 + 1.1 + phase)
+
+        let x = CGFloat(
+            sin(orbit) * radiusX
+            + sin(orbit * 0.53 + 1.7) * 15.0
+            + cos(orbit * 0.23 + phase) * 9.0
+        )
+        let y = CGFloat(
+            cos(orbit * 0.91) * radiusY
+            + sin(orbit * 0.41 + 2.8) * 17.0
+            + cos(orbit * 0.19 + 0.8 + phase) * 8.0
+        )
+
+        // Slowly twists the enlarged artwork as it travels, producing a soft
+        // whirlpool-like bleed rather than a simple left/right translation.
+        let rotation =
+            sin(orbit * 0.61 + phase) * 11.0
+            + cos(orbit * 0.27 + 1.4) * 6.0
+            + sin(orbit * 0.13 + 2.2) * 3.0
+
+        let dynamicScale = scale
+            + CGFloat(sin(orbit * 0.47 + 0.9) * 0.075)
+            + CGFloat(cos(orbit * 0.21 + phase) * 0.035)
 
         Image(uiImage: image)
             .resizable()
