@@ -165,14 +165,11 @@ struct NowPlayingView: View {
     @ViewBuilder
     private func artwork(maxHeight: CGFloat) -> some View {
         if let track = audioManager.currentTrack {
+            // The mini-player owns its artwork independently. Keeping this
+            // artwork independent prevents SwiftUI from hiding/reparenting the
+            // mini-player image during the Now Playing presentation/dismissal.
             LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
                 .frame(maxHeight: maxHeight)
-                .matchedGeometryEffect(
-                    id: "nowPlayingArtwork",
-                    in: transitionNamespace,
-                    properties: .frame,
-                    anchor: .center
-                )
         } else {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.secondary.opacity(0.12))
