@@ -123,6 +123,29 @@ struct ContentView: View {
             // pass is what causes the glass to briefly warp when switching tabs.
             transaction.animation = nil
         }
+        .overlay(alignment: .bottom) {
+            // There is deliberately ONE mini-player for the entire app, rather
+            // than one inside each tab's NavigationStack. That keeps the same
+            // view instance alive while switching Home/Tracks/Albums/Artists/
+            // Playlists, so the player cannot disappear for a frame and then
+            // be recreated. Because this overlay is outside TabView, it also
+            // remains above pushed playlist destinations.
+            MiniPlayerView(
+                transitionNamespace: playerTransition,
+                isNowPlayingPresented: showNowPlaying,
+                onOpenNowPlaying: {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                        showNowPlaying = true
+                    }
+                }
+            )
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+            .frame(width: 670)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.bottom, 7)
+            .zIndex(10)
+        }
 
         // MARK: - Now Playing
 
@@ -351,15 +374,6 @@ struct ContentView: View {
                     }
                 }
             }
-            .miniPlayerInset(
-                transitionNamespace: playerTransition,
-                isNowPlayingPresented: showNowPlaying,
-                onOpenNowPlaying: {
-                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                        showNowPlaying = true
-                    }
-                }
-            )
         }
     }
 
@@ -408,15 +422,6 @@ struct ContentView: View {
                     .accessibilityLabel("Refresh library")
                 }
             }
-            .miniPlayerInset(
-                transitionNamespace: playerTransition,
-                isNowPlayingPresented: showNowPlaying,
-                onOpenNowPlaying: {
-                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                        showNowPlaying = true
-                    }
-                }
-            )
         }
     }
 
@@ -649,38 +654,6 @@ private struct AudioLifecycleObserver: View {
         audioManager.synchronizeLibrary(library.tracks)
         if let current = audioManager.currentTrack {
             library.refreshArtwork(for: current)
-        }
-    }
-}
-
-private extension View {
-    func miniPlayerInset(
-        transitionNamespace: Namespace.ID,
-        isNowPlayingPresented: Bool,
-        onOpenNowPlaying: @escaping () -> Void
-    ) -> some View {
-        // Keep the inset present in every tab's NavigationStack. Previously this
-        // was conditional on selectedCategory, which caused SwiftUI to remove
-        // the safe-area inset from the old tab and add it to the new tab during
-        // the tab transition. That produced the one-frame mini-player blink.
-        // Keeping the same layout in every tab also makes the inset survive
-        // NavigationLink pushes, including opening a playlist.
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            MiniPlayerView(
-                transitionNamespace: transitionNamespace,
-                isNowPlayingPresented: isNowPlayingPresented,
-                onOpenNowPlaying: onOpenNowPlaying
-            )
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
-            .frame(width: 670)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.bottom, 7)
-        }
-        .transaction { transaction in
-            // The system sidebar's Liquid Glass handles its own transition.
-            // Prevent the content tree from adding a second animation pass.
-            transaction.animation = nil
         }
     }
 }
