@@ -4,7 +4,6 @@ import UIKit
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
-    let transitionNamespace: Namespace.ID
 
     @State private var dragOffset: CGFloat = 0
     @State private var playPausePressed = false
@@ -145,9 +144,7 @@ struct NowPlayingView: View {
             AppleMusicScrubberBar(
                 progress: audioManager.playbackProgress,
                 duration: audioManager.currentTrack?.duration ?? 0,
-                currentTime: audioManager.currentTime,
-                transitionNamespace: transitionNamespace,
-                isNowPlayingPresented: true
+                currentTime: audioManager.currentTime
             ) { progress in
                 guard let duration = audioManager.currentTrack?.duration,
                       duration > 0 else { return }
@@ -165,22 +162,11 @@ struct NowPlayingView: View {
     @ViewBuilder
     private func artwork(maxHeight: CGFloat) -> some View {
         if let track = audioManager.currentTrack {
-            // Pair this with the mini-player artwork so the cover participates
-            // in the same bottom-to-top hero transition as the Now Playing panel.
-            // The panel itself still uses a bottom-edge transition; matched
-            // geometry supplies the artwork's position/size interpolation.
+            // Keep the artwork in the Now Playing hierarchy so it enters
+            // together with the panel's bottom-to-top presentation. There is
+            // deliberately no shared geometry/hero transition with the mini-player.
             LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
                 .frame(maxHeight: maxHeight)
-                .matchedGeometryEffect(
-                    id: "nowPlayingArtwork",
-                    in: transitionNamespace,
-                    properties: .frame,
-                    anchor: .center,
-                    isSource: isPresented
-                )
-                .transaction { transaction in
-                    transaction.animation = nil
-                }
         } else {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.secondary.opacity(0.12))
@@ -433,8 +419,6 @@ struct AppleMusicScrubberBar: View {
     let progress: Double
     let duration: TimeInterval
     let currentTime: TimeInterval
-    let transitionNamespace: Namespace.ID
-    let isNowPlayingPresented: Bool
     let onSeek: (Double) -> Void
 
     @State private var isHolding = false
@@ -492,13 +476,6 @@ struct AppleMusicScrubberBar: View {
                     maxWidth: .infinity,
                     maxHeight: .infinity,
                     alignment: .center
-                )
-                .matchedGeometryEffect(
-                    id: "nowPlayingProgressTrack",
-                    in: transitionNamespace,
-                    properties: .frame,
-                    anchor: .center,
-                    isSource: isNowPlayingPresented
                 )
                 .contentShape(Rectangle())
                 .gesture(
