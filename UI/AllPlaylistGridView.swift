@@ -179,198 +179,55 @@ struct PlaylistArtwork: View {
     let tracks: [LocalTrack]
     let playlistName: String
 
-    private var artwork:
-        [Data] {
-        tracks.compactMap {
-            $0.artworkData
-        }
+    private var urls: [URL] {
+        Array(tracks.prefix(4)).map(\.url)
     }
 
     var body: some View {
-        if artwork.isEmpty {
-            emptyArtwork
-        } else {
-            collageArtwork
-        }
-    }
-
-    private var collageArtwork:
-        some View {
-
         GeometryReader { proxy in
+            let width = proxy.size.width / 2
+            let height = proxy.size.height / 2
 
-            let width =
-                proxy.size.width / 2
-
-            let height =
-                proxy.size.height / 2
-
-            VStack(
-                spacing:
-                    0
-            ) {
-                HStack(
-                    spacing:
-                        0
-                ) {
-                    artworkTile(
-                        index:
-                            0,
-                        width:
-                            width,
-                        height:
-                            height
-                    )
-
-                    artworkTile(
-                        index:
-                            1,
-                        width:
-                            width,
-                        height:
-                            height
-                    )
-                }
-
-                HStack(
-                    spacing:
-                        0
-                ) {
-                    artworkTile(
-                        index:
-                            2,
-                        width:
-                            width,
-                        height:
-                            height
-                    )
-
-                    artworkTile(
-                        index:
-                            3,
-                        width:
-                            width,
-                        height:
-                            height
-                    )
+            if urls.isEmpty {
+                emptyArtwork
+            } else {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        tile(index: 0, width: width, height: height)
+                        tile(index: 1, width: width, height: height)
+                    }
+                    HStack(spacing: 0) {
+                        tile(index: 2, width: width, height: height)
+                        tile(index: 3, width: width, height: height)
+                    }
                 }
             }
         }
     }
 
-    private func artworkTile(
-        index:
-            Int,
-        width:
-            CGFloat,
-        height:
-            CGFloat
-    ) -> some View {
-
-        let data =
-            artwork[
-                index % artwork.count
-            ]
-
-        return Group {
-
-            if let image =
-                UIImage(
-                    data:
-                        data
-                ) {
-
-                Image(
-                    uiImage:
-                        image
-                )
-                .resizable()
-                .scaledToFill()
-
-            } else {
-                Color.gray
-            }
-        }
-        .frame(
-            width:
-                width,
-            height:
-                height
+    private func tile(index: Int, width: CGFloat, height: CGFloat) -> some View {
+        LazyArtwork(
+            url: urls[index % urls.count],
+            size: max(width, height),
+            cornerRadius: 0
         )
+        .frame(width: width, height: height)
         .clipped()
     }
 
-    private var emptyArtwork:
-        some View {
-
-        GeometryReader { proxy in
-
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color.primary.opacity(
-                            0.82
-                        ),
-                        Color.secondary.opacity(
-                            0.42
-                        )
-                    ],
-                    startPoint:
-                        .topLeading,
-                    endPoint:
-                        .bottomTrailing
-                )
-
-                VStack(
-                    spacing:
-                        10
-                ) {
-                    Image(
-                        systemName:
-                            "music.note.list"
-                    )
-                    .font(
-                        .system(
-                            size: 48,
-                            weight: .medium
-                        )
-                    )
-                    .foregroundColor(
-                        .white.opacity(
-                            0.92
-                        )
-                    )
-
-                    Text(
-                        playlistName
-                    )
-                    .font(
-                        .system(
-                            size: 14,
-                            weight: .semibold
-                        )
-                    )
-                    .foregroundColor(
-                        .white
-                    )
-                    .lineLimit(
-                        2
-                    )
-                    .multilineTextAlignment(
-                        .center
-                    )
-                    .padding(
-                        .horizontal,
-                        16
-                    )
+    private var emptyArtwork: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(.thinMaterial)
+            .overlay {
+                VStack(spacing: 8) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 38, weight: .medium))
+                    Text(playlistName)
+                        .font(.caption.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
+                .foregroundStyle(.secondary)
             }
-            .frame(
-                width:
-                    proxy.size.width,
-                height:
-                    proxy.size.height
-            )
-        }
     }
 }
