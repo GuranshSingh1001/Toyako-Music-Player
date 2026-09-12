@@ -42,6 +42,29 @@ enum ToyakoUnifiedCache {
             .appendingPathComponent(filename)
     }
 
+
+    private static let playbackFilename = "ToyakoPlayback.bin"
+
+    private static var playbackURL: URL {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(playbackFilename)
+    }
+
+    static func loadPlaybackState() -> ToyakoPlaybackState? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let data = try? Data(contentsOf: playbackURL) else { return nil }
+        return try? binaryDecoder.decode(ToyakoPlaybackState.self, from: data)
+    }
+
+    static func savePlaybackState(_ state: ToyakoPlaybackState) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let data = try? binaryEncoder.encode(state) else { return }
+        try? data.write(to: playbackURL, options: .atomic)
+    }
+
     static func load() -> ToyakoCacheEnvelope? {
         lock.lock()
         defer { lock.unlock() }
