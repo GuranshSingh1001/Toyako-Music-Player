@@ -120,28 +120,12 @@ struct ContentView: View {
         .tabViewStyle(
             .sidebarAdaptable
         )
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if audioManager.currentTrack != nil {
-                GeometryReader { proxy in
-                    MiniPlayerView(
-                        transitionNamespace: playerTransition,
-                        isNowPlayingPresented: showNowPlaying
-                    ) {
-                        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                            showNowPlaying = true
-                        }
-                    }
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
-                    .frame(width: 670)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 7)
-                    .animation(.smooth(duration: 0.35), value: proxy.size.width)
-                }
-                .frame(height: 75)
-            }
+        .transaction { transaction in
+            // Do not add an implicit SwiftUI transition on top of iPadOS's
+            // own Liquid Glass sidebar/pill transition. The extra animation
+            // pass is what causes the glass to briefly warp when switching tabs.
+            transaction.animation = nil
         }
-
 
         // MARK: - Now Playing
 
@@ -387,6 +371,16 @@ struct ContentView: View {
                     }
                 }
             }
+            .miniPlayerInset(
+                isActive: selectedCategory == category,
+                transitionNamespace: playerTransition,
+                isNowPlayingPresented: showNowPlaying,
+                onOpenNowPlaying: {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                        showNowPlaying = true
+                    }
+                }
+            )
         }
     }
 
@@ -399,7 +393,6 @@ struct ContentView: View {
                 albums: library.albums,
                 artists: library.artists,
                 playlists: library.playlists,
-                recentlyPlayed: audioManager.recentlyPlayed,
                 library: library,
                 onImport: {
                     showFilePicker = true
@@ -436,6 +429,16 @@ struct ContentView: View {
                     .accessibilityLabel("Refresh library")
                 }
             }
+            .miniPlayerInset(
+                isActive: selectedCategory == .home,
+                transitionNamespace: playerTransition,
+                isNowPlayingPresented: showNowPlaying,
+                onOpenNowPlaying: {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                        showNowPlaying = true
+                    }
+                }
+            )
         }
     }
 
@@ -597,3 +600,33 @@ struct ContentView: View {
         }
     }
 }
+
+private extension View {
+    func miniPlayerInset(
+        isActive: Bool,
+        transitionNamespace: Namespace.ID,
+        isNowPlayingPresented: Bool,
+        onOpenNowPlaying: @escaping () -> Void
+    ) -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            if isActive {
+                MiniPlayerView(
+                    transitionNamespace: transitionNamespace,
+                    isNowPlayingPresented: isNowPlayingPresented,
+                    onOpenNowPlaying: onOpenNowPlaying
+                )
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                .frame(width: 670)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 7)
+            }
+        }
+        .transaction { transaction in
+            // The system sidebar's Liquid Glass handles its own transition.
+            // Prevent the content tree from adding a second animation pass.
+            transaction.animation = nil
+        }
+    }
+}
+
