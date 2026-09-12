@@ -254,7 +254,7 @@ struct NowPlayingView: View {
                 previousPressed = true
                 audioManager.backward()
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                     previousPressed = false
                 }
             } label: {
@@ -264,7 +264,7 @@ struct NowPlayingView: View {
                     .scaleEffect(previousPressed ? 0.76 : 1)
                     .offset(x: previousPressed ? -2 : 0)
                     .animation(
-                        .spring(response: 0.22, dampingFraction: 0.58),
+                        .spring(response: 0.14, dampingFraction: 0.58),
                         value: previousPressed
                     )
             }
@@ -274,7 +274,7 @@ struct NowPlayingView: View {
                 playPausePressed = true
                 audioManager.togglePlayPause()
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                     playPausePressed = false
                 }
             } label: {
@@ -287,7 +287,7 @@ struct NowPlayingView: View {
                 .contentTransition(.symbolEffect(.replace))
                 .scaleEffect(playPausePressed ? 0.80 : 1.0)
                 .animation(
-                    .spring(response: 0.24, dampingFraction: 0.64),
+                    .spring(response: 0.14, dampingFraction: 0.62),
                     value: playPausePressed
                 )
             }
@@ -648,7 +648,7 @@ struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 14.0)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
 
             ZStack {
@@ -662,8 +662,8 @@ struct AppleMusicMovingBleedBackground: View {
                         time: t,
                         frequency: 0.071,
                         phase: 0.0,
-                        scale: 1.42,
-                        blur: 70,
+                        scale: 1.5,
+                        blur: 78,
                         opacity: 0.78
                     )
 
@@ -672,8 +672,8 @@ struct AppleMusicMovingBleedBackground: View {
                         time: t,
                         frequency: 0.053,
                         phase: 1.9,
-                        scale: 1.54,
-                        blur: 58,
+                        scale: 1.73,
+                        blur: 52,
                         opacity: 0.50
                     )
 
@@ -682,8 +682,8 @@ struct AppleMusicMovingBleedBackground: View {
                         time: t,
                         frequency: 0.037,
                         phase: 4.1,
-                        scale: 1.68,
-                        blur: 82,
+                        scale: 1.9,
+                        blur: 86,
                         opacity: 0.34
                     )
 
