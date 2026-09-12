@@ -352,7 +352,6 @@ struct ContentView: View {
                 }
             }
             .miniPlayerInset(
-                isActive: selectedCategory == category,
                 transitionNamespace: playerTransition,
                 isNowPlayingPresented: showNowPlaying,
                 onOpenNowPlaying: {
@@ -410,7 +409,6 @@ struct ContentView: View {
                 }
             }
             .miniPlayerInset(
-                isActive: selectedCategory == .home,
                 transitionNamespace: playerTransition,
                 isNowPlayingPresented: showNowPlaying,
                 onOpenNowPlaying: {
@@ -657,24 +655,27 @@ private struct AudioLifecycleObserver: View {
 
 private extension View {
     func miniPlayerInset(
-        isActive: Bool,
         transitionNamespace: Namespace.ID,
         isNowPlayingPresented: Bool,
         onOpenNowPlaying: @escaping () -> Void
     ) -> some View {
+        // Keep the inset present in every tab's NavigationStack. Previously this
+        // was conditional on selectedCategory, which caused SwiftUI to remove
+        // the safe-area inset from the old tab and add it to the new tab during
+        // the tab transition. That produced the one-frame mini-player blink.
+        // Keeping the same layout in every tab also makes the inset survive
+        // NavigationLink pushes, including opening a playlist.
         safeAreaInset(edge: .bottom, spacing: 0) {
-            if isActive {
-                MiniPlayerView(
-                    transitionNamespace: transitionNamespace,
-                    isNowPlayingPresented: isNowPlayingPresented,
-                    onOpenNowPlaying: onOpenNowPlaying
-                )
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
-                .frame(width: 670)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 7)
-            }
+            MiniPlayerView(
+                transitionNamespace: transitionNamespace,
+                isNowPlayingPresented: isNowPlayingPresented,
+                onOpenNowPlaying: onOpenNowPlaying
+            )
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+            .frame(width: 670)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.bottom, 7)
         }
         .transaction { transaction in
             // The system sidebar's Liquid Glass handles its own transition.
