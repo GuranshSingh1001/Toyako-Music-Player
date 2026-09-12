@@ -4,7 +4,6 @@ import UIKit
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
-    let transitionNamespace: Namespace.ID
 
     @State private var dragOffset: CGFloat = 0
     @State private var playPausePressed = false
@@ -146,8 +145,6 @@ struct NowPlayingView: View {
                 progress: audioManager.playbackProgress,
                 duration: audioManager.currentTrack?.duration ?? 0,
                 currentTime: audioManager.currentTime,
-                transitionNamespace: transitionNamespace,
-                isNowPlayingPresented: true
             ) { progress in
                 guard let duration = audioManager.currentTrack?.duration,
                       duration > 0 else { return }
@@ -165,9 +162,9 @@ struct NowPlayingView: View {
     @ViewBuilder
     private func artwork(maxHeight: CGFloat) -> some View {
         if let track = audioManager.currentTrack {
-            // The mini-player owns its artwork independently. Keeping this
-            // artwork independent prevents SwiftUI from hiding/reparenting the
-            // mini-player image during the Now Playing presentation/dismissal.
+            // Keep the artwork in the Now Playing hierarchy so it enters
+            // together with the panel's bottom-to-top presentation. There is
+            // deliberately no shared geometry/hero transition with the mini-player.
             LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
                 .frame(maxHeight: maxHeight)
         } else {
@@ -422,7 +419,6 @@ struct AppleMusicScrubberBar: View {
     let progress: Double
     let duration: TimeInterval
     let currentTime: TimeInterval
-    let transitionNamespace: Namespace.ID
     let isNowPlayingPresented: Bool
     let onSeek: (Double) -> Void
 
@@ -481,13 +477,6 @@ struct AppleMusicScrubberBar: View {
                     maxWidth: .infinity,
                     maxHeight: .infinity,
                     alignment: .center
-                )
-                .matchedGeometryEffect(
-                    id: "nowPlayingProgressTrack",
-                    in: transitionNamespace,
-                    properties: .frame,
-                    anchor: .center,
-                    isSource: isNowPlayingPresented
                 )
                 .contentShape(Rectangle())
                 .gesture(
