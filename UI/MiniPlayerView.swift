@@ -22,22 +22,8 @@ struct MiniPlayerView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
 
-                        GeometryReader { proxy in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(.primary.opacity(0.11))
-
-                                Capsule()
-                                    .fill(.primary.opacity(0.52))
-                                    .frame(
-                                        width: proxy.size.width * min(
-                                            max(audioManager.playbackProgress, 0),
-                                            1
-                                        )
-                                    )
-                            }
-                        }
-                        .frame(height: 3)
+                        MiniPlayerProgressBar()
+                            .frame(height: 3)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -102,6 +88,32 @@ struct MiniPlayerView: View {
                 .fill(.secondary.opacity(0.16))
                 .frame(width: 44, height: 44)
                 .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
+        }
+    }
+}
+
+/// Isolated on purpose: this is the only part of the mini-player that
+/// needs to redraw ~4x/sec while a track plays. Pulling it out of
+/// MiniPlayerView means the title/artist/buttons (and anything else that
+/// holds a reference to MiniPlayerView) don't get rebuilt on every tick.
+private struct MiniPlayerProgressBar: View {
+    @EnvironmentObject var clock: PlaybackClock
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.primary.opacity(0.11))
+
+                Capsule()
+                    .fill(.primary.opacity(0.52))
+                    .frame(
+                        width: proxy.size.width * min(
+                            max(clock.playbackProgress, 0),
+                            1
+                        )
+                    )
+            }
         }
     }
 }
