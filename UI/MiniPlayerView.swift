@@ -103,14 +103,8 @@ struct MiniPlayerView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        if let track = audioManager.currentTrack,
-           let data = track.artworkData,
-           let image = UIImage(data: data) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        if let track = audioManager.currentTrack {
+            LazyArtwork(url: track.url, size: 44, cornerRadius: 9)
                 .matchedGeometryEffect(
                     id: "nowPlayingArtwork",
                     in: transitionNamespace,
@@ -124,10 +118,7 @@ struct MiniPlayerView: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(.secondary.opacity(0.16))
                 .frame(width: 44, height: 44)
-                .overlay {
-                    Image(systemName: "music.note")
-                        .foregroundStyle(.secondary)
-                }
+                .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
         }
     }
 }
