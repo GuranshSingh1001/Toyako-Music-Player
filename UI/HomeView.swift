@@ -5,7 +5,6 @@ struct HomeView: View {
     let albums: [AlbumGroup]
     let artists: [ArtistGroup]
     let playlists: [Playlist]
-    let recentlyPlayed: [LocalTrack]
     let library: LocalLibrary
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
@@ -15,12 +14,6 @@ struct HomeView: View {
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
     ]
-
-    private var recentTracks: [LocalTrack] {
-        recentlyPlayed.filter { recent in
-            tracks.contains { $0.id == recent.id }
-        }
-    }
 
     private var featuredAlbums: [AlbumGroup] {
         Array(albums.prefix(8))
@@ -34,17 +27,17 @@ struct HomeView: View {
         Array(playlists.prefix(8))
     }
 
+    private var trackByURL: [URL: LocalTrack] {
+        Dictionary(uniqueKeysWithValues: tracks.map {
+            ($0.url.standardizedFileURL, $0)
+        })
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 28) {
                 header
                 quickActions
-
-                if !recentTracks.isEmpty {
-                    section("Recently Played") {
-                        horizontalTracks(recentTracks)
-                    }
-                }
 
                 if let current = audioManager.currentTrack {
                     continueListening(current)
@@ -140,9 +133,11 @@ struct HomeView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                        Text(audioManager.isPlaying ? "Playing now" : "Paused")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if audioManager.currentTrack?.id == track.id {
+                            Text(audioManager.isPlaying ? "Playing now" : "Paused")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     Spacer()
@@ -172,7 +167,7 @@ struct HomeView: View {
 
     private func horizontalTracks(_ items: [LocalTrack]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
+            LazyHStack(spacing: 14) {
                 ForEach(items) { track in
                     Button {
                         if let index = tracks.firstIndex(where: { $0.id == track.id }) {
@@ -199,7 +194,7 @@ struct HomeView: View {
 
     private func horizontalAlbums(_ items: [AlbumGroup]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
+            LazyHStack(spacing: 14) {
                 ForEach(items) { album in
                     NavigationLink {
                         AlbumDetailView(album: album, library: library)
@@ -228,7 +223,7 @@ struct HomeView: View {
 
     private func horizontalArtists(_ items: [ArtistGroup]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
+            LazyHStack(spacing: 16) {
                 ForEach(items) { artist in
                     NavigationLink {
                         SongListView(
@@ -262,10 +257,10 @@ struct HomeView: View {
 
     private func horizontalPlaylists(_ items: [Playlist]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
+            LazyHStack(spacing: 14) {
                 ForEach(items) { playlist in
-                    let playlistTracks = library.tracks.filter {
-                        playlist.trackURLs.contains($0.url)
+                    let playlistTracks = playlist.trackURLs.compactMap {
+                        trackByURL[$0.standardizedFileURL]
                     }
 
                     NavigationLink {
