@@ -110,6 +110,13 @@ struct MiniPlayerView: View {
             // Playing. That is what caused the cover to flash/disappear when
             // Now Playing was dismissed.
             LazyArtwork(url: track.url, size: 44, cornerRadius: 9)
+                .matchedGeometryEffect(
+                    id: "nowPlayingArtwork",
+                    in: transitionNamespace,
+                    properties: .frame,
+                    anchor: .center,
+                    isSource: !isNowPlayingPresented
+                )
                 .id(track.id)
         } else {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
