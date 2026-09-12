@@ -104,16 +104,13 @@ struct MiniPlayerView: View {
     @ViewBuilder
     private var artwork: some View {
         if let track = audioManager.currentTrack {
+            // Keep the mini-player artwork as a completely independent view.
+            // Do not use matchedGeometryEffect here: SwiftUI temporarily hides
+            // the source view while transferring the matched element to Now
+            // Playing. That is what caused the cover to flash/disappear when
+            // Now Playing was dismissed.
             LazyArtwork(url: track.url, size: 44, cornerRadius: 9)
-                .matchedGeometryEffect(
-                    id: "nowPlayingArtwork",
-                    in: transitionNamespace,
-                    properties: .frame,
-                    anchor: .center,
-                    isSource: !isNowPlayingPresented
-                )
                 .id(track.id)
-                .transition(.opacity.combined(with: .scale(scale: 0.94)))
         } else {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(.secondary.opacity(0.16))
