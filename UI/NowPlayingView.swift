@@ -101,11 +101,11 @@ struct NowPlayingView: View {
     // MARK: - Presentation
 
     private func close(height: CGFloat) {
+        // Let the parent transition own the dismissal. The previous approach
+        // kept this full-screen view alive for 300 ms after animating its
+        // offset, which could leave an invisible overlay intercepting touches
+        // and also caused a second animation pass.
         withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
-            dragOffset = height
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
             isPresented = false
         }
     }
@@ -169,6 +169,13 @@ struct NowPlayingView: View {
             // artwork independent prevents SwiftUI from hiding/reparenting the
             // mini-player image during the Now Playing presentation/dismissal.
             LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
+                .matchedGeometryEffect(
+                    id: "nowPlayingArtwork",
+                    in: transitionNamespace,
+                    properties: .frame,
+                    anchor: .center,
+                    isSource: isNowPlayingPresented
+                )
                 .frame(maxHeight: maxHeight)
         } else {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -616,16 +623,16 @@ struct AppleMusicScrubberBar: View {
 struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
 
+    @State private var artworkImage: UIImage?
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
 
             ZStack {
                 Color.black
 
-                if let artworkData,
-                   let image = UIImage(data: artworkData) {
-
+                if let image = artworkImage {
                     bleedLayer(
                         image: image,
                         time: t,
@@ -669,6 +676,9 @@ struct AppleMusicMovingBleedBackground: View {
         .clipped()
         .drawingGroup(opaque: true)
         .animation(.smooth(duration: 0.8), value: artworkData?.hashValue)
+        .task(id: artworkData?.hashValue) {
+            artworkImage = artworkData.flatMap(UIImage.init(data:))
+        }
     }
 
     @ViewBuilder
