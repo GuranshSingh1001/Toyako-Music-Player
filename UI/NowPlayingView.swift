@@ -644,177 +644,129 @@ struct AppleMusicScrubberBar: View {
 
 // MARK: - Moving Artwork Background
 
-struct AppleMusicMovingBleedBackground: View {
-    let artworkData: Data?
+// MARK: - Apple Music Style Artwork Bleed
+//
+// Replace your existing bleed/background implementation with this.
+// Pass the same `Image` you use for the album artwork.
+//
+// Example:
+// AppleMusicBleedBackground(image: image)
+
+struct AppleMusicBleedBackground: View {
+    let image: Image
+
+    @State private var phase: CGFloat = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
+        GeometryReader { proxy in
+            let size = proxy.size
 
-            ZStack {
-                Color.black
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
 
-                if let artworkData,
-                   let image = UIImage(data: artworkData) {
+                let t = CGFloat(time)
 
-                    // Apple Music's bleed is intentionally soft and organic:
-                    // the artwork is massively enlarged, blurred and moved in
-                    // several very slow, independent directions. Avoiding
-                    // obvious orbits/rotations keeps the effect feeling like
-                    // liquid colour rather than a moving picture.
-                    liquidArtworkLayer(
-                        image: image,
-                        time: t,
-                        speed: 0.105,
-                        phase: 0.0,
-                        scale: 1.72,
-                        blur: 78,
-                        opacity: 0.82,
-                        amplitude: 30,
-                        rotation: 2.5
-                    )
+                // Slow, non-repeating-looking motion.
+                let x1 = sin(t * 0.115) * size.width * 0.075
+                    + cos(t * 0.071) * size.width * 0.045
 
-                    liquidArtworkLayer(
-                        image: image,
-                        time: t,
-                        speed: 0.071,
-                        phase: 2.15,
-                        scale: 1.95,
-                        blur: 94,
-                        opacity: 0.52,
-                        amplitude: 44,
-                        rotation: -3.5
-                    )
+                let y1 = cos(t * 0.097) * size.height * 0.080
+                    + sin(t * 0.053) * size.height * 0.050
 
-                    liquidArtworkLayer(
-                        image: image,
-                        time: t,
-                        speed: 0.047,
-                        phase: 4.65,
-                        scale: 2.22,
-                        blur: 112,
-                        opacity: 0.38,
-                        amplitude: 58,
-                        rotation: 2.0
-                    )
+                let x2 = cos(t * 0.083) * size.width * 0.100
+                    + sin(t * 0.047) * size.width * 0.055
 
-                    // Soft colour pooling. These masks break up the large
-                    // blurred image into the smooth, uneven colour fields
-                    // visible in Apple Music's presentation.
-                    colorPool(
-                        image: image,
-                        time: t,
-                        phase: 0.7,
-                        scale: 2.35,
-                        blur: 105,
-                        opacity: 0.22
-                    )
+                let y2 = sin(t * 0.109) * size.height * 0.090
+                    + cos(t * 0.061) * size.height * 0.045
 
-                    // Keep the artwork atmospheric rather than readable.
-                    Color.black.opacity(0.30)
+                let x3 = sin(t * 0.061) * size.width * 0.130
+                    + cos(t * 0.037) * size.width * 0.060
 
-                    // Gentle edge falloff, especially around the controls.
+                let y3 = cos(t * 0.073) * size.height * 0.120
+                    + sin(t * 0.043) * size.height * 0.065
+
+                let rotation1 = sin(t * 0.043) * 5.0
+                let rotation2 = cos(t * 0.031) * 7.0
+                let rotation3 = sin(t * 0.027) * 9.0
+
+                let scale1 = 1.28
+                    + sin(t * 0.071) * 0.045
+
+                let scale2 = 1.42
+                    + cos(t * 0.053) * 0.055
+
+                let scale3 = 1.58
+                    + sin(t * 0.037) * 0.065
+
+                ZStack {
+                    // Deep atmospheric base
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: size.width * 1.9,
+                            height: size.height * 1.9
+                        )
+                        .scaleEffect(scale3)
+                        .rotationEffect(.degrees(rotation3))
+                        .offset(x: x3, y: y3)
+                        .blur(radius: 95)
+                        .opacity(0.34)
+
+                    // Large color wash
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: size.width * 1.65,
+                            height: size.height * 1.65
+                        )
+                        .scaleEffect(scale2)
+                        .rotationEffect(.degrees(rotation2))
+                        .offset(x: x2, y: y2)
+                        .blur(radius: 78)
+                        .opacity(0.46)
+
+                    // Main bleed
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: size.width * 1.45,
+                            height: size.height * 1.45
+                        )
+                        .scaleEffect(scale1)
+                        .rotationEffect(.degrees(rotation1))
+                        .offset(x: x1, y: y1)
+                        .blur(radius: 62)
+                        .opacity(0.70)
+
+                    // Soft center haze.
+                    Rectangle()
+                        .fill(.black.opacity(0.12))
+                        .ignoresSafeArea()
+
+                    // Apple Music-like edge darkening.
                     RadialGradient(
                         colors: [
-                            .clear,
-                            .black.opacity(0.10),
-                            .black.opacity(0.42)
+                            .black.opacity(0.02),
+                            .black.opacity(0.08),
+                            .black.opacity(0.32),
+                            .black.opacity(0.58)
                         ],
                         center: .center,
-                        startRadius: 80,
-                        endRadius: 650
+                        startRadius: min(size.width, size.height) * 0.12,
+                        endRadius: max(size.width, size.height) * 0.72
                     )
-                } else {
-                    LinearGradient(
-                        colors: [.black, Color(white: 0.08), .black],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    .ignoresSafeArea()
                 }
+                .frame(width: size.width, height: size.height)
+                .clipped()
+                .drawingGroup()
             }
         }
-        .clipped()
-        .drawingGroup(opaque: true)
-        .animation(.easeInOut(duration: 0.9), value: artworkData?.hashValue)
-    }
-
-    @ViewBuilder
-    private func liquidArtworkLayer(
-        image: UIImage,
-        time: TimeInterval,
-        speed: Double,
-        phase: Double,
-        scale: CGFloat,
-        blur: CGFloat,
-        opacity: Double,
-        amplitude: CGFloat,
-        rotation: Double
-    ) -> some View {
-        let a = time * speed + phase
-
-        // Incommensurate low-frequency waves create slow, non-repeating
-        // movement without the visible circular path of an orbit.
-        let x = CGFloat(
-            sin(a * 0.73 + phase) * amplitude
-            + cos(a * 0.43 + 1.8) * amplitude * 0.62
-            + sin(a * 0.19 + 4.1) * amplitude * 0.38
-        )
-
-        let y = CGFloat(
-            cos(a * 0.61 + 0.7) * amplitude * 0.78
-            + sin(a * 0.37 + phase * 1.4) * amplitude * 0.58
-            + cos(a * 0.17 + 2.6) * amplitude * 0.32
-        )
-
-        let breathing = CGFloat(
-            sin(a * 0.29 + phase) * 0.075
-            + cos(a * 0.17 + 1.1) * 0.045
-        )
-
-        let angle =
-            sin(a * 0.31 + phase) * rotation
-            + cos(a * 0.17 + 2.0) * rotation * 0.55
-
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFill()
-            .scaleEffect(scale + breathing)
-            .rotationEffect(.degrees(angle))
-            .offset(x: x, y: y)
-            .blur(radius: blur, opaque: true)
-            .saturation(1.10)
-            .brightness(-0.08)
-            .opacity(opacity)
-    }
-
-    @ViewBuilder
-    private func colorPool(
-        image: UIImage,
-        time: TimeInterval,
-        phase: Double,
-        scale: CGFloat,
-        blur: CGFloat,
-        opacity: Double
-    ) -> some View {
-        let a = time * 0.038 + phase
-
-        let x = CGFloat(
-            sin(a * 0.61) * 72
-            + cos(a * 0.29 + 1.4) * 38
-        )
-
-        let y = CGFloat(
-            cos(a * 0.53 + 0.9) * 62
-            + sin(a * 0.23 + 2.2) * 42
-        )
-
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFill()
-            .scaleEffect(scale)
-            .offset(x: x, y: y)
-            .blur(radius: blur, opaque: true)
-            .saturation(1.18)
-            .opacity(opacity)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 }
+
