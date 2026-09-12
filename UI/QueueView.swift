@@ -40,7 +40,7 @@ private struct QueueContent: View, Equatable {
 
     private static func trackFingerprint(_ track: LocalTrack?) -> String {
         guard let track else { return "nil" }
-        return "\(track.id.uuidString)|\(track.title)|\(track.artist)|\(track.album)|\(track.artworkData != nil)"
+        return "\(track.id.uuidString)|\(track.title)|\(track.artist)|\(track.album)"
     }
 
     var body: some View {
@@ -181,19 +181,7 @@ private struct QueueRow: View {
         }
     }
 
-    @ViewBuilder
     private var artwork: some View {
-        if let data = track.artworkData, let image = UIImage(data: data) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        } else {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(.secondary.opacity(0.14))
-                .frame(width: 44, height: 44)
-                .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
-        }
+        LazyArtwork(url: track.url, size: 44, cornerRadius: 8)
     }
 }
