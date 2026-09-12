@@ -414,7 +414,7 @@ private struct SmoothLyricsView: View {
                 guard let newID else { return }
 
                 withAnimation(.smooth(duration: 0.55, extraBounce: 0.04)) {
-                    proxy.scrollTo(newID, anchor: .center)
+                    proxy.scrollTo(newID, anchor: UnitPoint(x: 0.5, y: 0.30))
                 }
             }
         }
