@@ -469,12 +469,17 @@ class LocalLibrary:
     // MARK: - Artwork Cache
 
     private func scheduleArtworkHydration() {
-        let snapshot = tracks
+        // Do not hydrate the whole library immediately. Hundreds of embedded
+        // covers can compete with SwiftUI's first frames and make tab changes
+        // hitch. The Home screen only needs a small representative set.
+        let snapshot = Array(tracks.prefix(48))
         artworkHydrationTask?.cancel()
 
         let cacheDirectory = artworkCacheDirectoryURL
         artworkHydrationTask = Task.detached(priority: .utility) { [weak self] in
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            // Let launch, the first Home render, and the initial sidebar
+            // transition settle before doing any artwork I/O/decoding.
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled, self != nil else { return }
 
             let results = await Self.hydrateArtwork(snapshot, cacheDirectory: cacheDirectory)
