@@ -19,7 +19,7 @@ struct ArtistListView: View {
                             .overlay(Image(systemName: "person.fill").foregroundColor(.secondary))
                         VStack(alignment: .leading) {
                             Text(artist.name).font(.headline)
-                            Text("\(artist.tracks.count) Songs").font(.caption).foregroundColor(.secondary)
+                            Text("\(artist.tracks.count) Tracks").font(.caption).foregroundColor(.secondary)
                         }
                         .padding(.leading, 6)
                     }
