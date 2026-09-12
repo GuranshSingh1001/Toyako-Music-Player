@@ -17,18 +17,7 @@ struct SongListView: View {
 
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     HStack(spacing: 12) {
-                        if let data = track.artworkData, let uiImage = UIImage(data: data) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 44, height: 44)
-                                .cornerRadius(6)
-                        } else {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 44, height: 44)
-                                .overlay(Image(systemName: "music.note").foregroundColor(.gray))
-                        }
+                        LazyArtwork(url: library.artworkURL(for: track), size: 44, cornerRadius: 6)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(track.title).font(.headline).lineLimit(1)
