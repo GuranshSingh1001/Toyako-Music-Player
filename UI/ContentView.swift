@@ -134,7 +134,7 @@ struct ContentView: View {
                 transitionNamespace: playerTransition,
                 isNowPlayingPresented: showNowPlaying,
                 onOpenNowPlaying: {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.90)) {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
                         showNowPlaying = true
                     }
                 }
@@ -161,7 +161,6 @@ struct ContentView: View {
                 .transition(
                     .move(edge: .bottom)
                 )
-                .allowsHitTesting(true)
                 .zIndex(100)
             }
         }
