@@ -335,53 +335,86 @@ struct NowPlayingView: View {
         }
     }
 
-    // MARK: - Lyrics
+// MARK: - Lyrics
 
-    private var lyricsPane: some View {
-        let lyrics = audioManager.currentLyrics
-        let activeID = activeLyricID(lyrics: lyrics)
+private var lyricsPane: some View {
+    let lyrics = audioManager.currentLyrics
+    let activeID = activeLyricID(lyrics: lyrics)
+    let trackID = audioManager.currentTrack?.id
 
-        return Group {
-            if lyrics.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "quote.bubble")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.white.opacity(0.18))
+    return Group {
+        if lyrics.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "quote.bubble")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.white.opacity(0.18))
 
-                    Text("Lyrics Unavailable")
-                        .font(.headline)
-                        .foregroundStyle(.white.opacity(0.42))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                SmoothLyricsView(lyrics: lyrics, activeID: activeID) { time in
-                    audioManager.seek(to: time)
-                }
+                Text("Lyrics Unavailable")
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.42))
+            }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity
+            )
+        } else {
+            SmoothLyricsView(
+                lyrics: lyrics,
+                activeID: activeID,
+                trackID: trackID
+            ) { time in
+                audioManager.seek(to: time)
             }
         }
     }
-
-    private func activeLyricID(lyrics: [LyricLine]) -> UUID? {
-        lyrics.last { $0.time <= clock.currentTime }?.id
-    }
 }
+
+private func activeLyricID(
+    lyrics: [LyricLine]
+) -> UUID? {
+
+    guard !lyrics.isEmpty else {
+        return nil
+    }
+
+    return lyrics.last {
+        $0.time <= audioManager.currentTime
+    }?.id
+}
+
 
 // MARK: - Smooth Lyrics View
 
 private struct SmoothLyricsView: View {
+
     let lyrics: [LyricLine]
     let activeID: UUID?
+    let trackID: UUID?
     let onSeek: (TimeInterval) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 30) {
+
+            ScrollView(
+                showsIndicators: false
+            ) {
+
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: 30
+                ) {
+
                     ForEach(lyrics) { line in
-                        lyricLine(line: line, active: line.id == activeID)
-                            .id(line.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture { onSeek(line.time) }
+
+                        lyricLine(
+                            line: line,
+                            active: line.id == activeID
+                        )
+                        .id(line.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onSeek(line.time)
+                        }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -390,69 +423,197 @@ private struct SmoothLyricsView: View {
             .mask {
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black, location: 0.12),
-                        .init(color: .black, location: 0.88),
-                        .init(color: .clear, location: 1)
+                        .init(
+                            color: .clear,
+                            location: 0
+                        ),
+
+                        .init(
+                            color: .black,
+                            location: 0.12
+                        ),
+
+                        .init(
+                            color: .black,
+                            location: 0.88
+                        ),
+
+                        .init(
+                            color: .clear,
+                            location: 1
+                        )
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             }
-            .onChange(of: activeID) { _, newID in
-                guard let newID else { return }
 
-                withAnimation(.smooth(duration: 0.55, extraBounce: 0.04)) {
-                    proxy.scrollTo(newID, anchor: .center)
+            // MARK: - New Song
+
+            .onChange(
+                of: trackID
+            ) { _, newTrackID in
+
+                guard newTrackID != nil else {
+                    return
+                }
+
+                guard let firstLyric = lyrics.first else {
+                    return
+                }
+
+                // Wait one run-loop cycle so the new lyrics
+                // have been inserted into the ScrollView.
+                DispatchQueue.main.async {
+
+                    withAnimation(
+                        .easeOut(duration: 0.38)
+                    ) {
+                        proxy.scrollTo(
+                            firstLyric.id,
+                            anchor: .center
+                        )
+                    }
+                }
+            }
+
+            // MARK: - Active Lyric
+
+            .onChange(
+                of: activeID
+            ) { _, newID in
+
+                guard let newID else {
+                    return
+                }
+
+                withAnimation(
+                    .smooth(
+                        duration: 0.55,
+                        extraBounce: 0.04
+                    )
+                ) {
+                    proxy.scrollTo(
+                        newID,
+                        anchor: .center
+                    )
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func lyricLine(line: LyricLine, active: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    private func lyricLine(
+        line: LyricLine,
+        active: Bool
+    ) -> some View {
+
+        VStack(
+            alignment: .leading,
+            spacing: 7
+        ) {
+
+            if line.text
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                .isEmpty {
+
                 HStack(spacing: 7) {
-                    Circle().frame(width: 8, height: 8)
-                    Circle().frame(width: 8, height: 8)
-                    Circle().frame(width: 8, height: 8)
+
+                    Circle()
+                        .frame(
+                            width: 8,
+                            height: 8
+                        )
+
+                    Circle()
+                        .frame(
+                            width: 8,
+                            height: 8
+                        )
+
+                    Circle()
+                        .frame(
+                            width: 8,
+                            height: 8
+                        )
                 }
                 .foregroundStyle(.white)
-                .opacity(active ? 0.9 : 0.22)
+                .opacity(
+                    active
+                        ? 0.9
+                        : 0.22
+                )
                 .padding(.vertical, 10)
+
             } else {
+
                 Text(line.text)
                     .font(
                         .system(
-                            size: active ? 50 : 50,
+                            size: 50,
                             weight: .bold,
                             design: .rounded
                         )
                     )
                     .foregroundStyle(.white)
-                    .opacity(active ? 1 : 0.30)
-                    .blur(radius: active ? 0 : 1.8)
-                    .scaleEffect(active ? 1 : 0.985, anchor: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .opacity(
+                        active
+                            ? 1
+                            : 0.30
+                    )
+                    .blur(
+                        radius:
+                            active
+                                ? 0
+                                : 1.8
+                    )
+                    .scaleEffect(
+                        active
+                            ? 1
+                            : 0.985,
+                        anchor: .leading
+                    )
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
 
-                if let romanized = line.romanized, !romanized.isEmpty {
+                if let romanized = line.romanized,
+                   !romanized.isEmpty {
+
                     Text(romanized)
                         .font(
                             .system(
-                                size: active ? 22 : 22,
+                                size: 22,
                                 weight: .medium,
                                 design: .rounded
                             )
                         )
                         .foregroundStyle(.white)
-                        .opacity(active ? 0.72 : 0.20)
-                        .blur(radius: active ? 0 : 1.2)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(
+                            active
+                                ? 0.72
+                                : 0.20
+                        )
+                        .blur(
+                            radius:
+                                active
+                                    ? 0
+                                    : 1.2
+                        )
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.22), value: active)
+        .animation(
+            .easeInOut(duration: 0.22),
+            value: active
+        )
     }
 }
 
