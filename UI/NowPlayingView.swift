@@ -1058,7 +1058,7 @@ struct AppleMusicMovingBleedBackground: View {
                 opaque: true
             )
             .saturation(1.12)
-            .brightness(-0.10)
+            .brightness(0.0)
             .opacity(opacity)
     }
 
