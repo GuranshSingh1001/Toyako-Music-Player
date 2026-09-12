@@ -9,10 +9,7 @@ import CryptoKit
 class LocalLibrary:
     ObservableObject {
 
-    private struct FileFingerprint: Equatable {
-        let size: UInt64
-        let modified: TimeInterval
-    }
+    private typealias FileFingerprint = ToyakoFileFingerprint
 
     @Published var tracks:
         [LocalTrack] = []
@@ -30,44 +27,26 @@ class LocalLibrary:
         String = "Scanning..."
 
     private var cachedFingerprints: [String: FileFingerprint] = [:]
+    private var cachedParserVersion: Int = 0
+    private var albumArtworkSources: [String: URL] = [:]
 
-    private var playlistsCacheURL:
-        URL {
-        FileManager.default
-            .urls(
-                for:
-                    .documentDirectory,
-                in:
-                    .userDomainMask
-            )[0]
-            .appendingPathComponent(
-                "playlists_cache.json"
-            )
-    }
-
-    private var tracksCacheURL:
-        URL {
-        FileManager.default
-            .urls(
-                for:
-                    .documentDirectory,
-                in:
-                    .userDomainMask
-            )[0]
-            .appendingPathComponent(
-                "tracks_cache.bin"
-            )
+    private var legacyPlaylistsCacheURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("playlists_cache.json")
     }
 
     private var legacyTracksCacheURL: URL {
-        FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("tracks_cache.bin")
+    }
+
+    private var legacyTracksJSONCacheURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("tracks_cache.json")
     }
 
     private var legacyIndexManifestURL: URL {
-        FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("tracks_index_manifest.json")
     }
 
@@ -77,11 +56,8 @@ class LocalLibrary:
             .appendingPathComponent("ToyakoArtwork", isDirectory: true)
     }
 
-    private var artworkHydrationTask: Task<Void, Never>?
-
     init() {
-        loadPlaylists()
-        loadTracksFromCache()
+        loadUnifiedCache()
 
         // Never make the first rendered library screen wait for a filesystem scan.
         // The scan is intentionally deferred to the next run-loop turn and remains
@@ -96,6 +72,7 @@ class LocalLibrary:
     func reloadFiles() {
         let cachedTracks = tracks
         let fingerprints = cachedFingerprints
+        let parserVersion = cachedParserVersion
 
         if cachedTracks.isEmpty {
             statusMessage = "Scanning..."
@@ -108,7 +85,8 @@ class LocalLibrary:
 
             let scan = await Self.runIncrementalScan(
                 cachedTracks: cachedTracks,
-                cachedFingerprints: fingerprints
+                cachedFingerprints: fingerprints,
+                cachedParserVersion: parserVersion
             )
 
             guard let self else { return }
@@ -121,12 +99,12 @@ class LocalLibrary:
                 if libraryChanged {
                     self.tracks = scan.tracks
                     self.cachedFingerprints = scan.fingerprints
+                    self.cachedParserVersion = 2
                     self.rebuildGroups()
                     self.statusMessage = "Indexed \(scan.tracks.count) tracks"
-                    self.saveTracksToCache()
+                    self.saveUnifiedCache()
                 }
 
-                self.scheduleArtworkHydration()
             }
         }
     }
@@ -134,7 +112,8 @@ class LocalLibrary:
     nonisolated
     private static func runIncrementalScan(
         cachedTracks: [LocalTrack],
-        cachedFingerprints: [String: FileFingerprint]
+        cachedFingerprints: [String: FileFingerprint],
+        cachedParserVersion: Int
     ) async -> (tracks: [LocalTrack], fingerprints: [String: FileFingerprint]) {
         let fileManager = FileManager.default
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -199,9 +178,7 @@ class LocalLibrary:
         var changed: [(Int, URL, LocalTrack?)] = []
 
         let metadataParserVersion = 2
-        let parserVersionKey = "Toyako.MetadataParserVersion"
-        let needsParserMigration =
-            UserDefaults.standard.integer(forKey: parserVersionKey) < metadataParserVersion
+        let needsParserMigration = cachedParserVersion < metadataParserVersion
 
         for (index, file) in files.enumerated() {
             let path = file.url.standardizedFileURL.path
@@ -294,11 +271,6 @@ class LocalLibrary:
         result.sort {
             $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
         }
-
-        UserDefaults.standard.set(
-            metadataParserVersion,
-            forKey: parserVersionKey
-        )
 
         return (result, currentFingerprints)
     }
@@ -421,191 +393,31 @@ class LocalLibrary:
         return nil
     }
 
-    /// Artwork is fetched only for the active track on a cached launch. This keeps
-    /// startup fast without leaving Now Playing stuck with a blank cover.
+    /// Warm the shared artwork cache for the currently playing track without
+    /// mutating the published library. This prevents playback artwork from
+    /// invalidating Home/Albums/Artists while still making the cover available.
     func refreshArtwork(for track: LocalTrack) {
-        guard track.artworkData == nil else { return }
         let url = track.url
-
-        let cacheDirectory = artworkCacheDirectoryURL
         Task(priority: .utility) {
-            let refreshed: Data?
-            
-            if let cached = Self.cachedArtwork(for: url, in: cacheDirectory) {
-                refreshed = cached
-            } else {
-                refreshed = await Self.parseArtworkOnly(at: url)
-            }
-
-            guard let artworkData = refreshed else { return }
-            let cacheFile = cacheDirectory.appendingPathComponent(Self.artworkFilename(for: url))
-            try? artworkData.write(to: cacheFile, options: .atomic)
-
-            await MainActor.run {
-                guard let index = self.tracks.firstIndex(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) else { return }
-                let old = self.tracks[index]
-                self.tracks[index] = LocalTrack(
-                    id: old.id,
-                    url: old.url,
-                    title: old.title,
-                    artist: old.artist,
-                    album: old.album,
-                    genre: old.genre,
-                    duration: old.duration,
-                    artworkData: artworkData
-                )
-                self.rebuildGroups()
-            }
+            _ = await ArtworkStore.shared.data(for: url)
         }
-    }
-    nonisolated
-    private static func parseArtworkOnly(at url: URL) async -> Data? {
-        let asset = AVURLAsset(url: url)
-        let metadata = (try? await asset.load(.commonMetadata)) ?? []
-        for item in metadata {
-            guard matchesMetadataKey(metadataKeys(for: item), aliases: ["artwork", "picture", "cover", "apic", "covr"]) else { continue }
-            if let data = await metadataDataValue(item) {
-                return downsampleArtwork(data)
-            }
-        }
-        return nil
-    }
-
-    // MARK: - Artwork Cache
-
-    private func scheduleArtworkHydration() {
-        // Do not hydrate the whole library immediately. Hundreds of embedded
-        // covers can compete with SwiftUI's first frames and make tab changes
-        // hitch. The Home screen only needs a small representative set.
-        let snapshot = Array(tracks.prefix(20))
-        artworkHydrationTask?.cancel()
-
-        let cacheDirectory = artworkCacheDirectoryURL
-        artworkHydrationTask = Task.detached(priority: .utility) { [weak self] in
-            // Let launch, the first Home render, and the initial sidebar
-            // transition settle before doing any artwork I/O/decoding.
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            guard !Task.isCancelled, self != nil else { return }
-
-            let results = await Self.hydrateArtwork(snapshot, cacheDirectory: cacheDirectory)
-            guard !results.isEmpty, !Task.isCancelled else { return }
-
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-
-                // Apply the whole artwork batch in one @Published update.
-                // Rebuilding album/artist groups once instead of once per cover
-                // prevents dozens of full Home-tree invalidations during hydration.
-                let artworkByPath = Dictionary(uniqueKeysWithValues: results.map {
-                    ($0.0.standardizedFileURL.path, $0.1)
-                })
-
-                var updatedTracks = self.tracks
-                var changed = false
-
-                for index in updatedTracks.indices {
-                    guard updatedTracks[index].artworkData == nil,
-                          let data = artworkByPath[updatedTracks[index].url.standardizedFileURL.path]
-                    else { continue }
-
-                    let old = updatedTracks[index]
-                    updatedTracks[index] = LocalTrack(
-                        id: old.id,
-                        url: old.url,
-                        title: old.title,
-                        artist: old.artist,
-                        album: old.album,
-                        genre: old.genre,
-                        duration: old.duration,
-                        artworkData: data
-                    )
-                    changed = true
-                }
-
-                guard changed else { return }
-                self.tracks = updatedTracks
-                self.rebuildGroups()
-            }
-        }
-    }
-
-    nonisolated
-    private static func hydrateArtwork(
-        _ tracks: [LocalTrack],
-        cacheDirectory: URL
-    ) async -> [(URL, Data)] {
-        try? FileManager.default.createDirectory(
-            at: cacheDirectory,
-            withIntermediateDirectories: true
-        )
-
-        return await withTaskGroup(of: (URL, Data)?.self, returning: [(URL, Data)].self) { group in
-            var pending = 0
-            var results: [(URL, Data)] = []
-
-            func add(_ track: LocalTrack) {
-                pending += 1
-                group.addTask {
-                    if let cached = cachedArtwork(for: track.url, in: cacheDirectory) {
-                        return (track.url, cached)
-                    }
-                    guard let data = await parseArtworkOnly(at: track.url) else { return nil }
-                    let file = cacheDirectory.appendingPathComponent(artworkFilename(for: track.url))
-                    try? data.write(to: file, options: .atomic)
-                    return (track.url, data)
-                }
-            }
-
-            for track in tracks where track.artworkData == nil {
-                add(track)
-                if pending >= 4 {
-                    if let result = await group.next(), let result { results.append(result) }
-                    pending -= 1
-                }
-            }
-
-            while pending > 0 {
-                if let result = await group.next(), let result { results.append(result) }
-                pending -= 1
-            }
-
-            return results
-        }
-    }
-
-    nonisolated
-    private static func artworkFilename(for url: URL) -> String {
-        let digest = SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined() + ".jpg"
-    }
-
-    nonisolated
-    private static func cachedArtwork(for url: URL, in directory: URL) -> Data? {
-        let file = directory.appendingPathComponent(artworkFilename(for: url))
-        return try? Data(contentsOf: file)
-    }
-
-    nonisolated
-    private static func downsampleArtwork(_ data: Data, maxPixel: Int = 512) -> Data? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return data }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixel
-        ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            return data
-        }
-        let output = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
-            return data
-        }
-        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.82] as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else { return data }
-        return output as Data
     }
 
     // MARK: - Groups
+
+    private static func albumArtworkKey(name: String, artist: String) -> String {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedName + "\u{1F}" + normalizedArtist
+    }
+
+    /// Returns the canonical artwork source for an album. Every track in an
+    /// album uses the same source as the album card, so the two can never show
+    /// different embedded covers merely because individual files have slightly
+    /// different artwork metadata.
+    func artworkURL(for track: LocalTrack) -> URL {
+        albumArtworkSources[Self.albumArtworkKey(name: track.album, artist: track.artist)] ?? track.url
+    }
 
     private func rebuildGroups() {
 
@@ -658,22 +470,11 @@ class LocalLibrary:
                     ??
                     "Unknown Artist"
 
-                let artwork =
-                    trackList.first {
-                        $0.artworkData
-                            != nil
-                    }?
-                    .artworkData
-
                 return AlbumGroup(
-                    name:
-                        name,
-                    artist:
-                        artist,
-                    artworkData:
-                        artwork,
-                    tracks:
-                        trackList
+                    name: name,
+                    artist: artist,
+                    artworkURL: trackList.first?.url,
+                    tracks: trackList
                 )
             }
             .sorted {
@@ -684,6 +485,15 @@ class LocalLibrary:
                     ==
                     .orderedAscending
             }
+
+        albumArtworkSources = Dictionary(
+            uniqueKeysWithValues: albumDictionary.compactMap { _, trackList in
+                guard let source = trackList.first?.url else { return nil }
+                let name = trackList.first?.album ?? "Unknown Album"
+                let artist = trackList.first?.artist ?? "Unknown Artist"
+                return (Self.albumArtworkKey(name: name, artist: artist), source)
+            }
+        )
 
         let artistDictionary =
             Dictionary(
@@ -1017,115 +827,99 @@ class LocalLibrary:
     }
 
     private func savePlaylists() {
-
-        guard let data =
-            try? JSONEncoder()
-                .encode(
-                    playlists
-                )
-        else {
-            return
+        let value = playlists
+        Task.detached(priority: .utility) {
+            ToyakoUnifiedCache.update { cache in
+                cache.playlists = value
+            }
         }
-
-        try? data.write(
-            to:
-                playlistsCacheURL,
-            options:
-                .atomic
-        )
     }
 
-    private func loadPlaylists() {
+    // MARK: - Unified Binary Cache
 
-        guard let data =
-            try? Data(
-                contentsOf:
-                    playlistsCacheURL
-            ),
-              let decoded =
-                try? JSONDecoder()
-                    .decode(
-                        [Playlist].self,
-                        from:
-                            data
-                    )
-        else {
-            return
-        }
-
-        playlists =
-            decoded
-    }
-
-    // MARK: - Cache
-
-    private func saveTracksToCache() {
+    private func saveUnifiedCache() {
         let currentTracks = tracks
         let fingerprints = cachedFingerprints
-        let cacheURL = tracksCacheURL
+        let playlists = playlists
+        let parserVersion = cachedParserVersion
 
         Task.detached(priority: .utility) {
-            guard let data = Self.encodeBinaryCache(
-                tracks: currentTracks,
-                fingerprints: fingerprints
-            ) else {
-                return
+            ToyakoUnifiedCache.update { cache in
+                cache.tracks = currentTracks
+                cache.fingerprints = fingerprints
+                cache.playlists = playlists
+                cache.metadataParserVersion = parserVersion
             }
-
-            try? data.write(to: cacheURL, options: .atomic)
         }
     }
 
-    private func loadTracksFromCache() {
-        // New binary cache: a single compact read + decode.
-        if let data = try? Data(contentsOf: tracksCacheURL),
-           let decoded = Self.decodeBinaryCache(data) {
-            tracks = decoded.tracks
-            cachedFingerprints = decoded.fingerprints
-            statusMessage = "Indexed \(decoded.tracks.count) tracks"
+    private func loadUnifiedCache() {
+        if let cache = ToyakoUnifiedCache.load() {
+            tracks = cache.tracks
+            cachedFingerprints = cache.fingerprints
+            playlists = cache.playlists
+            cachedParserVersion = cache.metadataParserVersion
+            statusMessage = "Indexed \(cache.tracks.count) tracks"
 
-            // Decode the cache first so the first Home frame can render.
-            // Group construction is deferred one run-loop turn.
+            // The unified cache is authoritative. Remove obsolete cache files
+            // left by older Toyako builds after the first successful migration.
+            for url in [legacyTracksCacheURL, legacyTracksJSONCacheURL, legacyIndexManifestURL, legacyPlaylistsCacheURL] {
+                try? FileManager.default.removeItem(at: url)
+            }
+
             DispatchQueue.main.async { [weak self] in
                 self?.rebuildGroups()
             }
             return
         }
 
-        // One-time migration from the previous JSON cache. The old cache is
-        // never used again after this succeeds.
-        guard let data = try? Data(contentsOf: legacyTracksCacheURL),
-              let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data)
-        else {
-            return
-        }
+        // One-time migration from all previous cache formats into ToyakoCache.bin.
+        var migratedTracks: [LocalTrack] = []
+        var migratedFingerprints: [String: FileFingerprint] = [:]
+        var migratedPlaylists: [Playlist] = []
 
-        var fingerprints: [String: FileFingerprint] = [:]
-        if let manifestData = try? Data(contentsOf: legacyIndexManifestURL),
-           let manifest = try? JSONDecoder().decode([String: LegacyFingerprint].self, from: manifestData) {
-            fingerprints = manifest.mapValues {
-                FileFingerprint(size: $0.size, modified: $0.modified)
+        if let data = try? Data(contentsOf: legacyTracksCacheURL),
+           let decoded = Self.decodeBinaryCache(data) {
+            migratedTracks = decoded.tracks
+            migratedFingerprints = decoded.fingerprints
+        } else if let data = try? Data(contentsOf: legacyTracksJSONCacheURL),
+                  let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data) {
+            migratedTracks = decoded
+            if let manifestData = try? Data(contentsOf: legacyIndexManifestURL),
+               let manifest = try? JSONDecoder().decode([String: LegacyFingerprint].self, from: manifestData) {
+                migratedFingerprints = manifest.mapValues {
+                    FileFingerprint(size: $0.size, modified: $0.modified)
+                }
             }
         }
 
-        tracks = decoded
-        cachedFingerprints = fingerprints
-        statusMessage = "Indexed \(decoded.count) tracks"
+        if let data = try? Data(contentsOf: legacyPlaylistsCacheURL),
+           let decoded = try? JSONDecoder().decode([Playlist].self, from: data) {
+            migratedPlaylists = decoded
+        }
+
+        guard !migratedTracks.isEmpty || !migratedPlaylists.isEmpty else { return }
+
+        tracks = migratedTracks
+        cachedFingerprints = migratedFingerprints
+        playlists = migratedPlaylists
+        cachedParserVersion = 2
+        statusMessage = "Indexed \(tracks.count) tracks"
+
+        ToyakoUnifiedCache.update { cache in
+            cache.tracks = migratedTracks
+            cache.fingerprints = migratedFingerprints
+            cache.playlists = migratedPlaylists
+            cache.metadataParserVersion = 2
+        }
+
+        for url in [legacyTracksCacheURL, legacyTracksJSONCacheURL, legacyIndexManifestURL, legacyPlaylistsCacheURL] {
+            try? FileManager.default.removeItem(at: url)
+        }
 
         DispatchQueue.main.async { [weak self] in
             self?.rebuildGroups()
         }
-
-        // Immediately convert the old representation to the binary format.
-        saveTracksToCache()
-
-        try? FileManager.default.removeItem(at: legacyTracksCacheURL)
-        try? FileManager.default.removeItem(at: legacyIndexManifestURL)
-    }
-
-    private struct LegacyFingerprint: Codable {
-        let size: UInt64
-        let modified: TimeInterval
     }
 
     nonisolated
