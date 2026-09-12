@@ -34,7 +34,13 @@ actor ArtworkStore {
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
         let cacheFile = cacheDirectory.appendingPathComponent(filename(for: url))
-        if let data = try? Data(contentsOf: cacheFile) {
+        let sourceFingerprint = fingerprint(for: url)
+        let metadataFile = cacheFile.appendingPathExtension("meta")
+
+        if let sourceFingerprint,
+           let cachedFingerprint = try? String(contentsOf: metadataFile, encoding: .utf8),
+           cachedFingerprint == sourceFingerprint,
+           let data = try? Data(contentsOf: cacheFile) {
             return data
         }
 
@@ -62,10 +68,19 @@ actor ArtworkStore {
 
             if let artwork, let downsampled = downsample(artwork) {
                 try? downsampled.write(to: cacheFile, options: .atomic)
+                if let sourceFingerprint {
+                    try? sourceFingerprint.write(to: metadataFile, atomically: true, encoding: .utf8)
+                }
                 return downsampled
             }
         }
         return nil
+    }
+
+    nonisolated private static func fingerprint(for url: URL) -> String? {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let modified = values.contentModificationDate else { return nil }
+        return "\(values.fileSize ?? 0):\(modified.timeIntervalSinceReferenceDate)"
     }
 
     nonisolated private static func filename(for url: URL) -> String {
