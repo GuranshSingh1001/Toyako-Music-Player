@@ -31,7 +31,7 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 28) {
                 header
                 quickActions
@@ -70,6 +70,7 @@ struct HomeView: View {
             .padding(.top, 14)
             .padding(.bottom, 100)
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
     }
@@ -159,7 +160,11 @@ struct HomeView: View {
 
     private func horizontalTracks(_ items: [LocalTrack]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 14) {
+            // These sections are intentionally small (12 items max). A regular
+            // HStack avoids the repeated child measurement/prefetch work of a
+            // nested LazyHStack inside the vertical LazyVStack, which makes
+            // scrolling and artwork arrival noticeably more stable.
+            HStack(spacing: 14) {
                 ForEach(items) { track in
                     Button {
                         if let index = tracks.firstIndex(where: { $0.id == track.id }) {
@@ -182,11 +187,12 @@ struct HomeView: View {
                 }
             }
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
 
     private func horizontalAlbums(_ items: [AlbumGroup]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 14) {
+            HStack(spacing: 14) {
                 ForEach(items) { album in
                     NavigationLink {
                         AlbumDetailView(album: album, library: library)
@@ -211,11 +217,12 @@ struct HomeView: View {
                 }
             }
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
 
     private func horizontalArtists(_ items: [ArtistGroup]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 16) {
+            HStack(spacing: 16) {
                 ForEach(items) { artist in
                     NavigationLink {
                         SongListView(
@@ -245,11 +252,12 @@ struct HomeView: View {
                 }
             }
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
 
     private func horizontalPlaylists(_ items: [Playlist]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 14) {
+            HStack(spacing: 14) {
                 ForEach(items) { playlist in
                     let playlistTracks = playlist.trackURLs.compactMap { playlistURL in
                         tracks.first { $0.url.standardizedFileURL == playlistURL.standardizedFileURL }
@@ -286,6 +294,7 @@ struct HomeView: View {
                 }
             }
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
 
     private var libraryOverview: some View {
