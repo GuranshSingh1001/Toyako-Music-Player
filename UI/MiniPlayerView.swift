@@ -94,8 +94,9 @@ struct MiniPlayerView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .animation(.smooth(duration: 0.22), value: audioManager.currentTrack?.id)
-        .animation(.smooth(duration: 0.16), value: audioManager.isPlaying)
+        // Avoid implicit animations while the system sidebar changes the
+        // available content width. This prevents the mini-player/glass layer
+        // from being animated twice during tab/sidebar transitions.
         .opacity(isNowPlayingPresented ? 0.001 : 1)
         .allowsHitTesting(!isNowPlayingPresented)
     }
