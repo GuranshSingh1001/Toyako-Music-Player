@@ -1175,3 +1175,4 @@ struct AppleMusicMovingBleedBackground: View {
             .opacity(opacity)
     }
 }
+}
