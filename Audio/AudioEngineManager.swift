@@ -1,552 +1,6 @@
 import AVFoundation
 import MediaPlayer
 import Combine
-import AudioToolbox
-import MediaToolbox
-import Accelerate
-
-// MARK: - Audio-Reactive Mini Player Meter
-// Uses MTAudioProcessingTap on AVPlayer's audio pipeline and a real-time FFT.
-// Five independently smoothed frequency bands drive the mini-player animation.
-
-private final class AudioLevelMeter: @unchecked Sendable {
-
-    private static let fftSize = 1024
-    private static let halfFFTSize = fftSize / 2
-    private static let log2FFTSize: vDSP_Length = 10
-
-    // Frequency bands used by the mini-player visualizer.
-    // The ranges are intentionally broad so each bar has useful musical content.
-    private static let bands: [(Float, Float)] = [
-        (20, 120),
-        (120, 350),
-        (350, 1_500),
-        (1_500, 5_000),
-        (5_000, 16_000)
-    ]
-
-    private var tap: MTAudioProcessingTap?
-    private var lastPublishTime: CFTimeInterval = 0
-    private var generation: UInt = 0
-
-    private var smoothedBands = [Float](repeating: 0, count: 5)
-    private var sampleRate: Float = 44_100
-
-    private var fftSetup: FFTSetup?
-    private var window = [Float](repeating: 0, count: fftSize)
-    private var fftInput = [Float](repeating: 0, count: fftSize)
-    private var splitReal = [Float](repeating: 0, count: halfFFTSize)
-    private var splitImag = [Float](repeating: 0, count: halfFFTSize)
-    private var magnitudes = [Float](repeating: 0, count: halfFFTSize)
-
-    var onLevel: ((Float) -> Void)?
-    var onBands: (([Float]) -> Void)?
-
-    init() {
-        fftSetup = vDSP_create_fftsetup(
-            Self.log2FFTSize,
-            FFTRadix(kFFTRadix2)
-        )
-
-        vDSP_hann_window(
-            &window,
-            vDSP_Length(Self.fftSize),
-            Int32(vDSP_HANN_NORM)
-        )
-    }
-
-    deinit {
-        if let fftSetup {
-            vDSP_destroy_fftsetup(fftSetup)
-        }
-    }
-
-    func attach(
-        to item: AVPlayerItem,
-        track: AVAssetTrack
-    ) {
-        generation &+= 1
-
-        var callbacks = MTAudioProcessingTapCallbacks(
-            version:
-                kMTAudioProcessingTapCallbacksVersion_0,
-
-            clientInfo:
-                Unmanaged.passUnretained(self).toOpaque(),
-
-            init:
-                audioTapInit,
-
-            finalize:
-                audioTapFinalize,
-
-            prepare:
-                audioTapPrepare,
-
-            unprepare:
-                audioTapUnprepare,
-
-            process:
-                audioTapProcess
-        )
-
-        var tapOut: MTAudioProcessingTap?
-
-        let status = MTAudioProcessingTapCreate(
-            kCFAllocatorDefault,
-            &callbacks,
-            kMTAudioProcessingTapCreationFlag_PostEffects,
-            &tapOut
-        )
-
-        guard
-            status == noErr,
-            let tap = tapOut
-        else {
-            return
-        }
-
-        self.tap = tap
-
-        let parameters =
-            AVMutableAudioMixInputParameters(
-                track: track
-            )
-
-        parameters.audioTapProcessor = tap
-
-        let mix = AVMutableAudioMix()
-        mix.inputParameters = [parameters]
-        item.audioMix = mix
-    }
-
-    func prepare(
-        format:
-            UnsafePointer<AudioStreamBasicDescription>
-    ) {
-        let rate = Float(format.pointee.mSampleRate)
-
-        if rate > 0 {
-            sampleRate = rate
-        }
-    }
-
-    func reset() {
-        generation &+= 1
-        lastPublishTime = 0
-        smoothedBands = [Float](repeating: 0, count: 5)
-
-        onLevel?(0)
-        onBands?([0, 0, 0, 0, 0])
-
-        tap = nil
-    }
-
-    fileprivate func process(
-        tap: MTAudioProcessingTap,
-        numberFrames: CMItemCount,
-        bufferListInOut:
-            UnsafeMutablePointer<AudioBufferList>,
-        numberFramesOut:
-            UnsafeMutablePointer<CMItemCount>,
-        flagsOut:
-            UnsafeMutablePointer<MTAudioProcessingTapFlags>
-    ) {
-        let status = MTAudioProcessingTapGetSourceAudio(
-            tap,
-            numberFrames,
-            bufferListInOut,
-            flagsOut,
-            nil,
-            numberFramesOut
-        )
-
-        guard
-            status == noErr,
-            fftSetup != nil
-        else {
-            return
-        }
-
-        let frames = min(
-            Int(numberFramesOut.pointee),
-            Self.fftSize
-        )
-
-        guard frames > 0 else {
-            return
-        }
-
-        let buffers =
-            UnsafeMutableAudioBufferListPointer(
-                bufferListInOut
-            )
-
-        guard !buffers.isEmpty else {
-            return
-        }
-
-        // Downmix the tap's PCM to mono. The audio itself is not modified.
-        fftInput.withUnsafeMutableBufferPointer { input in
-            for index in 0..<Self.fftSize {
-                input[index] = 0
-            }
-
-            var totalChannels = 0
-            for buffer in buffers {
-                totalChannels += max(
-                    Int(buffer.mNumberChannels),
-                    1
-                )
-            }
-
-            guard totalChannels > 0 else {
-                return
-            }
-
-            for buffer in buffers {
-                guard let data = buffer.mData else {
-                    continue
-                }
-
-                let channels = max(
-                    Int(buffer.mNumberChannels),
-                    1
-                )
-
-                let floatCount =
-                    Int(buffer.mDataByteSize) /
-                    MemoryLayout<Float>.size
-
-                guard floatCount > 0 else {
-                    continue
-                }
-
-                let samples = data.assumingMemoryBound(to: Float.self)
-
-                if channels > 1 &&
-                    floatCount >= frames * channels {
-                    // Interleaved: L R L R ...
-                    for frame in 0..<frames {
-                        var sum: Float = 0
-
-                        for channel in 0..<channels {
-                            sum += samples[
-                                frame * channels + channel
-                            ]
-                        }
-
-                        input[frame] +=
-                            sum / Float(totalChannels)
-                    }
-                } else {
-                    // Non-interleaved: one channel per AudioBuffer.
-                    let availableFrames = min(
-                        frames,
-                        floatCount
-                    )
-
-                    for frame in 0..<availableFrames {
-                        input[frame] +=
-                            samples[frame] /
-                            Float(totalChannels)
-                    }
-                }
-            }
-        }
-
-        // Hann window.
-        vDSP_vmul(
-            fftInput,
-            1,
-            window,
-            1,
-            &fftInput,
-            1,
-            vDSP_Length(Self.fftSize)
-        )
-
-        guard let fftSetup else {
-            return
-        }
-
-        splitReal.withUnsafeMutableBufferPointer { realBuffer in
-            splitImag.withUnsafeMutableBufferPointer { imagBuffer in
-                magnitudes.withUnsafeMutableBufferPointer { magnitudeBuffer in
-                    var split = DSPSplitComplex(
-                        realp: realBuffer.baseAddress!,
-                        imagp: imagBuffer.baseAddress!
-                    )
-
-                    fftInput.withUnsafeBufferPointer { inputBuffer in
-                        inputBuffer.baseAddress!
-                            .withMemoryRebound(
-                                to: DSPComplex.self,
-                                capacity: Self.halfFFTSize
-                            ) { complexInput in
-                                vDSP_ctoz(
-                                    complexInput,
-                                    2,
-                                    &split,
-                                    1,
-                                    vDSP_Length(Self.halfFFTSize)
-                                )
-                            }
-                    }
-
-                    vDSP_fft_zrip(
-                        fftSetup,
-                        &split,
-                        1,
-                        Self.log2FFTSize,
-                        FFTDirection(FFT_FORWARD)
-                    )
-
-                    // Squared magnitude of every positive-frequency FFT bin.
-                    vDSP_zvmags(
-                        &split,
-                        1,
-                        magnitudeBuffer.baseAddress!,
-                        1,
-                        vDSP_Length(Self.halfFFTSize)
-                    )
-
-                    let binWidth =
-                        sampleRate / Float(Self.fftSize)
-
-                    var levels = [Float](
-                        repeating: 0,
-                        count: Self.bands.count
-                    )
-
-                    for bandIndex in 0..<Self.bands.count {
-                        let (lowHz, highHz) =
-                            Self.bands[bandIndex]
-
-                        let firstBin = max(
-                            1,
-                            Int(lowHz / binWidth)
-                        )
-
-                        let lastBin = min(
-                            Self.halfFFTSize - 1,
-                            Int(highHz / binWidth)
-                        )
-
-                        guard lastBin >= firstBin else {
-                            continue
-                        }
-
-                        var powerSum: Float = 0
-                        var peakPower: Float = 0
-                        var count: Float = 0
-
-                        for bin in firstBin...lastBin {
-                            let power = magnitudeBuffer[bin]
-                            powerSum += power
-                            peakPower = max(peakPower, power)
-                            count += 1
-                        }
-
-                        guard count > 0 else {
-                            continue
-                        }
-
-                        let meanPower = powerSum / count
-
-                        // Blend RMS energy with a small peak contribution so
-                        // short kicks/cymbals still produce visible movement.
-                        let blendedPower =
-                            meanPower * 0.82 +
-                            peakPower * 0.18
-
-                        let amplitude =
-                            sqrt(max(blendedPower, 0)) *
-                            (2.0 / Float(Self.fftSize))
-
-                        let db =
-                            20.0 *
-                            log10(
-                                max(
-                                    amplitude,
-                                    0.000001
-                                )
-                            )
-
-                        // Perceptual display range.
-                        let floorDB: Float = -65
-                        let ceilingDB: Float = -12
-
-                        var normalized =
-                            (db - floorDB) /
-                            (ceilingDB - floorDB)
-
-                        normalized = min(
-                            max(normalized, 0),
-                            1
-                        )
-
-                        // More visible at low levels, without making silence large.
-                        normalized = pow(
-                            normalized,
-                            0.58
-                        )
-
-                        levels[bandIndex] = normalized
-                    }
-
-                    // Small compensation for typical spectral energy differences.
-                    let gains: [Float] = [
-                        1.08,
-                        1.02,
-                        1.00,
-                        1.03,
-                        1.08
-                    ]
-
-                    for index in levels.indices {
-                        levels[index] = min(
-                            levels[index] * gains[index],
-                            1
-                        )
-                    }
-
-                    // Fast attack / slower release.
-                    for index in levels.indices {
-                        let target = levels[index]
-
-                        if target > smoothedBands[index] {
-                            smoothedBands[index] +=
-                                (target - smoothedBands[index]) *
-                                0.72
-                        } else {
-                            smoothedBands[index] +=
-                                (target - smoothedBands[index]) *
-                                0.13
-                        }
-
-                        levels[index] = smoothedBands[index]
-                    }
-
-                    let now = CACurrentMediaTime()
-
-                    guard
-                        now - lastPublishTime >=
-                            (1.0 / 30.0)
-                    else {
-                        return
-                    }
-
-                    lastPublishTime = now
-
-                    let publishedBands = levels
-                    let overallLevel =
-                        publishedBands.max() ?? 0
-                    let generation = self.generation
-
-                    DispatchQueue.main.async { [weak self] in
-                        guard
-                            let self,
-                            self.generation == generation
-                        else {
-                            return
-                        }
-
-                        self.onLevel?(overallLevel)
-                        self.onBands?(publishedBands)
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// MARK: - C-Compatible Audio Tap Callbacks
-
-private func audioTapInit(
-    _ tap: MTAudioProcessingTap,
-    _ clientInfo: UnsafeMutableRawPointer?,
-    _ tapStorageOut:
-        UnsafeMutablePointer<UnsafeMutableRawPointer?>
-) {
-
-    tapStorageOut.pointee =
-        clientInfo
-}
-
-
-private func audioTapFinalize(
-    _ tap: MTAudioProcessingTap
-) {
-}
-
-
-private func audioTapPrepare(
-    _ tap: MTAudioProcessingTap,
-    _ maxFrames: CMItemCount,
-    _ processingFormat:
-        UnsafePointer<AudioStreamBasicDescription>
-) {
-
-    let storage =
-        MTAudioProcessingTapGetStorage(tap)
-
-    let meter =
-        Unmanaged<AudioLevelMeter>
-            .fromOpaque(storage)
-            .takeUnretainedValue()
-
-    meter.prepare(
-        format:
-            processingFormat
-    )
-}
-
-
-private func audioTapUnprepare(
-    _ tap: MTAudioProcessingTap
-) {
-}
-
-
-private func audioTapProcess(
-    _ tap: MTAudioProcessingTap,
-    _ numberFrames: CMItemCount,
-    _ flags: MTAudioProcessingTapFlags,
-    _ bufferListInOut:
-        UnsafeMutablePointer<AudioBufferList>,
-    _ numberFramesOut:
-        UnsafeMutablePointer<CMItemCount>,
-    _ flagsOut:
-        UnsafeMutablePointer<MTAudioProcessingTapFlags>
-) {
-
-    let storage = MTAudioProcessingTapGetStorage(tap)
-
-    let meter =
-        Unmanaged<AudioLevelMeter>
-            .fromOpaque(storage)
-            .takeUnretainedValue()
-
-    meter.process(
-        tap:
-            tap,
-
-        numberFrames:
-            numberFrames,
-
-        bufferListInOut:
-            bufferListInOut,
-
-        numberFramesOut:
-            numberFramesOut,
-
-        flagsOut:
-            flagsOut
-    )
-}
-
 
 // MARK: - Audio Engine Manager
 
@@ -574,17 +28,10 @@ class AudioEngineManager: ObservableObject {
     private var didAttemptRestore =
         false
 
-    private let audioLevelMeter =
-        AudioLevelMeter()
 
 
     // MARK: Published State
 
-    @Published var audioLevel:
-        Float = 0
-
-    @Published var audioBands:
-        [Float] = [0, 0, 0, 0, 0]
 
     @Published var currentTrack:
         LocalTrack?
@@ -629,19 +76,6 @@ class AudioEngineManager: ObservableObject {
 
     init() {
 
-        audioLevelMeter.onLevel = {
-            [weak self] level in
-
-            self?.audioLevel =
-                level
-        }
-
-        audioLevelMeter.onBands = {
-            [weak self] bands in
-
-            self?.audioBands =
-                bands
-        }
 
         loadRecentlyPlayed()
         setupRemoteControls()
@@ -669,45 +103,10 @@ class AudioEngineManager: ObservableObject {
                 asset: asset
             )
 
-        if let audioTrack =
-            asset.tracks(
-                withMediaType: .audio
-            ).first {
-
-            audioLevelMeter.attach(
-                to:
-                    item,
-
-                track:
-                    audioTrack
-            )
-        }
 
         return item
     }
 
-
-    private func resetAudioMeter() {
-
-        audioLevelMeter.reset()
-
-        audioLevel = 0
-        audioBands = [0, 0, 0, 0, 0]
-
-        audioLevelMeter.onLevel = {
-            [weak self] level in
-
-            self?.audioLevel =
-                level
-        }
-
-        audioLevelMeter.onBands = {
-            [weak self] bands in
-
-            self?.audioBands =
-                bands
-        }
-    }
 
 
     // MARK: - Recently Played
@@ -786,9 +185,7 @@ class AudioEngineManager: ObservableObject {
         )
 
         Task.detached(priority: .utility) {
-            ToyakoUnifiedCache.update { cache in
-                cache.playbackState = state
-            }
+            ToyakoUnifiedCache.savePlaybackState(state)
         }
     }
 
@@ -934,8 +331,13 @@ class AudioEngineManager: ObservableObject {
         }
 
         let state: ToyakoPlaybackState? = {
+            if let state = ToyakoUnifiedCache.loadPlaybackState() {
+                return state
+            }
+
             if let cache = ToyakoUnifiedCache.load(),
                let state = cache.playbackState {
+                ToyakoUnifiedCache.savePlaybackState(state)
                 return state
             }
 
@@ -1087,7 +489,6 @@ class AudioEngineManager: ObservableObject {
         detachTimeObserver()
         detachEndObserver()
 
-        resetAudioMeter()
 
 
         let item =
@@ -1570,7 +971,6 @@ class AudioEngineManager: ObservableObject {
         detachTimeObserver()
         detachEndObserver()
 
-        resetAudioMeter()
 
 
         let playerItem =
