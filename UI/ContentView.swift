@@ -12,9 +12,6 @@ enum LibraryCategory: Hashable {
 
 
 struct ContentView: View {
-    @EnvironmentObject var audioManager:
-        AudioEngineManager
-
     @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var library =
@@ -270,26 +267,9 @@ struct ContentView: View {
                     nil
             }
         }
-        .onAppear {
-            audioManager.restoreIfPossible(from: library.tracks)
-            audioManager.synchronizeLibrary(library.tracks)
-            if let current = audioManager.currentTrack {
-                library.refreshArtwork(for: current)
-            }
-        }
-        .onChange(of: library.tracks) { _, tracks in
-            // First restore playback from the cache, then refresh it with the
-            // fully scanned metadata/artwork. The cache intentionally has no artwork.
-            audioManager.restoreIfPossible(from: tracks)
-            audioManager.synchronizeLibrary(tracks)
-            if let current = audioManager.currentTrack {
-                library.refreshArtwork(for: current)
-            }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                audioManager.savePlaybackState(force: true)
-            }
+        .overlay {
+            AudioLifecycleObserver(library: library, scenePhase: scenePhase)
+                .frame(width: 0, height: 0)
         }
     }
 
@@ -388,7 +368,7 @@ struct ContentView: View {
 
     private var homeContent: some View {
         NavigationStack {
-            HomeView(
+            HomeAudioContainer(
                 tracks: library.tracks,
                 albums: library.albums,
                 artists: library.artists,
@@ -597,6 +577,80 @@ struct ContentView: View {
                 .localizedCaseInsensitiveContains(
                     searchText
                 )
+        }
+    }
+}
+
+private struct HomeAudioContainer: View {
+    let tracks: [LocalTrack]
+    let albums: [AlbumGroup]
+    let artists: [ArtistGroup]
+    let playlists: [Playlist]
+    let library: LocalLibrary
+    let onImport: () -> Void
+    let onNewPlaylist: () -> Void
+
+    @EnvironmentObject private var audioManager: AudioEngineManager
+
+    var body: some View {
+        HomeView(
+            tracks: tracks,
+            albums: albums,
+            artists: artists,
+            playlists: playlists,
+            library: library,
+            onImport: onImport,
+            onNewPlaylist: onNewPlaylist,
+            currentTrack: audioManager.currentTrack,
+            isPlaying: audioManager.isPlaying,
+            onPlayTrack: { index in
+                audioManager.startQueue(tracks: tracks, startIndex: index)
+            },
+            onTogglePlayPause: {
+                audioManager.togglePlayPause()
+            },
+            onShuffleAll: {
+                guard !tracks.isEmpty else { return }
+                let index = Int.random(in: tracks.indices)
+                if !audioManager.isShuffle {
+                    audioManager.toggleShuffle()
+                }
+                audioManager.startQueue(tracks: tracks, startIndex: index)
+            }
+        )
+    }
+}
+
+private struct AudioLifecycleObserver: View {
+    let library: LocalLibrary
+    let scenePhase: ScenePhase
+
+    @EnvironmentObject private var audioManager: AudioEngineManager
+
+    var body: some View {
+        Color.clear
+            .onAppear {
+                synchronize()
+            }
+            .onChange(of: library.tracks) { _, tracks in
+                audioManager.restoreIfPossible(from: tracks)
+                audioManager.synchronizeLibrary(tracks)
+                if let current = audioManager.currentTrack {
+                    library.refreshArtwork(for: current)
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active {
+                    audioManager.savePlaybackState(force: true)
+                }
+            }
+    }
+
+    private func synchronize() {
+        audioManager.restoreIfPossible(from: library.tracks)
+        audioManager.synchronizeLibrary(library.tracks)
+        if let current = audioManager.currentTrack {
+            library.refreshArtwork(for: current)
         }
     }
 }
