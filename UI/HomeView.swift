@@ -256,11 +256,22 @@ struct HomeView: View {
     }
 
     private func horizontalPlaylists(_ items: [Playlist]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        // Build the lookup once per Home body evaluation. The previous
+        // implementation searched the entire library for every track URL in
+        // every featured playlist (O(playlists × playlistTracks × libraryTracks)).
+        // Home can therefore become disproportionately expensive to reconcile
+        // when its overlay is dismissed on a large library.
+        let tracksByURL = Dictionary(
+            uniqueKeysWithValues: tracks.map {
+                ($0.url.standardizedFileURL, $0)
+            }
+        )
+
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
                 ForEach(items) { playlist in
                     let playlistTracks = playlist.trackURLs.compactMap { playlistURL in
-                        tracks.first { $0.url.standardizedFileURL == playlistURL.standardizedFileURL }
+                        tracksByURL[playlistURL.standardizedFileURL]
                     }
 
                     NavigationLink {
