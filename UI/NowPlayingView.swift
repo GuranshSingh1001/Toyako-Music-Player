@@ -617,7 +617,7 @@ struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
 
             ZStack {
