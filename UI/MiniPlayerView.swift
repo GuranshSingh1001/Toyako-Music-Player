@@ -94,10 +94,10 @@ struct MiniPlayerView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        // Avoid implicit animations while the system sidebar changes the
-        // available content width. This prevents the mini-player/glass layer
-        // from being animated twice during tab/sidebar transitions.
-        .opacity(isNowPlayingPresented ? 0.001 : 1)
+        // Keep the mini-player fully rendered while Now Playing is open.
+        // The Now Playing layer is above it, so there is no reason to fade the
+        // mini-player out. Keeping its content alive prevents the title, artist,
+        // artwork and progress bar from going blank when Now Playing closes.
         .allowsHitTesting(!isNowPlayingPresented)
     }
 
