@@ -2,7 +2,8 @@ import SwiftUI
 import Foundation
 
 enum LibraryCategory: Hashable {
-    case songs
+    case home
+    case tracks
     case albums
     case artists
     case allPlaylists
@@ -21,7 +22,7 @@ struct ContentView: View {
 
     @State private var
         selectedCategory:
-            LibraryCategory? = .songs
+            LibraryCategory? = .home
 
     @State private var
         showFilePicker = false
@@ -59,14 +60,24 @@ struct ContentView: View {
         ) {
 
             Tab(
-                "Songs",
+                "Home",
+                systemImage:
+                    "house",
+                value:
+                    LibraryCategory.home
+            ) {
+                homeContent
+            }
+
+            Tab(
+                "Tracks",
                 systemImage:
                     "music.note",
                 value:
-                    LibraryCategory.songs
+                    LibraryCategory.tracks
             ) {
                 tabContent(
-                    for: .songs
+                    for: .tracks
                 )
             }
 
@@ -379,6 +390,55 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Home
+
+    private var homeContent: some View {
+        NavigationStack {
+            HomeView(
+                tracks: library.tracks,
+                albums: library.albums,
+                artists: library.artists,
+                playlists: library.playlists,
+                recentlyPlayed: audioManager.recentlyPlayed,
+                library: library,
+                onImport: {
+                    showFilePicker = true
+                },
+                onNewPlaylist: {
+                    showNewPlaylistAlert = true
+                }
+            )
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button {
+                            showFilePicker = true
+                        } label: {
+                            Label("Import Audio", systemImage: "folder.badge.plus")
+                        }
+
+                        Button {
+                            showNewPlaylistAlert = true
+                        } label: {
+                            Label("New Playlist", systemImage: "plus.rectangle.on.rectangle")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        library.reloadFiles()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh library")
+                }
+            }
+        }
+    }
+
     // MARK: - Detail Content
 
     @ViewBuilder
@@ -389,7 +449,10 @@ struct ContentView: View {
 
         switch category {
 
-        case .songs:
+        case .home:
+            homeContent
+
+        case .tracks:
             SongListView(
                 tracks:
                     filteredTracks,
@@ -443,8 +506,11 @@ struct ContentView: View {
 
         switch category {
 
-        case .songs, .none:
-            return "Songs"
+        case .home:
+            return "Home"
+
+        case .tracks, .none:
+            return "Tracks"
 
         case .albums:
             return "Albums"
