@@ -8,8 +8,11 @@ struct HomeView: View {
     let library: LocalLibrary
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
-
-    @EnvironmentObject var audioManager: AudioEngineManager
+    let currentTrack: LocalTrack?
+    let isPlaying: Bool
+    let onPlayTrack: (Int) -> Void
+    let onTogglePlayPause: () -> Void
+    let onShuffleAll: () -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
@@ -39,7 +42,7 @@ struct HomeView: View {
                 header
                 quickActions
 
-                if let current = audioManager.currentTrack {
+                if let current = currentTrack {
                     continueListening(current)
                 }
 
@@ -95,12 +98,7 @@ struct HomeView: View {
     private var quickActions: some View {
         HStack(spacing: 12) {
             HomeActionButton(title: "Shuffle All", systemImage: "shuffle") {
-                guard !tracks.isEmpty else { return }
-                let index = Int.random(in: tracks.indices)
-                if !audioManager.isShuffle {
-                    audioManager.toggleShuffle()
-                }
-                audioManager.startQueue(tracks: tracks, startIndex: index)
+                onShuffleAll()
             }
 
             HomeActionButton(title: "Import", systemImage: "plus") {
@@ -116,10 +114,10 @@ struct HomeView: View {
     private func continueListening(_ track: LocalTrack) -> some View {
         section("Continue Listening") {
             Button {
-                if audioManager.currentTrack?.id == track.id {
-                    audioManager.togglePlayPause()
+                if currentTrack?.id == track.id {
+                    onTogglePlayPause()
                 } else if let index = tracks.firstIndex(where: { $0.id == track.id }) {
-                    audioManager.startQueue(tracks: tracks, startIndex: index)
+                    onPlayTrack(index)
                 }
             } label: {
                 HStack(spacing: 14) {
@@ -133,8 +131,8 @@ struct HomeView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                        if audioManager.currentTrack?.id == track.id {
-                            Text(audioManager.isPlaying ? "Playing now" : "Paused")
+                        if currentTrack?.id == track.id {
+                            Text(isPlaying ? "Playing now" : "Paused")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -142,7 +140,7 @@ struct HomeView: View {
 
                     Spacer()
 
-                    Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                         .font(.title3)
                         .frame(width: 44, height: 44)
                         .background(.thinMaterial, in: Circle())
@@ -171,7 +169,7 @@ struct HomeView: View {
                 ForEach(items) { track in
                     Button {
                         if let index = tracks.firstIndex(where: { $0.id == track.id }) {
-                            audioManager.startQueue(tracks: tracks, startIndex: index)
+                            onPlayTrack(index)
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
