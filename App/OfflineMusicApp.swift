@@ -14,6 +14,7 @@ struct OfflineMusicApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(audioManager)
+                .environmentObject(audioManager.clock)
         }
     }
 }
