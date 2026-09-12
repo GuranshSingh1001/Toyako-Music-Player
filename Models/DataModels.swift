@@ -64,7 +64,7 @@ struct AlbumGroup: Identifiable, Hashable {
     var id: String { "\(name)_\(artist)" }
     let name: String
     let artist: String
-    let artworkData: Data?
+    let artworkURL: URL?
     let tracks: [LocalTrack]
 }
 
