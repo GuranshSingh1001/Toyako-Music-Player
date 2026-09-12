@@ -30,12 +30,6 @@ struct HomeView: View {
         Array(playlists.prefix(8))
     }
 
-    private var trackByURL: [URL: LocalTrack] {
-        Dictionary(uniqueKeysWithValues: tracks.map {
-            ($0.url.standardizedFileURL, $0)
-        })
-    }
-
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 28) {
@@ -121,7 +115,7 @@ struct HomeView: View {
                 }
             } label: {
                 HStack(spacing: 14) {
-                    TrackArtwork(track: track, size: 68)
+                    LazyArtwork(url: library.artworkURL(for: track), size: 68)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(track.title)
@@ -173,7 +167,7 @@ struct HomeView: View {
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
-                            TrackArtwork(track: track, size: 145)
+                            LazyArtwork(url: library.artworkURL(for: track), size: 145)
                             Text(track.title)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
@@ -200,7 +194,7 @@ struct HomeView: View {
                             .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
-                            AlbumArtwork(artworkData: album.artworkData)
+                            LazyAlbumArtwork(url: album.artworkURL)
                                 .frame(width: 145, height: 145)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             Text(album.name)
@@ -257,8 +251,8 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 14) {
                 ForEach(items) { playlist in
-                    let playlistTracks = playlist.trackURLs.compactMap {
-                        trackByURL[$0.standardizedFileURL]
+                    let playlistTracks = playlist.trackURLs.compactMap { playlistURL in
+                        tracks.first { $0.url.standardizedFileURL == playlistURL.standardizedFileURL }
                     }
 
                     NavigationLink {
@@ -344,30 +338,5 @@ private struct HomeStatCard: View {
         }
         .padding(13)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-private struct TrackArtwork: View {
-    let track: LocalTrack
-    let size: CGFloat
-
-    var body: some View {
-        Group {
-            if let data = track.artworkData, let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.thinMaterial)
-                    .overlay {
-                        Image(systemName: "music.note")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                    }
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
