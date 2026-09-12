@@ -75,7 +75,7 @@ private struct AlbumCard: View {
                 + (
                     album.tracks.count == 1
                     ? "Song"
-                    : "Songs"
+                    : "Tracks"
                 )
             )
             .font(.caption)
@@ -191,7 +191,7 @@ struct AlbumDetailView: View {
                             + (
                                 album.tracks.count == 1
                                 ? "Song"
-                                : "Songs"
+                                : "Tracks"
                             )
                             + " • "
                             + formatTotalDuration(
@@ -267,13 +267,13 @@ struct AlbumDetailView: View {
 
                 Divider()
 
-                // MARK: Songs
+                // MARK: Tracks
 
                 VStack(
                     alignment: .leading,
                     spacing: 0
                 ) {
-                    Text("Songs")
+                    Text("Tracks")
                         .font(
                             .title2.bold()
                         )
