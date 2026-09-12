@@ -89,7 +89,7 @@ struct PlaylistHeaderView: View {
                         + (
                             tracks.count == 1
                             ? "Song"
-                            : "Songs"
+                            : "Tracks"
                         )
                         + " • "
                         + totalDurationString
