@@ -164,34 +164,19 @@ struct NowPlayingView: View {
 
     @ViewBuilder
     private func artwork(maxHeight: CGFloat) -> some View {
-        if let data = audioManager.currentTrack?.artworkData,
-           let image = UIImage(data: data) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
+        if let track = audioManager.currentTrack {
+            LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
                 .frame(maxHeight: maxHeight)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                )
                 .matchedGeometryEffect(
                     id: "nowPlayingArtwork",
                     in: transitionNamespace,
                     properties: .frame,
-                    anchor: .center,
-                    isSource: false
+                    anchor: .center
                 )
-                .shadow(color: .black.opacity(0.32), radius: 24, y: 12)
-                .id(audioManager.currentTrack?.id)
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
         } else {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.08))
-                .frame(width: maxHeight, height: maxHeight)
-                .overlay {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 52))
-                        .foregroundStyle(.white.opacity(0.35))
-                }
+                .fill(.secondary.opacity(0.12))
+                .frame(maxHeight: maxHeight)
         }
     }
 
