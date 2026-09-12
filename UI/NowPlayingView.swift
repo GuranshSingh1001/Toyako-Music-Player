@@ -4,12 +4,23 @@ import UIKit
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
+    @EnvironmentObject var clock: PlaybackClock
 
     @State private var dragOffset: CGFloat = 0
     @State private var playPausePressed = false
     @State private var previousPressed = false
     @State private var nextPressed = false
     @State private var showQueue = false
+
+    // The panel itself slides up via ContentView's `.move(edge: .bottom)`
+    // transition. That transition is driven by a parent `withAnimation`,
+    // but LazyArtwork loads its image asynchronously via `.task`, so on
+    // first appearance the artwork was popping straight into its final
+    // spot the instant its data loaded — instead of traveling with the
+    // rest of the sheet. Driving an explicit offset/opacity off this flag
+    // (set true in .onAppear, below) makes the artwork visibly slide up
+    // and fade in together with the panel every time it opens.
+    @State private var artworkVisible = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -90,6 +101,15 @@ struct NowPlayingView: View {
             .offset(y: dragOffset)
         }
         .ignoresSafeArea()
+        .onAppear {
+            // Matches the spring MiniPlayerView uses to open this panel
+            // (see ContentView's onOpenNowPlaying), with a hair of delay so
+            // the artwork reads as following the panel up rather than
+            // racing it.
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.88).delay(0.04)) {
+                artworkVisible = true
+            }
+        }
         .onChange(of: isPresented) { _, presented in
             if presented {
                 dragOffset = 0
@@ -142,9 +162,9 @@ struct NowPlayingView: View {
             trackInformation
 
             AppleMusicScrubberBar(
-                progress: audioManager.playbackProgress,
+                progress: clock.playbackProgress,
                 duration: audioManager.currentTrack?.duration ?? 0,
-                currentTime: audioManager.currentTime
+                currentTime: clock.currentTime
             ) { progress in
                 guard let duration = audioManager.currentTrack?.duration,
                       duration > 0 else { return }
@@ -161,17 +181,25 @@ struct NowPlayingView: View {
 
     @ViewBuilder
     private func artwork(maxHeight: CGFloat) -> some View {
-        if let track = audioManager.currentTrack {
-            // Keep the artwork in the Now Playing hierarchy so it enters
-            // together with the panel's bottom-to-top presentation. There is
-            // deliberately no shared geometry/hero transition with the mini-player.
-            LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
-                .frame(maxHeight: maxHeight)
-        } else {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.secondary.opacity(0.12))
-                .frame(maxHeight: maxHeight)
+        Group {
+            if let track = audioManager.currentTrack {
+                // Keep the artwork in the Now Playing hierarchy so it enters
+                // together with the panel's bottom-to-top presentation. There is
+                // deliberately no shared geometry/hero transition with the mini-player.
+                LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
+                    .frame(maxHeight: maxHeight)
+            } else {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.secondary.opacity(0.12))
+                    .frame(maxHeight: maxHeight)
+            }
         }
+        // See `artworkVisible` above: gives the artwork its own explicit
+        // bottom-to-top travel + fade so it visibly moves with the panel
+        // instead of appearing to sit fixed in place while everything
+        // else slides past it.
+        .offset(y: artworkVisible ? 0 : 60)
+        .opacity(artworkVisible ? 1 : 0)
     }
 
     // MARK: - Track Information
@@ -319,7 +347,7 @@ struct NowPlayingView: View {
     }
 
     private func activeLyricID(lyrics: [LyricLine]) -> UUID? {
-        lyrics.last { $0.time <= audioManager.currentTime }?.id
+        lyrics.last { $0.time <= clock.currentTime }?.id
     }
 }
 
