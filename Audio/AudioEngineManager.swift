@@ -548,21 +548,6 @@ private func audioTapProcess(
 }
 
 
-// MARK: - Playback Persistence
-
-private struct PlaybackPersistenceState: Codable {
-
-    let queue: [LocalTrack]
-    let originalQueue: [LocalTrack]
-    let queueIndex: Int
-    let currentTrackID: UUID?
-    let position: TimeInterval
-    let isPlaying: Bool
-    let isShuffle: Bool
-    let repeatMode: RepeatMode
-}
-
-
 // MARK: - Audio Engine Manager
 
 class AudioEngineManager: ObservableObject {
@@ -731,12 +716,31 @@ class AudioEngineManager: ObservableObject {
     private let recentlyPlayedLimit = 12
 
     private func loadRecentlyPlayed() {
-        guard let data = UserDefaults.standard.data(forKey: recentlyPlayedKey),
-              let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data) else {
+        let cache = ToyakoUnifiedCache.load()
+        if let cache, !cache.recentlyPlayed.isEmpty {
+            recentlyPlayed = cache.recentlyPlayed
             return
         }
 
-        recentlyPlayed = decoded
+        // Legacy UserDefaults migration. The next write is folded into the
+        // single ToyakoCache.bin file.
+        if let data = UserDefaults.standard.data(forKey: recentlyPlayedKey),
+           let decoded = try? JSONDecoder().decode([LocalTrack].self, from: data) {
+            recentlyPlayed = decoded
+            saveRecentlyPlayedCache()
+            UserDefaults.standard.removeObject(forKey: recentlyPlayedKey)
+        } else if let cache {
+            recentlyPlayed = cache.recentlyPlayed
+        }
+    }
+
+    private func saveRecentlyPlayedCache() {
+        let value = recentlyPlayed
+        Task.detached(priority: .utility) {
+            ToyakoUnifiedCache.update { cache in
+                cache.recentlyPlayed = value
+            }
+        }
     }
 
     private func recordRecentlyPlayed(_ track: LocalTrack) {
@@ -750,16 +754,10 @@ class AudioEngineManager: ObservableObject {
             recentlyPlayed.removeLast(recentlyPlayed.count - recentlyPlayedLimit)
         }
 
-        if let data = try? JSONEncoder().encode(recentlyPlayed) {
-            UserDefaults.standard.set(data, forKey: recentlyPlayedKey)
-        }
+        saveRecentlyPlayedCache()
     }
 
     // MARK: - Persistent Playback / Resume
-
-    private let persistenceKey =
-        "Toyako.PlaybackState.v2"
-
 
     func savePlaybackState(
         force: Bool = false
@@ -770,53 +768,27 @@ class AudioEngineManager: ObservableObject {
         }
 
         if !force &&
-            abs(
-                currentTime -
-                lastPersistedTime
-            ) < 2.0 {
-
+            abs(currentTime - lastPersistedTime) < 2.0 {
             return
         }
 
-        lastPersistedTime =
-            currentTime
+        lastPersistedTime = currentTime
 
-        let state =
-            PlaybackPersistenceState(
-                queue:
-                    queue,
+        let state = ToyakoPlaybackState(
+            queue: queue,
+            originalQueue: originalQueue,
+            queueIndex: queueIndex,
+            currentTrackID: currentTrack?.id,
+            position: currentTime,
+            isPlaying: isPlaying,
+            isShuffle: isShuffle,
+            repeatMode: repeatMode
+        )
 
-                originalQueue:
-                    originalQueue,
-
-                queueIndex:
-                    queueIndex,
-
-                currentTrackID:
-                    currentTrack?.id,
-
-                position:
-                    currentTime,
-
-                isPlaying:
-                    isPlaying,
-
-                isShuffle:
-                    isShuffle,
-
-                repeatMode:
-                    repeatMode
-            )
-
-        if let data =
-            try? JSONEncoder()
-                .encode(state) {
-
-            UserDefaults.standard.set(
-                data,
-                forKey:
-                    persistenceKey
-            )
+        Task.detached(priority: .utility) {
+            ToyakoUnifiedCache.update { cache in
+                cache.playbackState = state
+            }
         }
     }
 
@@ -961,23 +933,25 @@ class AudioEngineManager: ObservableObject {
             return
         }
 
-        guard
-            let data =
-                UserDefaults.standard.data(
-                    forKey:
-                        persistenceKey
-                ),
+        let state: ToyakoPlaybackState? = {
+            if let cache = ToyakoUnifiedCache.load(),
+               let state = cache.playbackState {
+                return state
+            }
 
-            let state =
-                try? JSONDecoder().decode(
-                    PlaybackPersistenceState.self,
-                    from:
-                        data
-                ),
+            // One-time migration from the previous UserDefaults JSON cache.
+            if let data = UserDefaults.standard.data(forKey: "Toyako.PlaybackState.v2"),
+               let legacy = try? JSONDecoder().decode(ToyakoPlaybackState.self, from: data) {
+                ToyakoUnifiedCache.update { cache in
+                    cache.playbackState = legacy
+                }
+                UserDefaults.standard.removeObject(forKey: "Toyako.PlaybackState.v2")
+                return legacy
+            }
+            return nil
+        }()
 
-            let savedCurrentID =
-                state.currentTrackID
-        else {
+        guard let state, let savedCurrentID = state.currentTrackID else {
             return
         }
 
