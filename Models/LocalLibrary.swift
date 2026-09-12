@@ -119,7 +119,7 @@ class LocalLibrary:
                 self.tracks = scan.tracks
                 self.cachedFingerprints = scan.fingerprints
                 self.rebuildGroups()
-                self.statusMessage = "Indexed \(scan.tracks.count) songs"
+                self.statusMessage = "Indexed \(scan.tracks.count) tracks"
                 self.saveTracksToCache()
                 self.scheduleArtworkHydration()
             }
@@ -222,38 +222,62 @@ class LocalLibrary:
         }
 
         if !changed.isEmpty {
+            // Avoid opening hundreds of AVAssets simultaneously on large
+            // libraries. A small bounded pool keeps indexing responsive and
+            // generally finishes faster than unbounded I/O contention.
+            func parseEntry(_ entry: (Int, URL, LocalTrack?)) async -> (Int, LocalTrack) {
+                let (index, url, cached) = entry
+                let parsed = await Self.parseAsset(at: url)
+
+                if let cached {
+                    return (
+                        index,
+                        LocalTrack(
+                            id: cached.id,
+                            url: parsed.url,
+                            title: parsed.title,
+                            artist: parsed.artist,
+                            album: parsed.album,
+                            genre: parsed.genre,
+                            duration: parsed.duration,
+                            artworkData: nil
+                        )
+                    )
+                }
+
+                return (index, parsed)
+            }
+
             let parsed = await withTaskGroup(
                 of: (Int, LocalTrack).self,
                 returning: [Int: LocalTrack].self
             ) { group in
-                for (index, url, cached) in changed {
+                let concurrency = min(6, changed.count)
+                var next = 0
+
+                for _ in 0..<concurrency {
+                    let entry = changed[next]
+                    next += 1
                     group.addTask {
-                        let parsed = await Self.parseAsset(at: url)
-
-                        if let cached {
-                            return (
-                                index,
-                                LocalTrack(
-                                    id: cached.id,
-                                    url: parsed.url,
-                                    title: parsed.title,
-                                    artist: parsed.artist,
-                                    album: parsed.album,
-                                    genre: parsed.genre,
-                                    duration: parsed.duration,
-                                    artworkData: parsed.artworkData
-                                )
-                            )
-                        }
-
-                        return (index, parsed)
+                        await parseEntry(entry)
                     }
                 }
 
                 var values: [Int: LocalTrack] = [:]
-                for await (index, track) in group {
-                    values[index] = track
+                values.reserveCapacity(changed.count)
+
+                while let value = await group.next() {
+                    values[value.0] = value.1
+
+                    if next < changed.count {
+                        let entry = changed[next]
+                        next += 1
+                        group.addTask {
+                            await parseEntry(entry)
+                        }
+                    }
                 }
+
                 return values
             }
 
@@ -276,6 +300,9 @@ class LocalLibrary:
 
     nonisolated
     private static func parseAsset(at url: URL) async -> LocalTrack {
+        // Indexing deliberately reads only text metadata + duration.
+        // Album artwork is hydrated separately after the library is usable;
+        // decoding/downsampling cover images must never be on the critical path.
         let asset = AVURLAsset(
             url: url,
             options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
@@ -292,31 +319,36 @@ class LocalLibrary:
         var artist = "Unknown Artist"
         var album = "Unknown Album"
         var genre = "Unknown Genre"
-        var artworkData: Data?
 
-        // AVFoundation does not expose every container's Vorbis/FLAC keys in
-        // exactly the same way. In particular, relying on `item.key as? String`
-        // misses some FLAC metadata identifiers. Match commonKey, identifier,
-        // and raw key names, and accept the item's loaded value as a fallback
-        // when stringValue is unavailable.
+        // Match common keys as well as container-specific identifiers.
+        // Artwork is intentionally excluded here; see hydrateArtwork().
         for item in metadata {
             let keys = metadataKeys(for: item)
 
             if matchesMetadataKey(keys, aliases: ["title", "tit2", "©nam"]),
                let value = await metadataStringValue(item), !value.isEmpty {
                 title = value
-            } else if matchesMetadataKey(keys, aliases: ["artist", "albumartist", "album artist", "tpe1", "tpe2", "©art", "aart"]),
-                      let value = await metadataStringValue(item), !value.isEmpty {
+            } else if matchesMetadataKey(
+                keys,
+                aliases: ["artist", "albumartist", "album artist", "tpe1", "tpe2", "©art", "aart"]
+            ),
+            let value = await metadataStringValue(item),
+            !value.isEmpty {
                 artist = value
-            } else if matchesMetadataKey(keys, aliases: ["album", "albumname", "talb", "©alb"]),
-                      let value = await metadataStringValue(item), !value.isEmpty {
+            } else if matchesMetadataKey(
+                keys,
+                aliases: ["album", "albumname", "talb", "©alb"]
+            ),
+            let value = await metadataStringValue(item),
+            !value.isEmpty {
                 album = value
-            } else if matchesMetadataKey(keys, aliases: ["genre", "type", "tcon", "©gen"]),
-                      let value = await metadataStringValue(item), !value.isEmpty {
+            } else if matchesMetadataKey(
+                keys,
+                aliases: ["genre", "type", "tcon", "©gen"]
+            ),
+            let value = await metadataStringValue(item),
+            !value.isEmpty {
                 genre = value
-            } else if matchesMetadataKey(keys, aliases: ["artwork", "picture", "cover", "apic", "covr"]),
-                      let data = await metadataDataValue(item) {
-                artworkData = downsampleArtwork(data)
             }
         }
 
@@ -327,7 +359,7 @@ class LocalLibrary:
             album: album,
             genre: genre,
             duration: duration,
-            artworkData: artworkData
+            artworkData: nil
         )
     }
 
@@ -1026,8 +1058,13 @@ class LocalLibrary:
            let decoded = Self.decodeBinaryCache(data) {
             tracks = decoded.tracks
             cachedFingerprints = decoded.fingerprints
-            rebuildGroups()
-            statusMessage = "Indexed \(decoded.tracks.count) songs"
+            statusMessage = "Indexed \(decoded.tracks.count) tracks"
+
+            // Decode the cache first so the first Home frame can render.
+            // Group construction is deferred one run-loop turn.
+            DispatchQueue.main.async { [weak self] in
+                self?.rebuildGroups()
+            }
             return
         }
 
@@ -1049,8 +1086,11 @@ class LocalLibrary:
 
         tracks = decoded
         cachedFingerprints = fingerprints
-        rebuildGroups()
-        statusMessage = "Indexed \(decoded.count) songs"
+        statusMessage = "Indexed \(decoded.count) tracks"
+
+        DispatchQueue.main.async { [weak self] in
+            self?.rebuildGroups()
+        }
 
         // Immediately convert the old representation to the binary format.
         saveTracksToCache()
