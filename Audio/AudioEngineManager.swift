@@ -1,6 +1,7 @@
 import AVFoundation
 import MediaPlayer
 import Combine
+import UIKit
 
 // MARK: - Playback Clock
 
@@ -1876,32 +1877,72 @@ class AudioEngineManager: ObservableObject {
                     1.0
             ]
 
-
+        // artworkData is deliberately not hydrated into LocalTrack. Artwork is
+        // kept in ArtworkStore so playback cannot invalidate the entire Home
+        // hierarchy. Publish metadata immediately, then load the cached/extracted
+        // cover and attach it to the system Now Playing card independently.
         if let data =
             track.artworkData,
-
            let image =
-            UIImage(
-                data:
-                    data
-            ) {
+            UIImage(data: data) {
 
             info[
                 MPMediaItemPropertyArtwork
             ] =
-                MPMediaItemArtwork(
-                    boundsSize:
-                        image.size
-                ) { _ in
-                    image
-                }
+                Self.makeNowPlayingArtwork(image)
         }
-
 
         MPNowPlayingInfoCenter
             .default()
-            .nowPlayingInfo =
-            info
+            .nowPlayingInfo = info
+
+        // Most tracks arrive with artworkData == nil by design. Pull the same
+        // shared artwork cache used by the UI, without touching currentTrack or
+        // the published library state. The track ID check prevents a slow cover
+        // extraction from being applied after the user has moved to another song.
+        guard track.artworkData == nil else { return }
+
+        let trackID = track.id
+        let url = track.url
+
+        Task { [weak self] in
+            let data = await ArtworkStore.shared.data(for: url)
+            guard let data,
+                  let image = UIImage(data: data) else {
+                return
+            }
+
+            await MainActor.run {
+                guard let self,
+                      self.currentTrack?.id == trackID else {
+                    return
+                }
+
+                let center =
+                    MPNowPlayingInfoCenter
+                        .default()
+
+                var currentInfo =
+                    center.nowPlayingInfo ?? [:]
+
+                currentInfo[
+                    MPMediaItemPropertyArtwork
+                ] =
+                    Self.makeNowPlayingArtwork(image)
+
+                center.nowPlayingInfo = currentInfo
+            }
+        }
+    }
+
+    private static func makeNowPlayingArtwork(
+        _ image: UIImage
+    ) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(
+            boundsSize: image.size
+        ) { _ in
+            image
+        }
     }
 
 
