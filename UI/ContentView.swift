@@ -27,9 +27,6 @@ struct ContentView: View {
     @State private var
         showNowPlaying = false
 
-    @Namespace private var
-        playerTransition
-
     @State private var
         showNewPlaylistAlert = false
 
@@ -131,7 +128,6 @@ struct ContentView: View {
             // be recreated. Because this overlay is outside TabView, it also
             // remains above pushed playlist destinations.
             MiniPlayerView(
-                transitionNamespace: playerTransition,
                 isNowPlayingPresented: showNowPlaying,
                 onOpenNowPlaying: {
                     withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
@@ -154,12 +150,13 @@ struct ContentView: View {
                 NowPlayingView(
                     isPresented:
                         $showNowPlaying,
-                    transitionNamespace:
-                        playerTransition
                 )
                 .ignoresSafeArea(.all)
                 .transition(
-                    .move(edge: .bottom)
+                    .asymmetric(
+                        insertion: .move(edge: .bottom),
+                        removal: .move(edge: .bottom)
+                    )
                 )
                 .zIndex(100)
             }
