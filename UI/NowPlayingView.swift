@@ -198,7 +198,7 @@ struct NowPlayingView: View {
                 // deliberately no shared geometry/hero transition with the mini-player.
                 LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
                     .frame(maxHeight: maxHeight)
-                    .scaleEffect(audioManager.isPlaying ? 1.0 : 0.85, anchor: .center)
+                    .scaleEffect(audioManager.isPlaying ? 1.0 : 0.70, anchor: .center)
                     .animation(
                         .spring(response: 0.48, dampingFraction: 0.82),
                         value: audioManager.isPlaying
@@ -274,31 +274,20 @@ struct NowPlayingView: View {
                 playPausePressed = true
                 audioManager.togglePlayPause()
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                     playPausePressed = false
                 }
             } label: {
-                ZStack {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 38, weight: .medium))
-                        .foregroundStyle(.white)
-                        .opacity(audioManager.isPlaying ? 0 : 1)
-                        .scaleEffect(audioManager.isPlaying ? 0.82 : 1.0)
-
-                     Image(systemName: "pause.fill")
-                        .font(.system(size: 38, weight: .medium))
-                        .foregroundStyle(.white)
-                        .opacity(audioManager.isPlaying ? 1 : 0)
-                        .scaleEffect(audioManager.isPlaying ? 1.0 : 0.82)
-                 }
-                .frame(width: 50, height: 50)
-                .scaleEffect(playPausePressed ? 0.88 : 1.0)
-                .animation(
-                    .easeOut(duration: 0.12),
-                    value: audioManager.isPlaying
+                Image(
+                    systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
                 )
+                .font(.system(size: 38, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 50, height: 50)
+                .contentTransition(.symbolEffect(.replace))
+                .scaleEffect(playPausePressed ? 0.80 : 1.0)
                 .animation(
-                    .spring(response: 0.16, dampingFraction: 0.78),
+                    .spring(response: 0.24, dampingFraction: 0.64),
                     value: playPausePressed
                 )
             }
@@ -414,7 +403,7 @@ private struct SmoothLyricsView: View {
                 guard let newID else { return }
 
                 withAnimation(.smooth(duration: 0.55, extraBounce: 0.04)) {
-                    proxy.scrollTo(newID, anchor: UnitPoint(x: 0.5, y: 0.30))
+                    proxy.scrollTo(newID, anchor: .center)
                 }
             }
         }
@@ -659,7 +648,7 @@ struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
 
             ZStack {
@@ -668,40 +657,73 @@ struct AppleMusicMovingBleedBackground: View {
                 if let artworkData,
                    let image = UIImage(data: artworkData) {
 
-                    bleedLayer(
+                    // Apple Music's bleed is intentionally soft and organic:
+                    // the artwork is massively enlarged, blurred and moved in
+                    // several very slow, independent directions. Avoiding
+                    // obvious orbits/rotations keeps the effect feeling like
+                    // liquid colour rather than a moving picture.
+                    liquidArtworkLayer(
                         image: image,
                         time: t,
-                        frequency: 0.071,
+                        speed: 0.105,
                         phase: 0.0,
-                        swirl: 1.00,
-                        scale: 1.42,
-                        blur: 68,
-                        opacity: 0.78
-                    )
-
-                    bleedLayer(
-                        image: image,
-                        time: t,
-                        frequency: 0.053,
-                        phase: 1.9,
-                        swirl: 1.22,
-                        scale: 1.54,
-                        blur: 56,
-                        opacity: 0.48
-                    )
-
-                    bleedLayer(
-                        image: image,
-                        time: t,
-                        frequency: 0.037,
-                        phase: 4.1,
-                        swirl: 1.45,
-                        scale: 1.68,
+                        scale: 1.72,
                         blur: 78,
-                        opacity: 0.32
+                        opacity: 0.82,
+                        amplitude: 30,
+                        rotation: 2.5
                     )
 
-                    Color.black.opacity(0.18)
+                    liquidArtworkLayer(
+                        image: image,
+                        time: t,
+                        speed: 0.071,
+                        phase: 2.15,
+                        scale: 1.95,
+                        blur: 94,
+                        opacity: 0.52,
+                        amplitude: 44,
+                        rotation: -3.5
+                    )
+
+                    liquidArtworkLayer(
+                        image: image,
+                        time: t,
+                        speed: 0.047,
+                        phase: 4.65,
+                        scale: 2.22,
+                        blur: 112,
+                        opacity: 0.38,
+                        amplitude: 58,
+                        rotation: 2.0
+                    )
+
+                    // Soft colour pooling. These masks break up the large
+                    // blurred image into the smooth, uneven colour fields
+                    // visible in Apple Music's presentation.
+                    colorPool(
+                        image: image,
+                        time: t,
+                        phase: 0.7,
+                        scale: 2.35,
+                        blur: 105,
+                        opacity: 0.22
+                    )
+
+                    // Keep the artwork atmospheric rather than readable.
+                    Color.black.opacity(0.30)
+
+                    // Gentle edge falloff, especially around the controls.
+                    RadialGradient(
+                        colors: [
+                            .clear,
+                            .black.opacity(0.10),
+                            .black.opacity(0.42)
+                        ],
+                        center: .center,
+                        startRadius: 80,
+                        endRadius: 650
+                    )
                 } else {
                     LinearGradient(
                         colors: [.black, Color(white: 0.08), .black],
@@ -713,60 +735,86 @@ struct AppleMusicMovingBleedBackground: View {
         }
         .clipped()
         .drawingGroup(opaque: true)
-        .animation(.smooth(duration: 0.8), value: artworkData?.hashValue)
+        .animation(.easeInOut(duration: 0.9), value: artworkData?.hashValue)
     }
 
     @ViewBuilder
-    private func bleedLayer(
+    private func liquidArtworkLayer(
         image: UIImage,
         time: TimeInterval,
-        frequency: Double,
+        speed: Double,
         phase: Double,
-        swirl: Double,
         scale: CGFloat,
         blur: CGFloat,
-        opacity: Double
+        opacity: Double,
+        amplitude: CGFloat,
+        rotation: Double
     ) -> some View {
-        let a = time * frequency + phase
+        let a = time * speed + phase
 
-        // Layered, non-repeating orbital motion. The different frequencies keep
-        // the artwork feeling organic instead of following one obvious path.
-        let orbit = a * swirl
-        let radiusX = 28.0 + 14.0 * sin(orbit * 0.37 + phase)
-        let radiusY = 24.0 + 16.0 * cos(orbit * 0.29 + 1.1 + phase)
-
+        // Incommensurate low-frequency waves create slow, non-repeating
+        // movement without the visible circular path of an orbit.
         let x = CGFloat(
-            sin(orbit) * radiusX
-            + sin(orbit * 0.53 + 1.7) * 15.0
-            + cos(orbit * 0.23 + phase) * 9.0
+            sin(a * 0.73 + phase) * amplitude
+            + cos(a * 0.43 + 1.8) * amplitude * 0.62
+            + sin(a * 0.19 + 4.1) * amplitude * 0.38
         )
+
         let y = CGFloat(
-            cos(orbit * 0.91) * radiusY
-            + sin(orbit * 0.41 + 2.8) * 17.0
-            + cos(orbit * 0.19 + 0.8 + phase) * 8.0
+            cos(a * 0.61 + 0.7) * amplitude * 0.78
+            + sin(a * 0.37 + phase * 1.4) * amplitude * 0.58
+            + cos(a * 0.17 + 2.6) * amplitude * 0.32
         )
 
-        // Slowly twists the enlarged artwork as it travels, producing a soft
-        // whirlpool-like bleed rather than a simple left/right translation.
-        let rotation =
-            sin(orbit * 0.61 + phase) * 11.0
-            + cos(orbit * 0.27 + 1.4) * 6.0
-            + sin(orbit * 0.13 + 2.2) * 3.0
+        let breathing = CGFloat(
+            sin(a * 0.29 + phase) * 0.075
+            + cos(a * 0.17 + 1.1) * 0.045
+        )
 
-        let dynamicScale = scale
-            + CGFloat(sin(orbit * 0.47 + 0.9) * 0.075)
-            + CGFloat(cos(orbit * 0.21 + phase) * 0.035)
+        let angle =
+            sin(a * 0.31 + phase) * rotation
+            + cos(a * 0.17 + 2.0) * rotation * 0.55
 
         Image(uiImage: image)
             .resizable()
             .scaledToFill()
-            .scaleEffect(dynamicScale)
-            .rotationEffect(.degrees(rotation))
+            .scaleEffect(scale + breathing)
+            .rotationEffect(.degrees(angle))
             .offset(x: x, y: y)
             .blur(radius: blur, opaque: true)
-            .saturation(1.28)
-            .brightness(-0.15)
+            .saturation(1.10)
+            .brightness(-0.08)
+            .opacity(opacity)
+    }
+
+    @ViewBuilder
+    private func colorPool(
+        image: UIImage,
+        time: TimeInterval,
+        phase: Double,
+        scale: CGFloat,
+        blur: CGFloat,
+        opacity: Double
+    ) -> some View {
+        let a = time * 0.038 + phase
+
+        let x = CGFloat(
+            sin(a * 0.61) * 72
+            + cos(a * 0.29 + 1.4) * 38
+        )
+
+        let y = CGFloat(
+            cos(a * 0.53 + 0.9) * 62
+            + sin(a * 0.23 + 2.2) * 42
+        )
+
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .scaleEffect(scale)
+            .offset(x: x, y: y)
+            .blur(radius: blur, opaque: true)
+            .saturation(1.18)
             .opacity(opacity)
     }
 }
-
