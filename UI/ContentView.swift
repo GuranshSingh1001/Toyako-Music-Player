@@ -152,12 +152,11 @@ struct ContentView: View {
                         $showNowPlaying,
                 )
                 .ignoresSafeArea(.all)
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: .bottom),
-                        removal: .move(edge: .bottom)
-                    )
-                )
+                // NowPlayingView owns its dismissal animation by moving its
+                // own surface off-screen. Do not apply a second parent removal
+                // transition here: on Home, that extra transition forces the
+                // large nested ScrollView/LazyVStack hierarchy to be reconciled
+                // while the full-screen player is already animating away.
                 .zIndex(100)
             }
         }
