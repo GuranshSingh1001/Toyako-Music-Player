@@ -42,9 +42,8 @@ private struct AlbumCard: View {
             alignment: .leading,
             spacing: 8
         ) {
-            AlbumArtwork(
-                artworkData:
-                    album.artworkData
+            LazyAlbumArtwork(
+                url: album.artworkURL
             )
             .frame(
                 maxWidth: .infinity
@@ -120,9 +119,8 @@ struct AlbumDetailView: View {
                 // MARK: Album Header
 
                 VStack(spacing: 20) {
-                    AlbumArtwork(
-                        artworkData:
-                            album.artworkData
+                    LazyAlbumArtwork(
+                        url: album.artworkURL
                     )
                     .frame(
                         width:
@@ -440,51 +438,7 @@ private struct AlbumTrackRow: View {
                     width: 24
                 )
 
-                if let data =
-                    track.artworkData,
-                   let image =
-                    UIImage(data: data) {
-
-                    Image(
-                        uiImage:
-                            image
-                    )
-                    .resizable()
-                    .scaledToFill()
-                    .frame(
-                        width: 48,
-                        height: 48
-                    )
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 7,
-                            style: .continuous
-                        )
-                    )
-                } else {
-                    RoundedRectangle(
-                        cornerRadius: 7,
-                        style: .continuous
-                    )
-                    .fill(
-                        Color.gray.opacity(
-                            0.18
-                        )
-                    )
-                    .frame(
-                        width: 48,
-                        height: 48
-                    )
-                    .overlay {
-                        Image(
-                            systemName:
-                                "music.note"
-                        )
-                        .foregroundColor(
-                            .secondary
-                        )
-                    }
-                }
+                LazyArtwork(url: track.url, size: 48, cornerRadius: 7)
 
                 VStack(
                     alignment: .leading,
@@ -562,67 +516,5 @@ private struct AlbumTrackRow: View {
             seconds / 60,
             seconds % 60
         )
-    }
-}
-
-// MARK: - Shared Album Artwork
-
-struct AlbumArtwork: View {
-    let artworkData: Data?
-
-    var body: some View {
-        Group {
-            if let artworkData,
-               let image =
-                    UIImage(
-                        data:
-                            artworkData
-                    ) {
-
-                Image(
-                    uiImage:
-                        image
-                )
-                .resizable()
-                .scaledToFill()
-
-            } else {
-                RoundedRectangle(
-                    cornerRadius: 12,
-                    style: .continuous
-                )
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.gray.opacity(
-                                0.28
-                            ),
-                            Color.gray.opacity(
-                                0.12
-                            )
-                        ],
-                        startPoint:
-                            .topLeading,
-                        endPoint:
-                            .bottomTrailing
-                    )
-                )
-                .overlay {
-                    Image(
-                        systemName:
-                            "square.stack"
-                    )
-                    .font(
-                        .system(
-                            size: 42,
-                            weight: .medium
-                        )
-                    )
-                    .foregroundColor(
-                        .secondary
-                    )
-                }
-            }
-        }
     }
 }
