@@ -192,7 +192,12 @@ struct NowPlayingView: View {
             playbackControls
         }
         .padding(.horizontal, horizontalInset)
-        .padding(.top, 58)
+        // Keep the compact Now Playing content visually centered in the
+        // upper/middle portion of the portrait window. The previous 58pt top
+        // inset left a very large unused area below the controls. A slightly
+        // larger top inset moves the artwork, metadata, scrubber, and controls
+        // down together without changing their spacing.
+        .padding(.top, 110)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeInOut(duration: 0.24), value: showLyrics)
@@ -269,6 +274,15 @@ struct NowPlayingView: View {
                 // deliberately no shared geometry/hero transition with the mini-player.
                 LazyArtwork(url: track.url, size: min(maxHeight, 520), cornerRadius: 12)
                     .frame(maxHeight: maxHeight)
+                    // Preserve the original Now Playing interaction: when
+                    // playback is paused, the artwork visually contracts.
+                    // This is intentionally a visual scale only so the rest
+                    // of the layout does not jump when play/pause changes.
+                    .scaleEffect(audioManager.isPlaying ? 1.0 : 0.70, anchor: .center)
+                    .animation(
+                        .spring(response: 0.48, dampingFraction: 0.82),
+                        value: audioManager.isPlaying
+                    )
             } else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.secondary.opacity(0.12))
