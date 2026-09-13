@@ -202,11 +202,8 @@ struct NowPlayingView: View {
             .frame(height: artworkAreaHeight, alignment: .top)
 
             playbackControls
-                .frame(
-                    maxWidth: .infinity,
-                    height: contentHeight * 0.25,
-                    alignment: .top
-                )
+                .frame(maxWidth: .infinity)
+                .frame(height: contentHeight * 0.25, alignment: .top)
                 .padding(.top, 8)
         }
         .padding(.horizontal, horizontalInset)
