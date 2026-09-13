@@ -198,11 +198,8 @@ struct NowPlayingView: View {
                     audioManager.seek(to: progress * duration)
                 }
             }
-            .frame(
-                maxWidth: .infinity,
-                height: artworkAreaHeight,
-                alignment: .top
-            )
+            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(height: artworkAreaHeight, alignment: .top)
 
             playbackControls
                 .frame(
