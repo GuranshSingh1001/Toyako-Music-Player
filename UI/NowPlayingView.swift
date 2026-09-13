@@ -380,6 +380,7 @@ struct NowPlayingView: View {
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.24), value: showLyrics)
+    }
     // MARK: - Wide Layout
     //
     // Lyrics no longer permanently occupy the right side.
