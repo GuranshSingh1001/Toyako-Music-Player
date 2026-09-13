@@ -60,7 +60,9 @@ struct ContentView: View {
                 value:
                     LibraryCategory.home
             ) {
-                homeContent
+                tabDestination {
+                    homeContent
+                }
             }
 
             Tab(
@@ -70,9 +72,11 @@ struct ContentView: View {
                 value:
                     LibraryCategory.tracks
             ) {
-                tabContent(
-                    for: .tracks
-                )
+                tabDestination {
+                    tabContent(
+                        for: .tracks
+                    )
+                }
             }
 
             Tab(
@@ -82,9 +86,11 @@ struct ContentView: View {
                 value:
                     LibraryCategory.albums
             ) {
-                tabContent(
-                    for: .albums
-                )
+                tabDestination {
+                    tabContent(
+                        for: .albums
+                    )
+                }
             }
 
             Tab(
@@ -94,9 +100,11 @@ struct ContentView: View {
                 value:
                     LibraryCategory.artists
             ) {
-                tabContent(
-                    for: .artists
-                )
+                tabDestination {
+                    tabContent(
+                        for: .artists
+                    )
+                }
             }
 
             Tab(
@@ -106,55 +114,22 @@ struct ContentView: View {
                 value:
                     LibraryCategory.allPlaylists
             ) {
-                tabContent(
-                    for: .allPlaylists
-                )
+                tabDestination {
+                    tabContent(
+                        for: .allPlaylists
+                    )
+                }
             }
         }
         .tabViewStyle(
             .sidebarAdaptable
         )
-        .transaction { transaction in
-            // Do not add an implicit SwiftUI transition on top of iPadOS's
-            // own Liquid Glass sidebar/pill transition. The extra animation
-            // pass is what causes the glass to briefly warp when switching tabs.
-            transaction.animation = nil
-        }
-        .overlay(alignment: .bottom) {
-            // There is deliberately ONE mini-player for the entire app, rather
-            // than one inside each tab's NavigationStack. That keeps the same
-            // view instance alive while switching Home/Tracks/Albums/Artists/
-            // Playlists. Because this overlay is outside TabView, the player
-            // also remains independent of the sidebar's content layout.
-            //
-            // Use a 670pt max width on iPad, but let the player shrink with the
-            // window when the iPad is resized to a phone-like aspect ratio.
-            // This gives the compact layout the same floating-pill margins as
-            // iPhone instead of allowing the old fixed width to overflow.
-            GeometryReader { proxy in
-                let horizontalInset: CGFloat = proxy.size.width <= 700 ? 10 : 0
-                let availableWidth = max(0, proxy.size.width - (horizontalInset * 2))
-                let playerWidth = min(670, availableWidth)
+        // The mini-player belongs to the tab destination, not to the outer
+        // TabView. This is important for sidebarAdaptable: when the sidebar
+        // opens/closes, SwiftUI animates the destination's frame. Because the
+        // player is inside that destination, it follows the same slide instead
+        // of remaining pinned to the window center.
 
-                MiniPlayerView(
-                    isNowPlayingPresented: showNowPlaying,
-                    onOpenNowPlaying: {
-                        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                            showNowPlaying = true
-                        }
-                    }
-                )
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
-                .frame(width: playerWidth)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.horizontal, horizontalInset)
-                .padding(.bottom, 7)
-            }
-            // Keep this overlay floating over the existing TabView rather than
-            // changing the layout of the sidebar or the selected destination.
-            .zIndex(10)
-        }
 
         // MARK: - Now Playing
 
@@ -303,6 +278,45 @@ struct ContentView: View {
             AudioLifecycleObserver(library: library, scenePhase: scenePhase)
                 .frame(width: 0, height: 0)
         }
+    }
+
+    @ViewBuilder
+    private func tabDestination<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .overlay(alignment: .bottom) {
+                GeometryReader { proxy in
+                    let isCompactWindow = proxy.size.width <= 600
+                    let horizontalInset: CGFloat = proxy.size.width <= 700 ? 10 : 0
+                    let availableWidth = max(0, proxy.size.width - (horizontalInset * 2))
+                    let playerWidth = min(670, availableWidth)
+
+                    // When the window becomes narrow enough for the adaptable
+                    // sidebar to collapse into the bottom tab bar, keep the
+                    // mini-player above that bar instead of letting the two
+                    // surfaces overlap. The extra inset is intentionally only
+                    // enabled at the compact breakpoint so the normal iPad
+                    // layout remains unchanged.
+                    let bottomInset: CGFloat = isCompactWindow ? 72 : 7
+
+                    MiniPlayerView(
+                        isNowPlayingPresented: showNowPlaying,
+                        onOpenNowPlaying: {
+                            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                showNowPlaying = true
+                            }
+                        }
+                    )
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                    .frame(width: playerWidth)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.horizontal, horizontalInset)
+                    .padding(.bottom, bottomInset)
+                }
+                .zIndex(10)
+            }
     }
 
     // MARK: - Tab
