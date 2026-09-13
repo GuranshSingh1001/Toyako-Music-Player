@@ -146,59 +146,74 @@ struct NowPlayingView: View {
     // MARK: - Compact Now Playing
 
     private func compactNowPlayingLayout(geometry: GeometryProxy) -> some View {
-        // Give portrait/narrow windows a little more breathing room above the
-        // artwork, while sizing the cover from both available width and height
-        // so it never forces the controls off-screen.
         let horizontalInset: CGFloat = 24
         let availableWidth = max(0, geometry.size.width - horizontalInset * 2)
+
+        // Compact Now Playing deliberately uses roughly a 75:25 vertical
+        // composition: the upper 75% is the artwork/metadata/scrubber area,
+        // while the lower 25% is reserved for the media controls. This keeps
+        // the whole composition lower in tall portrait windows instead of
+        // leaving a large dead area underneath the controls.
+        let contentHeight = min(
+            geometry.size.height - 180,
+            geometry.size.height * 0.70
+        )
+        let artworkAreaHeight = contentHeight * 0.75
         let artworkSize = min(
             availableWidth,
-            geometry.size.height * 0.43,
-            520
+            max(0, artworkAreaHeight - 92),
+            600
         )
 
-        return VStack(spacing: 14) {
-            if showLyrics {
-                lyricsPane
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: artworkSize,
-                        maxHeight: artworkSize
-                    )
-                    .contentShape(Rectangle())
-                    .gesture(dismissGesture(height: geometry.size.height))
-                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            } else {
-                artwork(maxHeight: artworkSize)
-                    .frame(width: artworkSize, height: artworkSize)
-                    .contentShape(Rectangle())
-                    .gesture(dismissGesture(height: geometry.size.height))
-                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
+        return VStack(spacing: 0) {
+            VStack(spacing: 14) {
+                if showLyrics {
+                    lyricsPane
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: artworkSize,
+                            maxHeight: artworkSize
+                        )
+                        .contentShape(Rectangle())
+                        .gesture(dismissGesture(height: geometry.size.height))
+                        .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                } else {
+                    artwork(maxHeight: artworkSize)
+                        .frame(width: artworkSize, height: artworkSize)
+                        .contentShape(Rectangle())
+                        .gesture(dismissGesture(height: geometry.size.height))
+                        .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                }
+
+                trackInformation
+
+                AppleMusicScrubberBar(
+                    progress: clock.playbackProgress,
+                    duration: audioManager.currentTrack?.duration ?? 0,
+                    currentTime: clock.currentTime
+                ) { progress in
+                    guard let duration = audioManager.currentTrack?.duration,
+                          duration > 0 else { return }
+
+                    audioManager.seek(to: progress * duration)
+                }
             }
-
-            trackInformation
-
-            AppleMusicScrubberBar(
-                progress: clock.playbackProgress,
-                duration: audioManager.currentTrack?.duration ?? 0,
-                currentTime: clock.currentTime
-            ) { progress in
-                guard let duration = audioManager.currentTrack?.duration,
-                      duration > 0 else { return }
-
-                audioManager.seek(to: progress * duration)
-            }
+            .frame(
+                maxWidth: .infinity,
+                height: artworkAreaHeight,
+                alignment: .top
+            )
 
             playbackControls
+                .frame(
+                    maxWidth: .infinity,
+                    height: contentHeight * 0.25,
+                    alignment: .top
+                )
+                .padding(.top, 8)
         }
         .padding(.horizontal, horizontalInset)
-        // Keep the compact Now Playing content visually centered in the
-        // upper/middle portion of the portrait window. The previous 58pt top
-        // inset left a very large unused area below the controls. A slightly
-        // larger top inset moves the artwork, metadata, scrubber, and controls
-        // down together without changing their spacing.
-        .padding(.top, 110)
-        .padding(.bottom, 18)
+        .padding(.top, 150)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeInOut(duration: 0.24), value: showLyrics)
     }
