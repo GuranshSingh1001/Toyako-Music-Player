@@ -11,6 +11,7 @@ struct NowPlayingView: View {
     @State private var previousPressed = false
     @State private var nextPressed = false
     @State private var showQueue = false
+    @State private var showLyrics = false
 
     // The panel itself slides up via ContentView's `.move(edge: .bottom)`
     // transition. That transition is driven by a parent `withAnimation`,
@@ -26,6 +27,10 @@ struct NowPlayingView: View {
     var body: some View {
         GeometryReader { geometry in
             let isLandscape = geometry.size.width > geometry.size.height
+            // Treat portrait and narrow Stage Manager windows as the compact
+            // Now Playing layout. In compact mode lyrics replace the artwork
+            // instead of sharing the screen with it.
+            let isCompact = !isLandscape || geometry.size.width < 760
 
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -37,7 +42,9 @@ struct NowPlayingView: View {
                 .contentShape(Rectangle())
                 .gesture(dismissGesture(height: geometry.size.height))
 
-                if isLandscape {
+                if isCompact {
+                    compactNowPlayingLayout(geometry: geometry)
+                } else {
                     HStack(spacing: geometry.size.width * 0.035) {
                         artworkPane(maxHeight: geometry.size.height * 0.48)
                             .frame(width: geometry.size.width * 0.35)
@@ -49,15 +56,6 @@ struct NowPlayingView: View {
                     }
                     .padding(.horizontal, 48)
                     .padding(.vertical, 24)
-                } else {
-                    VStack(spacing: 18) {
-                        artworkPane(maxHeight: geometry.size.height * 0.38)
-                            .contentShape(Rectangle())
-                            .gesture(dismissGesture(height: geometry.size.height))
-
-                        lyricsPane
-                    }
-                    .padding(.horizontal, 24)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -78,16 +76,34 @@ struct NowPlayingView: View {
                 .padding(.top, 8)
             }
             .overlay(alignment: .topTrailing) {
-                Button {
-                    showQueue = true
-                } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .frame(width: 52, height: 52)
-                        .contentShape(Circle())
+                HStack(spacing: 4) {
+                    if isCompact {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                showLyrics.toggle()
+                            }
+                        } label: {
+                            Image(systemName: showLyrics ? "photo" : "quote.bubble")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .frame(width: 52, height: 52)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(showLyrics ? "Show artwork" : "Show lyrics")
+                    }
+
+                    Button {
+                        showQueue = true
+                    } label: {
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(width: 52, height: 52)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 .padding(.trailing, 10)
                 .padding(.top, 8)
             }
@@ -125,6 +141,61 @@ struct NowPlayingView: View {
                 dragOffset = 0
             }
         }
+    }
+
+    // MARK: - Compact Now Playing
+
+    private func compactNowPlayingLayout(geometry: GeometryProxy) -> some View {
+        // Give portrait/narrow windows a little more breathing room above the
+        // artwork, while sizing the cover from both available width and height
+        // so it never forces the controls off-screen.
+        let horizontalInset: CGFloat = 24
+        let availableWidth = max(0, geometry.size.width - horizontalInset * 2)
+        let artworkSize = min(
+            availableWidth,
+            geometry.size.height * 0.43,
+            520
+        )
+
+        return VStack(spacing: 14) {
+            if showLyrics {
+                lyricsPane
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: artworkSize,
+                        maxHeight: artworkSize
+                    )
+                    .contentShape(Rectangle())
+                    .gesture(dismissGesture(height: geometry.size.height))
+                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
+            } else {
+                artwork(maxHeight: artworkSize)
+                    .frame(width: artworkSize, height: artworkSize)
+                    .contentShape(Rectangle())
+                    .gesture(dismissGesture(height: geometry.size.height))
+                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
+            }
+
+            trackInformation
+
+            AppleMusicScrubberBar(
+                progress: clock.playbackProgress,
+                duration: audioManager.currentTrack?.duration ?? 0,
+                currentTime: clock.currentTime
+            ) { progress in
+                guard let duration = audioManager.currentTrack?.duration,
+                      duration > 0 else { return }
+
+                audioManager.seek(to: progress * duration)
+            }
+
+            playbackControls
+        }
+        .padding(.horizontal, horizontalInset)
+        .padding(.top, 58)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.easeInOut(duration: 0.24), value: showLyrics)
     }
 
     // MARK: - Presentation
@@ -196,13 +267,8 @@ struct NowPlayingView: View {
                 // Keep the artwork in the Now Playing hierarchy so it enters
                 // together with the panel's bottom-to-top presentation. There is
                 // deliberately no shared geometry/hero transition with the mini-player.
-                LazyArtwork(url: track.url, size: min(maxHeight, 420), cornerRadius: 12)
+                LazyArtwork(url: track.url, size: min(maxHeight, 520), cornerRadius: 12)
                     .frame(maxHeight: maxHeight)
-                    .scaleEffect(audioManager.isPlaying ? 1.0 : 0.70, anchor: .center)
-                    .animation(
-                        .spring(response: 0.48, dampingFraction: 0.82),
-                        value: audioManager.isPlaying
-                    )
             } else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.secondary.opacity(0.12))
