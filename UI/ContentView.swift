@@ -287,18 +287,28 @@ struct ContentView: View {
         content()
             .overlay(alignment: .bottom) {
                 GeometryReader { proxy in
-                    let isCompactWindow = proxy.size.width <= 600
-                    let horizontalInset: CGFloat = proxy.size.width <= 700 ? 10 : 0
+                    // sidebarAdaptable switches from the leading sidebar to
+                    // the floating bottom tab bar while a Stage Manager window
+                    // is still considerably wider than 600pt. The old 600pt
+                    // breakpoint therefore missed that state and left the
+                    // mini-player almost full-width. Keep the player matched
+                    // to the bottom-tab pill instead.
+                    let usesBottomTabBar = proxy.size.width <= 900
+                    let horizontalInset: CGFloat = usesBottomTabBar ? 10 : 0
                     let availableWidth = max(0, proxy.size.width - (horizontalInset * 2))
-                    let playerWidth = min(670, availableWidth)
 
-                    // When the window becomes narrow enough for the adaptable
-                    // sidebar to collapse into the bottom tab bar, keep the
-                    // mini-player above that bar instead of letting the two
-                    // surfaces overlap. The extra inset is intentionally only
-                    // enabled at the compact breakpoint so the normal iPad
-                    // layout remains unchanged.
-                    let bottomInset: CGFloat = isCompactWindow ? 72 : 7
+                    // The system's bottom-tab pill is approximately 540pt wide
+                    // on iPad. Matching that width keeps the mini-player and
+                    // navigation pill visually aligned in compact windows.
+                    let playerWidth = usesBottomTabBar
+                        ? min(540, availableWidth)
+                        : min(670, availableWidth)
+
+                    // The destination already sits immediately above the
+                    // adaptable bottom tab bar. A small gap is all that is
+                    // needed; a large fixed inset makes the player jump far
+                    // upward as the window becomes narrower.
+                    let bottomInset: CGFloat = usesBottomTabBar ? 7 : 7
 
                     MiniPlayerView(
                         isNowPlayingPresented: showNowPlaying,
