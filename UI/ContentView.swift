@@ -294,21 +294,27 @@ struct ContentView: View {
                     // mini-player almost full-width. Keep the player matched
                     // to the bottom-tab pill instead.
                     let usesBottomTabBar = proxy.size.width <= 900
-                    let horizontalInset: CGFloat = usesBottomTabBar ? 10 : 0
-                    let availableWidth = max(0, proxy.size.width - (horizontalInset * 2))
 
-                    // The system's bottom-tab pill is approximately 540pt wide
-                    // on iPad. Matching that width keeps the mini-player and
-                    // navigation pill visually aligned in compact windows.
+                    // sidebarAdaptable's compact bottom navigation is a fixed-size
+                    // floating pill on iPad (about 540pt wide). The mini-player
+                    // must use that same width rather than sizing itself from
+                    // the window, otherwise it becomes visibly wider than the
+                    // navigation pill in a Stage Manager window.
+                    let bottomPillWidth: CGFloat = 540
+                    let compactHorizontalInset: CGFloat = 12
+                    let compactAvailableWidth = max(
+                        0,
+                        proxy.size.width - (compactHorizontalInset * 2)
+                    )
+
                     let playerWidth = usesBottomTabBar
-                        ? min(540, availableWidth)
-                        : min(670, availableWidth)
+                        ? min(bottomPillWidth, compactAvailableWidth)
+                        : min(670, proxy.size.width)
 
-                    // The destination already sits immediately above the
-                    // adaptable bottom tab bar. A small gap is all that is
-                    // needed; a large fixed inset makes the player jump far
-                    // upward as the window becomes narrower.
-                    let bottomInset: CGFloat = usesBottomTabBar ? 7 : 7
+                    // Keep the player immediately above the bottom navigation
+                    // pill. Do not use a large fixed inset here: the overlay is
+                    // already aligned to the bottom of the destination.
+                    let bottomInset: CGFloat = usesBottomTabBar ? 6 : 7
 
                     MiniPlayerView(
                         isNowPlayingPresented: showNowPlaying,
@@ -322,7 +328,6 @@ struct ContentView: View {
                     .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
                     .frame(width: playerWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.horizontal, horizontalInset)
                     .padding(.bottom, bottomInset)
                 }
                 .zIndex(10)
