@@ -234,7 +234,7 @@ struct NowPlayingView: View {
         geometry: GeometryProxy
     ) -> some View {
 
-        let horizontalInset: CGFloat = 30
+        let horizontalPadding = max(32, geometry.size.width * 0.055)
 
         let availableWidth = max(
             0,
@@ -377,30 +377,9 @@ struct NowPlayingView: View {
                 )
                 .padding(.top, 12)
         }
-        .padding(.horizontal, horizontalInset)
-
-        // This is deliberately lower than the previous 150pt
-        // hard-coded offset. The composition now follows the
-        // available window height instead of pushing the controls
-        // toward the middle/top unpredictably.
-        .padding(
-            .top,
-            max(
-                safeTop,
-                geometry.size.height * 0.075
-            )
-        )
-        .frame(
-            maxWidth: .infinity,
-            maxHeight: .infinity,
-            alignment: .top
-        )
-        .animation(
-            .easeInOut(duration: 0.24),
-            value: showLyrics
-        )
-    }
-
+        .padding(.horizontal, horizontalPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.24), value: showLyrics)
     // MARK: - Wide Layout
     //
     // Lyrics no longer permanently occupy the right side.
