@@ -124,22 +124,35 @@ struct ContentView: View {
             // There is deliberately ONE mini-player for the entire app, rather
             // than one inside each tab's NavigationStack. That keeps the same
             // view instance alive while switching Home/Tracks/Albums/Artists/
-            // Playlists, so the player cannot disappear for a frame and then
-            // be recreated. Because this overlay is outside TabView, it also
-            // remains above pushed playlist destinations.
-            MiniPlayerView(
-                isNowPlayingPresented: showNowPlaying,
-                onOpenNowPlaying: {
-                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                        showNowPlaying = true
+            // Playlists. Because this overlay is outside TabView, the player
+            // also remains independent of the sidebar's content layout.
+            //
+            // Use a 670pt max width on iPad, but let the player shrink with the
+            // window when the iPad is resized to a phone-like aspect ratio.
+            // This gives the compact layout the same floating-pill margins as
+            // iPhone instead of allowing the old fixed width to overflow.
+            GeometryReader { proxy in
+                let horizontalInset: CGFloat = proxy.size.width <= 700 ? 10 : 0
+                let availableWidth = max(0, proxy.size.width - (horizontalInset * 2))
+                let playerWidth = min(670, availableWidth)
+
+                MiniPlayerView(
+                    isNowPlayingPresented: showNowPlaying,
+                    onOpenNowPlaying: {
+                        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                            showNowPlaying = true
+                        }
                     }
-                }
-            )
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
-            .frame(width: 670)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.bottom, 7)
+                )
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                .frame(width: playerWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.horizontal, horizontalInset)
+                .padding(.bottom, 7)
+            }
+            // Keep this overlay floating over the existing TabView rather than
+            // changing the layout of the sidebar or the selected destination.
             .zIndex(10)
         }
 
