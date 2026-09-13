@@ -117,3 +117,4 @@ private struct MiniPlayerProgressBar: View {
         }
     }
 }
+
