@@ -165,23 +165,28 @@ struct NowPlayingView: View {
 
         return VStack(spacing: 0) {
             VStack(spacing: 12) {
-                if showLyrics {
-                    lyricsPane
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: artworkSize,
-                            maxHeight: artworkSize
-                        )
-                        .contentShape(Rectangle())
-                        .gesture(dismissGesture(height: geometry.size.height))
-                        .transition(.opacity.combined(with: .scale(scale: 0.985)))
-                } else {
-                    artwork(maxHeight: artworkSize)
-                        .frame(width: artworkSize, height: artworkSize)
-                        .contentShape(Rectangle())
-                        .gesture(dismissGesture(height: geometry.size.height))
-                        .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                // Keep this entire artwork/lyrics area at one fixed size.
+                // Switching modes must not reflow the title, scrubber, or
+                // controls; only the visual content inside this area changes.
+                ZStack {
+                    if showLyrics {
+                        lyricsPane
+                            .contentShape(Rectangle())
+                            .gesture(dismissGesture(height: geometry.size.height))
+                            .transition(.opacity)
+                    } else {
+                        artwork(maxHeight: artworkSize)
+                            .frame(width: artworkSize, height: artworkSize)
+                            .contentShape(Rectangle())
+                            .gesture(dismissGesture(height: geometry.size.height))
+                            .transition(.opacity)
+                    }
                 }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: artworkSize,
+                    maxHeight: artworkSize
+                )
 
                 trackInformation
 
@@ -199,9 +204,9 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, alignment: .top)
             .frame(height: artworkSectionHeight, alignment: .top)
 
-            // Keep the playback controls at the top of the lower 25% zone.
-            // This places them directly below the scrubber instead of centering
-            // them near the bottom and leaving a large unused area underneath.
+            // Keep the metadata/scrubber position fixed when lyrics are shown.
+            // Playback controls stay in the same lower zone instead of being
+            // reflowed upward when the lyrics view changes size.
             playbackControls
                 .frame(maxWidth: .infinity)
                 .frame(height: controlsSectionHeight, alignment: .top)
@@ -468,7 +473,7 @@ private func activeLyricID(
     }
 
     return lyrics.last {
-        $0.time <= clock.currentTime
+        $0.time <= audioManager.currentTime
     }?.id
 }
 
@@ -538,20 +543,17 @@ private struct SmoothLyricsView: View {
                 )
             }
 
-            // MARK: - Initial Position
+            // MARK: - Initial position when Lyrics opens
 
-            // When the lyrics view is opened, ScrollViewReader does not emit
-            // an activeID change because activeID is already the current line.
-            // Without this initial scroll, the list starts at line 1 and only
-            // jumps to the correct line when the next lyric timestamp arrives.
             .onAppear {
-                guard let targetID = activeID else { return }
+                guard let activeID else { return }
 
+                // The lyrics view is newly created when the button is tapped,
+                // so `onChange(of: activeID)` cannot catch the initial position.
+                // Wait for the rows to enter the ScrollView before centering the
+                // lyric that is already playing.
                 DispatchQueue.main.async {
-                    proxy.scrollTo(
-                        targetID,
-                        anchor: .center
-                    )
+                    proxy.scrollTo(activeID, anchor: .center)
                 }
             }
 
