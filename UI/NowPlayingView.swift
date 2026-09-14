@@ -157,36 +157,41 @@ struct NowPlayingView: View {
         let artworkSectionHeight = compositionHeight * 0.75
         let controlsSectionHeight = compositionHeight * 0.25
 
+        // Use the available width for the artwork instead of making it
+        // artificially small. This keeps the metadata lower and removes the
+        // oversized empty area underneath it on narrow portrait windows.
         let artworkSize = min(
-            availableWidth * 0.78,
-            max(0, artworkSectionHeight - 150),
+            availableWidth * 0.95,
+            max(0, artworkSectionHeight - 80),
             520
         )
 
         return VStack(spacing: 0) {
             VStack(spacing: 12) {
-                // Keep this entire artwork/lyrics area at one fixed size.
-                // Switching modes must not reflow the title, scrubber, or
-                // controls; only the visual content inside this area changes.
+                // This is a permanently fixed visual slot. Both views remain
+                // in the same ZStack so changing Lyrics can NEVER change the
+                // layout height of the metadata, scrubber, or controls.
+                // Only opacity changes.
                 ZStack {
-                    if showLyrics {
-                        lyricsPane
-                            .contentShape(Rectangle())
-                            .gesture(dismissGesture(height: geometry.size.height))
-                            .transition(.opacity)
-                    } else {
-                        artwork(maxHeight: artworkSize)
-                            .frame(width: artworkSize, height: artworkSize)
-                            .contentShape(Rectangle())
-                            .gesture(dismissGesture(height: geometry.size.height))
-                            .transition(.opacity)
-                    }
+                    artwork(maxHeight: artworkSize)
+                        .frame(width: artworkSize, height: artworkSize)
+                        .contentShape(Rectangle())
+                        .gesture(dismissGesture(height: geometry.size.height))
+                        .opacity(showLyrics ? 0 : 1)
+                        .allowsHitTesting(!showLyrics)
+
+                    lyricsPane
+                        .contentShape(Rectangle())
+                        .gesture(dismissGesture(height: geometry.size.height))
+                        .opacity(showLyrics ? 1 : 0)
+                        .allowsHitTesting(showLyrics)
                 }
                 .frame(
                     maxWidth: .infinity,
                     minHeight: artworkSize,
                     maxHeight: artworkSize
                 )
+                .animation(.easeInOut(duration: 0.28), value: showLyrics)
 
                 trackInformation
 
@@ -215,7 +220,6 @@ struct NowPlayingView: View {
         .padding(.horizontal, horizontalInset)
         .padding(.top, 105)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.easeInOut(duration: 0.24), value: showLyrics)
     }
 
     // MARK: - Presentation
