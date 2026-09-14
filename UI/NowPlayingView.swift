@@ -199,12 +199,13 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, alignment: .top)
             .frame(height: artworkSectionHeight, alignment: .top)
 
-            // Center the controls inside the lower 25% instead of pinning them
-            // to its top edge. This removes the large dead area underneath the
-            // controls and matches the intended annotated composition.
+            // Keep the playback controls at the top of the lower 25% zone.
+            // This places them directly below the scrubber instead of centering
+            // them near the bottom and leaving a large unused area underneath.
             playbackControls
                 .frame(maxWidth: .infinity)
-                .frame(height: controlsSectionHeight, alignment: .center)
+                .frame(height: controlsSectionHeight, alignment: .top)
+                .padding(.top, 18)
         }
         .padding(.horizontal, horizontalInset)
         .padding(.top, 105)
@@ -467,7 +468,7 @@ private func activeLyricID(
     }
 
     return lyrics.last {
-        $0.time <= audioManager.currentTime
+        $0.time <= clock.currentTime
     }?.id
 }
 
@@ -535,6 +536,23 @@ private struct SmoothLyricsView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
+            }
+
+            // MARK: - Initial Position
+
+            // When the lyrics view is opened, ScrollViewReader does not emit
+            // an activeID change because activeID is already the current line.
+            // Without this initial scroll, the list starts at line 1 and only
+            // jumps to the correct line when the next lyric timestamp arrives.
+            .onAppear {
+                guard let targetID = activeID else { return }
+
+                DispatchQueue.main.async {
+                    proxy.scrollTo(
+                        targetID,
+                        anchor: .center
+                    )
+                }
             }
 
             // MARK: - New Song
