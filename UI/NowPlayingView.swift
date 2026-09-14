@@ -146,7 +146,7 @@ struct NowPlayingView: View {
     // MARK: - Compact Now Playing
 
     private func compactNowPlayingLayout(geometry: GeometryProxy) -> some View {
-        let horizontalInset: CGFloat = 24
+        let horizontalInset: CGFloat = 32
         let availableWidth = max(0, geometry.size.width - horizontalInset * 2)
 
         // IMPORTANT: Do not derive the vertical layout from the window height.
@@ -156,10 +156,7 @@ struct NowPlayingView: View {
         //
         // Keep the vertical composition anchored. Only the artwork size follows
         // the window width. This makes Stage Manager resizing predictable.
-        let artworkSize = min(
-            max(0, availableWidth * 0.70),
-            320
-        )
+        let artworkSize = availableWidth
 
         return VStack(spacing: 0) {
             // Artwork / lyrics occupy exactly the same slot.
