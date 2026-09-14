@@ -157,17 +157,9 @@ struct NowPlayingView: View {
                 horizontalInset * 2
         )
 
-        /*
-         The content is intentionally divided approximately
-         75:25 vertically:
-
-         75% = artwork / lyrics + track information + scrubber
-         25% = playback controls
-         */
-
         let topInset: CGFloat = min(
-            108,
-            max(76, geometry.size.height * 0.105)
+            150, 
+            max(110, geometry.size.height * 0.14)
         )
 
         let bottomInset: CGFloat = 12
