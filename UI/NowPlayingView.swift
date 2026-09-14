@@ -210,7 +210,7 @@ struct NowPlayingView: View {
             // inserted between the metadata and controls.
             playbackControls
                 .frame(maxWidth: .infinity)
-                .padding(.top, 92)
+                .padding(.top, 28)
 
             Spacer(minLength: 0)
         }
