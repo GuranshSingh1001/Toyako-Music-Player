@@ -149,77 +149,75 @@ struct NowPlayingView: View {
         let horizontalInset: CGFloat = 24
         let availableWidth = max(0, geometry.size.width - horizontalInset * 2)
 
-        // Compact Now Playing is intentionally composed as two visual zones:
-        // roughly 75% for artwork/lyrics + metadata/scrubber and 25% for the
-        // playback controls.  The artwork size is based primarily on width so
-        // a narrow portrait window never lets the artwork become oversized.
-        let compositionHeight = max(0, geometry.size.height - 120)
-        let artworkSectionHeight = compositionHeight * 0.75
-        let controlsSectionHeight = compositionHeight * 0.25
-
-        // Use the available width for the artwork instead of making it
-        // artificially small. This keeps the metadata lower and removes the
-        // oversized empty area underneath it on narrow portrait windows.
+        // IMPORTANT: Do not derive the vertical layout from the window height.
+        // The old 75/25 height split caused the title, scrubber and controls to
+        // move upward/downward whenever the compact window was resized, leaving
+        // a large and inconsistent empty area at the bottom.
+        //
+        // Keep the vertical composition anchored. Only the artwork size follows
+        // the window width. This makes Stage Manager resizing predictable.
         let artworkSize = min(
-            availableWidth * 0.95,
-            max(0, artworkSectionHeight - 80),
-            520
+            max(0, availableWidth * 0.70),
+            320
         )
 
         return VStack(spacing: 0) {
-            VStack(spacing: 12) {
-                // This is a permanently fixed visual slot. Both views remain
-                // in the same ZStack so changing Lyrics can NEVER change the
-                // layout height of the metadata, scrubber, or controls.
-                // Only opacity changes.
-                ZStack {
-                    artwork(maxHeight: artworkSize)
-                        .frame(width: artworkSize, height: artworkSize)
-                        .contentShape(Rectangle())
-                        .gesture(dismissGesture(height: geometry.size.height))
-                        .opacity(showLyrics ? 0 : 1)
-                        .allowsHitTesting(!showLyrics)
+            // Artwork / lyrics occupy exactly the same slot.
+            // Both views remain in the hierarchy so toggling lyrics cannot
+            // reflow the title, scrubber, or playback controls.
+            ZStack {
+                artwork(maxHeight: artworkSize)
+                    .frame(width: artworkSize, height: artworkSize)
+                    .opacity(showLyrics ? 0 : 1)
+                    .allowsHitTesting(!showLyrics)
 
-                    lyricsPane
-                        .contentShape(Rectangle())
-                        .gesture(dismissGesture(height: geometry.size.height))
-                        .opacity(showLyrics ? 1 : 0)
-                        .allowsHitTesting(showLyrics)
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: artworkSize,
-                    maxHeight: artworkSize
-                )
-                .animation(.easeInOut(duration: 0.28), value: showLyrics)
-
-                trackInformation
-
-                AppleMusicScrubberBar(
-                    progress: clock.playbackProgress,
-                    duration: audioManager.currentTrack?.duration ?? 0,
-                    currentTime: clock.currentTime
-                ) { progress in
-                    guard let duration = audioManager.currentTrack?.duration,
-                          duration > 0 else { return }
-
-                    audioManager.seek(to: progress * duration)
-                }
+                lyricsPane
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: artworkSize,
+                        maxHeight: artworkSize
+                    )
+                    .opacity(showLyrics ? 1 : 0)
+                    .allowsHitTesting(showLyrics)
             }
-            .frame(maxWidth: .infinity, alignment: .top)
-            .frame(height: artworkSectionHeight, alignment: .top)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: artworkSize,
+                maxHeight: artworkSize
+            )
+            .contentShape(Rectangle())
+            .gesture(dismissGesture(height: geometry.size.height))
 
-            // Keep the metadata/scrubber position fixed when lyrics are shown.
-            // Playback controls stay in the same lower zone instead of being
-            // reflowed upward when the lyrics view changes size.
+            // Keep this directly below the artwork/lyrics slot. Its vertical
+            // position is independent of the window height.
+            trackInformation
+                .padding(.top, 16)
+
+            AppleMusicScrubberBar(
+                progress: clock.playbackProgress,
+                duration: audioManager.currentTrack?.duration ?? 0,
+                currentTime: clock.currentTime
+            ) { progress in
+                guard let duration = audioManager.currentTrack?.duration,
+                      duration > 0 else { return }
+
+                audioManager.seek(to: progress * duration)
+            }
+            .padding(.top, 10)
+
+            // A fixed gap keeps the controls in the same place while resizing.
+            // The remaining space stays BELOW the controls instead of being
+            // inserted between the metadata and controls.
             playbackControls
                 .frame(maxWidth: .infinity)
-                .frame(height: controlsSectionHeight, alignment: .top)
-                .padding(.top, 18)
+                .padding(.top, 92)
+
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, horizontalInset)
-        .padding(.top, 105)
+        .padding(.top, 135)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.easeInOut(duration: 0.28), value: showLyrics)
     }
 
     // MARK: - Presentation
@@ -556,6 +554,19 @@ private struct SmoothLyricsView: View {
                 // so `onChange(of: activeID)` cannot catch the initial position.
                 // Wait for the rows to enter the ScrollView before centering the
                 // lyric that is already playing.
+                DispatchQueue.main.async {
+                    proxy.scrollTo(activeID, anchor: .center)
+                }
+            }
+
+            // MARK: - Open Lyrics At Current Position
+
+            .onAppear {
+                guard let activeID else { return }
+
+                // The active lyric is already known when Lyrics is opened, so
+                // `onChange(of: activeID)` will not necessarily fire. Scroll
+                // explicitly after the first layout pass.
                 DispatchQueue.main.async {
                     proxy.scrollTo(activeID, anchor: .center)
                 }
