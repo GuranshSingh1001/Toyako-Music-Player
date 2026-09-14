@@ -205,12 +205,12 @@ struct NowPlayingView: View {
             }
             .padding(.top, 10)
 
-            // A fixed gap keeps the controls in the same place while resizing.
-            // The remaining space stays BELOW the controls instead of being
-            // inserted between the metadata and controls.
+            // Controls sit immediately below the scrubber.
+            // Do NOT use a large vertical spacer here: any remaining height
+            // belongs below the controls.
             playbackControls
                 .frame(maxWidth: .infinity)
-                .padding(.top, 28)
+                .padding(.top, 4)
 
             Spacer(minLength: 0)
         }
