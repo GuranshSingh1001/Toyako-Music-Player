@@ -104,7 +104,7 @@ class LocalLibrary:
                 if libraryChanged {
                     self.tracks = scan.tracks
                     self.cachedFingerprints = scan.fingerprints
-                    self.cachedParserVersion = 2
+                    self.cachedParserVersion = 3
                     self.rebuildGroups()
                     self.statusMessage = "Indexed \(scan.tracks.count) tracks"
                     self.saveUnifiedCache()
@@ -222,7 +222,7 @@ class LocalLibrary:
         var changed:
             [(Int, URL, LocalTrack?)] = []
 
-        let metadataParserVersion = 2
+        let metadataParserVersion = 3
         let needsParserMigration =
             cachedParserVersion < metadataParserVersion
 
@@ -399,7 +399,13 @@ class LocalLibrary:
         async let durationValue =
             asset.load(.duration)
 
+        // Read the complete metadata collection, not only AVFoundation's
+        // normalized common metadata. Some FLAC/Vorbis files expose TITLE,
+        // ARTIST and ALBUM only in their container-specific metadata.
         async let metadataValue =
+            asset.load(.metadata)
+
+        async let commonMetadataValue =
             asset.load(.commonMetadata)
 
         let durationSeconds =
@@ -412,6 +418,15 @@ class LocalLibrary:
 
         let metadata =
             (try? await metadataValue) ?? []
+
+        let commonMetadata =
+            (try? await commonMetadataValue) ?? []
+
+        // Prefer the complete metadata set and append common metadata as a
+        // fallback. This covers FLAC/Vorbis comments as well as MP3/MP4/iTunes
+        // metadata without changing the existing parser behavior.
+        let allMetadata =
+            metadata + commonMetadata
 
         var title =
             url
@@ -429,7 +444,7 @@ class LocalLibrary:
 
         // Match common keys as well as container-specific identifiers.
         // Artwork is intentionally excluded here; see hydrateArtwork().
-        for item in metadata {
+        for item in allMetadata {
 
             let keys =
                 metadataKeys(
@@ -1374,7 +1389,7 @@ class LocalLibrary:
             migratedPlaylists
 
         cachedParserVersion =
-            2
+            3
 
         statusMessage =
             "Indexed \(tracks.count) tracks"
@@ -1392,7 +1407,7 @@ class LocalLibrary:
                 migratedPlaylists
 
             cache.metadataParserVersion =
-                2
+                3
         }
 
         for url in [
