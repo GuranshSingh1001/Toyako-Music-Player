@@ -191,7 +191,11 @@ struct NowPlayingView: View {
             // Keep this directly below the artwork/lyrics slot. Its vertical
             // position is independent of the window height.
             trackInformation
-                .padding(.top, 16)
+                // Keep the artwork where it is, but move the entire
+                // information/scrubber/controls group downward so the
+                // unused space remains below the controls instead of
+                // creating a large gap at the bottom of the player.
+                .padding(.top, 106)
 
             AppleMusicScrubberBar(
                 progress: clock.playbackProgress,
