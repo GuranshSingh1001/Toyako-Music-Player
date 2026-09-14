@@ -149,25 +149,18 @@ struct NowPlayingView: View {
         let horizontalInset: CGFloat = 24
         let availableWidth = max(0, geometry.size.width - horizontalInset * 2)
 
-        // Keep the compact layout visually balanced rather than letting the
-        // artwork consume almost the entire portrait window. The upper
-        // section contains artwork/lyrics + metadata + scrubber; the lower
-        // section is reserved for playback controls.
-        let compositionHeight = min(
-            geometry.size.height * 0.78,
-            max(0, geometry.size.height - 150)
-        )
-
+        // Compact Now Playing is intentionally composed as two visual zones:
+        // roughly 75% for artwork/lyrics + metadata/scrubber and 25% for the
+        // playback controls.  The artwork size is based primarily on width so
+        // a narrow portrait window never lets the artwork become oversized.
+        let compositionHeight = max(0, geometry.size.height - 120)
         let artworkSectionHeight = compositionHeight * 0.75
         let controlsSectionHeight = compositionHeight * 0.25
 
-        // On the narrow portrait layout, artwork should feel like the iPhone
-        // Now Playing artwork rather than filling the whole available width.
-        // This also leaves enough room for the title, artist and scrubber.
         let artworkSize = min(
-            availableWidth * 0.88,
-            max(0, artworkSectionHeight - 118),
-            600
+            availableWidth * 0.78,
+            max(0, artworkSectionHeight - 150),
+            520
         )
 
         return VStack(spacing: 0) {
@@ -206,16 +199,15 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, alignment: .top)
             .frame(height: artworkSectionHeight, alignment: .top)
 
+            // Center the controls inside the lower 25% instead of pinning them
+            // to its top edge. This removes the large dead area underneath the
+            // controls and matches the intended annotated composition.
             playbackControls
                 .frame(maxWidth: .infinity)
-                .frame(height: controlsSectionHeight, alignment: .top)
-                .padding(.top, 8)
+                .frame(height: controlsSectionHeight, alignment: .center)
         }
         .padding(.horizontal, horizontalInset)
-        // Position the composition without subtracting that space from the
-        // artwork's available height. This prevents the artwork from being
-        // squeezed or disappearing on short portrait windows.
-        .padding(.top, 150)
+        .padding(.top, 105)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeInOut(duration: 0.24), value: showLyrics)
     }
