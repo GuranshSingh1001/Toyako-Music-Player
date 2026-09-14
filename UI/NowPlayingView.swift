@@ -156,7 +156,7 @@ struct NowPlayingView: View {
         //
         // Keep the vertical composition anchored. Only the artwork size follows
         // the window width. This makes Stage Manager resizing predictable.
-        let artworkSize = min(availableWidth, 520)
+        let artworkSize = min(availableWidth, 360)
 
         return VStack(spacing: 0) {
             // Artwork / lyrics occupy exactly the same slot.
