@@ -45,7 +45,7 @@ actor ArtworkStore {
         }
 
         let asset = AVURLAsset(url: url)
-        let metadata = (try? await asset.load(.commonMetadata)) ?? []
+        let metadata = (try? await asset.load(.metadata)) ?? []
         for item in metadata {
             let keys = [
                 item.commonKey?.rawValue,
