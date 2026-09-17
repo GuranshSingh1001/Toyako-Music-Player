@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import AVFoundation
+import MediaPlayer
 
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
@@ -23,6 +25,7 @@ struct NowPlayingView: View {
     // and fade in together with the panel every time it opens.
     @State private var artworkVisible = false
     @State private var nowPlayingArtworkData: Data?
+    @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
 
     var body: some View {
         GeometryReader { geometry in
@@ -76,23 +79,7 @@ struct NowPlayingView: View {
                 .padding(.top, 8)
             }
             .overlay(alignment: .topTrailing) {
-                HStack(spacing: 4) {
-                    if isCompact {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                showLyrics.toggle()
-                            }
-                        } label: {
-                            Image(systemName: showLyrics ? "photo" : "quote.bubble")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.9))
-                                .frame(width: 52, height: 52)
-                                .contentShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(showLyrics ? "Show artwork" : "Show lyrics")
-                    }
-
+                if !isCompact {
                     Button {
                         showQueue = true
                     } label: {
@@ -103,9 +90,10 @@ struct NowPlayingView: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Queue")
+                    .padding(.trailing, 10)
+                    .padding(.top, 8)
                 }
-                .padding(.trailing, 10)
-                .padding(.top, 8)
             }
             .sheet(isPresented: $showQueue) {
                 QueueView()
@@ -148,20 +136,9 @@ struct NowPlayingView: View {
     private func compactNowPlayingLayout(geometry: GeometryProxy) -> some View {
         let horizontalInset: CGFloat = 32
         let availableWidth = max(0, geometry.size.width - horizontalInset * 2)
-
-        // IMPORTANT: Do not derive the vertical layout from the window height.
-        // The old 75/25 height split caused the title, scrubber and controls to
-        // move upward/downward whenever the compact window was resized, leaving
-        // a large and inconsistent empty area at the bottom.
-        //
-        // Keep the vertical composition anchored. Only the artwork size follows
-        // the window width. This makes Stage Manager resizing predictable.
         let artworkSize = min(availableWidth, 360)
 
         return VStack(spacing: 0) {
-            // Artwork / lyrics occupy exactly the same slot.
-            // Both views remain in the hierarchy so toggling lyrics cannot
-            // reflow the title, scrubber, or playback controls.
             ZStack {
                 artwork(maxHeight: artworkSize)
                     .frame(width: artworkSize, height: artworkSize)
@@ -185,14 +162,8 @@ struct NowPlayingView: View {
             .contentShape(Rectangle())
             .gesture(dismissGesture(height: geometry.size.height))
 
-            // Keep this directly below the artwork/lyrics slot. Its vertical
-            // position is independent of the window height.
             trackInformation
-                // Keep the artwork where it is, but move the entire
-                // information/scrubber/controls group downward so the
-                // unused space remains below the controls instead of
-                // creating a large gap at the bottom of the player.
-                .padding(.top, 106)
+                .padding(.top, 28)
 
             AppleMusicScrubberBar(
                 progress: clock.playbackProgress,
@@ -206,19 +177,52 @@ struct NowPlayingView: View {
             }
             .padding(.top, 10)
 
-            // Controls sit immediately below the scrubber.
-            // Do NOT use a large vertical spacer here: any remaining height
-            // belongs below the controls.
-            playbackControls
+            playbackControls(compact: true)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 4)
+                .padding(.top, 10)
+
+            systemVolumeSlider
+                .padding(.top, 18)
 
             Spacer(minLength: 0)
+
+            compactBottomActions
+                .padding(.bottom, 16)
         }
         .padding(.horizontal, horizontalInset)
         .padding(.top, 135)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeInOut(duration: 0.28), value: showLyrics)
+    }
+
+    private var compactBottomActions: some View {
+        HStack(spacing: 28) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    showLyrics.toggle()
+                }
+            } label: {
+                Image(systemName: showLyrics ? "photo" : "quote.bubble")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .frame(width: 48, height: 48)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showLyrics ? "Show artwork" : "Show lyrics")
+
+            Button {
+                showQueue = true
+            } label: {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .frame(width: 48, height: 48)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Queue")
+        }
     }
 
     // MARK: - Presentation
@@ -277,6 +281,10 @@ struct NowPlayingView: View {
             }
 
             playbackControls
+
+            systemVolumeSlider
+                .padding(.top, 2)
+
             Spacer(minLength: 4)
         }
     }
@@ -335,95 +343,122 @@ struct NowPlayingView: View {
 
     // MARK: - Playback Controls
 
-    private var playbackControls: some View {
+    @ViewBuilder
+    private func playbackControls(compact: Bool = false) -> some View {
         HStack(spacing: 36) {
-            Button {
-                audioManager.toggleShuffle()
-            } label: {
-                Image(systemName: "shuffle")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(
-                        audioManager.isShuffle ? .white : .white.opacity(0.34)
-                    )
+            if compact {
+                repeatButton
+            } else {
+                shuffleButton
             }
-            .buttonStyle(.plain)
 
-            Button {
-                previousPressed = true
-                audioManager.backward()
+            previousButton
+            playPauseButton
+            nextButton
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                    previousPressed = false
-                }
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .scaleEffect(previousPressed ? 0.76 : 1)
-                    .offset(x: previousPressed ? -2 : 0)
-                    .animation(
-                        .spring(response: 0.22, dampingFraction: 0.58),
-                        value: previousPressed
-                    )
+            if compact {
+                shuffleButton
+            } else {
+                repeatButton
             }
-            .buttonStyle(.plain)
-
-            Button {
-                playPausePressed = true
-                audioManager.togglePlayPause()
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                    playPausePressed = false
-                }
-            } label: {
-                Image(
-                    systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
-                )
-                .font(.system(size: 38, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 50, height: 50)
-                .contentTransition(.symbolEffect(.replace))
-                .scaleEffect(playPausePressed ? 0.80 : 1.0)
-                .animation(
-                    .spring(response: 0.24, dampingFraction: 0.64),
-                    value: playPausePressed
-                )
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                nextPressed = true
-                audioManager.forward()
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                    nextPressed = false
-                }
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .scaleEffect(nextPressed ? 0.76 : 1)
-                    .offset(x: nextPressed ? 2 : 0)
-                    .animation(
-                        .spring(response: 0.22, dampingFraction: 0.58),
-                        value: nextPressed
-                    )
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                audioManager.toggleRepeat()
-            } label: {
-                Image(systemName: repeatIcon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(
-                        audioManager.repeatMode != .off
-                            ? .white
-                            : .white.opacity(0.34)
-                    )
-            }
-            .buttonStyle(.plain)
         }
+    }
+
+    private var shuffleButton: some View {
+        Button {
+            audioManager.toggleShuffle()
+        } label: {
+            Image(systemName: "shuffle")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(
+                    audioManager.isShuffle ? .white : .white.opacity(0.34)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var repeatButton: some View {
+        Button {
+            audioManager.toggleRepeat()
+        } label: {
+            Image(systemName: repeatIcon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(
+                    audioManager.repeatMode != .off
+                        ? .white
+                        : .white.opacity(0.34)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var previousButton: some View {
+        Button {
+            previousPressed = true
+            audioManager.backward()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                previousPressed = false
+            }
+        } label: {
+            Image(systemName: "backward.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.white)
+                .scaleEffect(previousPressed ? 0.76 : 1)
+                .offset(x: previousPressed ? -2 : 0)
+                .animation(
+                    .spring(response: 0.22, dampingFraction: 0.58),
+                    value: previousPressed
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var playPauseButton: some View {
+        Button {
+            playPausePressed = true
+            audioManager.togglePlayPause()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                playPausePressed = false
+            }
+        } label: {
+            Image(
+                systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
+            )
+            .font(.system(size: 38, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 50, height: 50)
+            .contentTransition(.symbolEffect(.replace))
+            .scaleEffect(playPausePressed ? 0.80 : 1.0)
+            .animation(
+                .spring(response: 0.24, dampingFraction: 0.64),
+                value: playPausePressed
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var nextButton: some View {
+        Button {
+            nextPressed = true
+            audioManager.forward()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                nextPressed = false
+            }
+        } label: {
+            Image(systemName: "forward.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.white)
+                .scaleEffect(nextPressed ? 0.76 : 1)
+                .offset(x: nextPressed ? 2 : 0)
+                .animation(
+                    .spring(response: 0.22, dampingFraction: 0.58),
+                    value: nextPressed
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private var repeatIcon: String {
@@ -431,6 +466,13 @@ struct NowPlayingView: View {
         case .off, .all: return "repeat"
         case .one: return "repeat.1"
         }
+    }
+
+    // MARK: - System Volume
+
+    private var systemVolumeSlider: some View {
+        SystemVolumeSlider(value: $systemVolume)
+            .frame(height: 24)
     }
 
 // MARK: - Lyrics
@@ -743,6 +785,166 @@ private struct SmoothLyricsView: View {
 }
 
 // MARK: - Apple Music Scrubber
+
+struct SystemVolumeSlider: View {
+    @Binding var value: Float
+
+    @State private var isHolding = false
+    @State private var dragStartVolume: Double = 0
+    @State private var dragStartX: CGFloat = 0
+    @State private var dragVolume: Double = 0
+
+    private var safeVolume: Double {
+        min(1, max(0, Double(value)))
+    }
+
+    private var shownVolume: Double {
+        isHolding ? dragVolume : safeVolume
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "speaker.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.88))
+                .frame(width: 24)
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.white.opacity(isHolding ? 0.30 : 0.18))
+                        .frame(height: isHolding ? 9 : 5)
+
+                    Capsule()
+                        .fill(.white.opacity(isHolding ? 1.0 : 0.88))
+                        .frame(
+                            width: geometry.size.width * CGFloat(shownVolume),
+                            height: isHolding ? 9 : 5
+                        )
+
+                    Circle()
+                        .fill(.white)
+                        .frame(width: isHolding ? 20 : 16, height: isHolding ? 20 : 16)
+                        .offset(
+                            x: max(0, min(geometry.size.width - (isHolding ? 20 : 16),
+                                         geometry.size.width * CGFloat(shownVolume) - (isHolding ? 10 : 8)))
+                        )
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            if !isHolding {
+                                isHolding = true
+                                dragStartVolume = safeVolume
+                                dragVolume = safeVolume
+                                dragStartX = gesture.startLocation.x
+                            }
+
+                            let deltaX = gesture.location.x - dragStartX
+                            let delta = geometry.size.width > 0
+                                ? Double(deltaX / geometry.size.width)
+                                : 0
+
+                            dragVolume = min(1, max(0, dragStartVolume + delta))
+                            value = Float(dragVolume)
+                        }
+                        .onEnded { _ in
+                            value = Float(min(1, max(0, dragVolume)))
+                            withAnimation(.easeOut(duration: 0.16)) {
+                                isHolding = false
+                            }
+                        }
+                )
+            }
+            .frame(height: 20)
+
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.88))
+                .frame(width: 24)
+        }
+        .background(
+            SystemVolumeBridge(value: $value)
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+        )
+        .onAppear {
+            value = AVAudioSession.sharedInstance().outputVolume
+        }
+    }
+}
+
+private struct SystemVolumeBridge: UIViewRepresentable {
+    @Binding var value: Float
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(value: $value)
+    }
+
+    func makeUIView(context: Context) -> MPVolumeView {
+        let view = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        view.showsRouteButton = false
+        view.showsVolumeSlider = true
+
+        if let slider = view.subviews.compactMap({ $0 as? UISlider }).first {
+            context.coordinator.slider = slider
+            slider.value = AVAudioSession.sharedInstance().outputVolume
+        }
+
+        context.coordinator.startObservingSystemVolume()
+        return view
+    }
+
+    func updateUIView(_ view: MPVolumeView, context: Context) {
+        context.coordinator.value = $value
+        context.coordinator.setSystemVolume(value)
+    }
+
+    static func dismantleUIView(_ view: MPVolumeView, coordinator: Coordinator) {
+        coordinator.stopObservingSystemVolume()
+    }
+
+    final class Coordinator: NSObject {
+        var value: Binding<Float>
+        weak var slider: UISlider?
+        private var volumeObservation: NSKeyValueObservation?
+
+        init(value: Binding<Float>) {
+            self.value = value
+        }
+
+        func startObservingSystemVolume() {
+            guard volumeObservation == nil else { return }
+
+            let session = AVAudioSession.sharedInstance()
+            try? session.setActive(true)
+
+            volumeObservation = session.observe(
+                \.outputVolume,
+                options: [.initial, .new]
+            ) { [weak self] _, change in
+                guard let self, let newValue = change.newValue else { return }
+
+                DispatchQueue.main.async {
+                    self.value.wrappedValue = newValue
+                }
+            }
+        }
+
+        func setSystemVolume(_ volume: Float) {
+            let clamped = min(1, max(0, volume))
+            guard let slider, abs(slider.value - clamped) > 0.001 else { return }
+            slider.setValue(clamped, animated: false)
+        }
+
+        func stopObservingSystemVolume() {
+            volumeObservation?.invalidate()
+            volumeObservation = nil
+        }
+    }
+}
 
 struct AppleMusicScrubberBar: View {
     let progress: Double
