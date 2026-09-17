@@ -280,7 +280,7 @@ struct NowPlayingView: View {
                 audioManager.seek(to: progress * duration)
             }
 
-            playbackControls
+            playbackControls()
 
             systemVolumeSlider
                 .padding(.top, 2)
@@ -1314,7 +1314,6 @@ struct AppleMusicMovingBleedBackground: View {
 
     // MARK: - Main Bleed Layer
 
-    @ViewBuilder
     private func bleedLayer(
         image: UIImage,
         time: TimeInterval,
@@ -1362,7 +1361,7 @@ struct AppleMusicMovingBleedBackground: View {
             sin(t * 0.21 + phase) * rotation
             + cos(t * 0.13 + 2.4) * rotation * 0.45
 
-        Image(uiImage: image)
+        let renderedArtwork = Image(uiImage: image)
             .resizable()
             .scaledToFill()
             .frame(
@@ -1373,20 +1372,16 @@ struct AppleMusicMovingBleedBackground: View {
                 scale + breathing,
                 anchor: .center
             )
-            .rotationEffect(
-                .degrees(angle)
-            )
+            .rotationEffect(.degrees(angle))
             .offset(
                 x: CGFloat(x),
                 y: CGFloat(y)
             )
-            .blur(
-                radius: blur,
-                opaque: true
-            )
+            .blur(radius: blur, opaque: true)
             .saturation(1.12)
-            .brightness(0.0)
             .opacity(opacity)
+
+        return AnyView(renderedArtwork)
     }
 
     // MARK: - Ambient Layer
