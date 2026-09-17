@@ -136,7 +136,15 @@ struct NowPlayingView: View {
     private func compactNowPlayingLayout(geometry: GeometryProxy) -> some View {
         let horizontalInset: CGFloat = 32
         let availableWidth = max(0, geometry.size.width - horizontalInset * 2)
-        let artworkSize = min(availableWidth, 360)
+
+        // Keep the lower control area anchored to the bottom. The artwork gets
+        // all remaining vertical space instead of being capped at 360pt.
+        let fixedBottomArea: CGFloat = 285
+        let topInset: CGFloat = 72
+        let artworkSize = min(
+            availableWidth,
+            max(220, geometry.size.height - topInset - fixedBottomArea)
+        )
 
         return VStack(spacing: 0) {
             ZStack {
@@ -163,7 +171,7 @@ struct NowPlayingView: View {
             .gesture(dismissGesture(height: geometry.size.height))
 
             trackInformation
-                .padding(.top, 28)
+                .padding(.top, 20)
 
             AppleMusicScrubberBar(
                 progress: clock.playbackProgress,
@@ -175,22 +183,25 @@ struct NowPlayingView: View {
 
                 audioManager.seek(to: progress * duration)
             }
-            .padding(.top, 10)
+            .padding(.top, 8)
+
+            // Push the entire control group to the bottom. This is the key
+            // change: no large empty region remains between volume and actions,
+            // while the artwork expands into the space above it.
+            Spacer(minLength: 12)
 
             playbackControls(compact: true)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 10)
 
             systemVolumeSlider
-                .padding(.top, 18)
-
-            Spacer(minLength: 0)
+                .padding(.top, 14)
 
             compactBottomActions
-                .padding(.bottom, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
         }
         .padding(.horizontal, horizontalInset)
-        .padding(.top, 135)
+        .padding(.top, topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeInOut(duration: 0.28), value: showLyrics)
     }
