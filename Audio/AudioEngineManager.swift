@@ -60,6 +60,16 @@ class AudioEngineManager: ObservableObject {
     @Published var isPlaying:
         Bool = false
 
+    /// App playback volume used by the compact Now Playing volume slider.
+    /// This is AVPlayer volume, not the device's system volume.
+    @Published private(set) var volume: Float = 1.0
+
+    func setVolume(_ value: Float) {
+        let clamped = min(1.0, max(0.0, value))
+        volume = clamped
+        player.volume = clamped
+    }
+
     /// Fast-ticking playback position, kept off this object on purpose.
     /// See PlaybackClock above. Read/write it exactly like before
     /// (`currentTime = ...`) — these are passthroughs, not new call sites.
@@ -533,7 +543,7 @@ class AudioEngineManager: ObservableObject {
         )
 
         player.volume =
-            1.0
+            volume
 
 
         let restoredPosition =
@@ -1024,7 +1034,7 @@ class AudioEngineManager: ObservableObject {
         } else {
 
             player.volume =
-                1.0
+                volume
 
             player.replaceCurrentItem(
                 with:
@@ -1115,6 +1125,8 @@ class AudioEngineManager: ObservableObject {
         var currentVol:
             Float = 0.0
 
+        let targetVolume = volume
+
         player.volume =
             0.0
 
@@ -1141,17 +1153,17 @@ class AudioEngineManager: ObservableObject {
                 0.15
 
 
-            if currentVol >= 1.0 {
+            if currentVol >= targetVolume {
 
                 self.player.volume =
-                    1.0
+                    targetVolume
 
                 timer.invalidate()
 
             } else {
 
                 self.player.volume =
-                    currentVol
+                    min(currentVol, targetVolume)
             }
         }
     }
