@@ -86,16 +86,39 @@ struct Playlist: Identifiable, Codable {
     }
 }
 
+struct LyricWord: Identifiable, Equatable {
+    let id = UUID()
+    let text: String
+    let startTime: TimeInterval
+    let endTime: TimeInterval
+}
+
 struct LyricLine: Identifiable, Equatable {
     let id = UUID()
     let time: TimeInterval
     let text: String
     let romanized: String?
+    let endTime: TimeInterval
+    let words: [LyricWord]
 
-    init(time: TimeInterval, text: String) {
+    init(
+        time: TimeInterval,
+        text: String,
+        endTime: TimeInterval? = nil,
+        words: [LyricWord] = []
+    ) {
         self.time = time
         self.text = text
         self.romanized = text.toJapaneseRomaji()
+        self.endTime = max(
+            time,
+            endTime ?? words.last?.endTime ?? time
+        )
+        self.words = words
+    }
+
+    var hasWordTiming: Bool {
+        !words.isEmpty
     }
 }
 
