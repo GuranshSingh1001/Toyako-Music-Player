@@ -735,7 +735,8 @@ private struct SmoothLyricsView: View {
                     WordTimedLyricLine(
                         line: line,
                         active: active,
-                        currentTime: currentTime
+                        currentTime: currentTime,
+                        isPlaying: audioManager.isPlaying
                     )
                 } else {
                     Text(line.text)
@@ -813,6 +814,7 @@ private struct WordTimedLyricLine: View {
     let line: LyricLine
     let active: Bool
     let currentTime: TimeInterval
+    let isPlaying: Bool
 
     @State private var anchorTime: TimeInterval = 0
     @State private var anchorDate = Date()
@@ -823,7 +825,9 @@ private struct WordTimedLyricLine: View {
                 TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
                     WordFlow(
                         words: line.words,
-                        currentTime: interpolatedTime(at: timeline.date),
+                        currentTime: isPlaying
+                            ? interpolatedTime(at: timeline.date)
+                            : currentTime,
                         active: true
                     )
                 }
@@ -852,16 +856,24 @@ private struct WordTimedLyricLine: View {
             anchorDate = Date()
         }
         .onChange(of: currentTime) { _, newValue in
-            // The audio clock is intentionally throttled to protect the rest
-            // of the UI. Re-anchor the 60 FPS visual clock whenever the real
-            // playback position changes, including seeks.
+            // Re-anchor whenever the real playback position changes, including
+            // seeks. This is also important when pausing in the middle of a
+            // word: the visual clock must resume from exactly this position.
             anchorTime = newValue
             anchorDate = Date()
+        }
+        .onChange(of: isPlaying) { _, playing in
+            // Never let wall-clock time advance lyrics while audio is paused.
+            // When playback resumes, start interpolation from the exact audio
+            // position at which the pause occurred.
+            anchorTime = currentTime
+            anchorDate = Date()
+            _ = playing
         }
     }
 
     private func interpolatedTime(at date: Date) -> TimeInterval {
-        guard active else { return currentTime }
+        guard active, isPlaying else { return currentTime }
         return anchorTime + max(0, date.timeIntervalSince(anchorDate))
     }
 }
