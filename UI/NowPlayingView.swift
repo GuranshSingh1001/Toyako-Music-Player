@@ -1054,6 +1054,10 @@ private struct FlowLayout: Layout {
 
     struct Cache {}
 
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache()
+    }
+
     private struct LayoutItem {
         let index: Int
         let x: CGFloat
