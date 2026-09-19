@@ -574,17 +574,20 @@ private struct SmoothLyricsView: View {
                 )
             }
             .onAppear {
-                guard let activeID else { return }
-                DispatchQueue.main.async {
-                    proxy.scrollTo(activeID, anchor: .center)
-                }
+                scrollToCurrentLyric(proxy: proxy, animated: false)
+            }
+            // Lyrics are loaded asynchronously after NowPlayingView can already
+            // be on screen. In that case the original onAppear fires too early,
+            // before LazyVStack has the current lyric to scroll to. Re-anchor when
+            // the lyric collection arrives.
+            .onChange(of: lyrics.map(\.id)) { _, _ in
+                scrollToCurrentLyric(proxy: proxy, animated: false)
             }
             .onChange(of: trackID) { _, newTrackID in
-                guard newTrackID != nil, let firstLyric = lyrics.first else { return }
+                guard newTrackID != nil else { return }
+                // Give the new lyric collection one layout pass before scrolling.
                 DispatchQueue.main.async {
-                    withAnimation(.easeOut(duration: 0.55)) {
-                        proxy.scrollTo(firstLyric.id, anchor: .center)
-                    }
+                    scrollToCurrentLyric(proxy: proxy, animated: false)
                 }
             }
             .onChange(of: activeID) { _, newID in
@@ -594,6 +597,33 @@ private struct SmoothLyricsView: View {
                 withAnimation(.timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.62)) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
+            }
+        }
+    }
+
+    private func scrollToCurrentLyric(
+        proxy: ScrollViewProxy,
+        animated: Bool
+    ) {
+        guard !lyrics.isEmpty else { return }
+
+        // Prefer the actual active line. If playback is before the first timed
+        // line, show the first line rather than leaving the lyric area empty.
+        // This also makes the initial presentation deterministic.
+        let targetID = activeID
+            ?? lyrics.first(where: { $0.time > currentTime })?.id
+            ?? lyrics.last?.id
+
+        guard let targetID else { return }
+
+        // LazyVStack sometimes needs one run-loop turn before its target exists.
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.62)) {
+                    proxy.scrollTo(targetID, anchor: .center)
+                }
+            } else {
+                proxy.scrollTo(targetID, anchor: .center)
             }
         }
     }
