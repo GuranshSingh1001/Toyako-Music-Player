@@ -564,7 +564,8 @@ private struct SmoothLyricsView: View {
                         lyricLine(
                             line: line,
                             active: line.id == activeID,
-                            currentTime: currentTime
+                            currentTime: currentTime,
+                            isPlaying: isPlaying
                         )
                         .id(line.id)
                         .contentShape(Rectangle())
@@ -689,7 +690,8 @@ private struct SmoothLyricsView: View {
     private func lyricLine(
         line: LyricLine,
         active: Bool,
-        currentTime: TimeInterval
+        currentTime: TimeInterval,
+        isPlaying: Bool
     ) -> some View {
 
         VStack(
@@ -738,7 +740,7 @@ private struct SmoothLyricsView: View {
                         line: line,
                         active: active,
                         currentTime: currentTime,
-                        isPlaying: audioManager.isPlaying
+                        isPlaying: isPlaying
                     )
                 } else {
                     Text(line.text)
