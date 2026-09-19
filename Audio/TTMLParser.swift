@@ -7,7 +7,7 @@ struct TTMLParser {
             return []
         }
 
-        let delegate = ParserDelegate()
+        let delegate = TTMLDelegate()
 
         let parser = XMLParser(data: data)
         parser.delegate = delegate
@@ -18,19 +18,16 @@ struct TTMLParser {
             return []
         }
 
-        return delegate.paragraphs
+        return delegate.lines
             .compactMap { $0.makeLyricLine() }
             .sorted { $0.time < $1.time }
     }
 
-    // MARK: - XML Delegate
+    private final class TTMLDelegate: NSObject, XMLParserDelegate {
+        var lines: [TTMLParagraph] = []
 
-    private final class ParserDelegate: NSObject, XMLParserDelegate {
-
-        var paragraphs: [Paragraph] = []
-
-        private var currentParagraph: Paragraph?
-        private var currentSpan: Span?
+        private var paragraph: TTMLParagraph?
+        private var span: TTMLSpan?
 
         func parser(
             _ parser: XMLParser,
@@ -39,27 +36,23 @@ struct TTMLParser {
             qualifiedName qName: String?,
             attributes attributeDict: [String: String] = [:]
         ) {
-
             let name = localName(elementName)
 
             if name == "p" {
-                currentParagraph = Paragraph(
+                paragraph = TTMLParagraph(
                     start: parseTime(attributeDict["begin"]),
                     end: parseTime(attributeDict["end"]),
                     duration: parseTime(attributeDict["dur"])
                 )
-
-                currentSpan = nil
+                span = nil
                 return
             }
 
-            guard name == "span",
-                  currentParagraph != nil
-            else {
+            guard name == "span", paragraph != nil else {
                 return
             }
 
-            currentSpan = Span(
+            span = TTMLSpan(
                 start: parseTime(attributeDict["begin"]),
                 end: parseTime(attributeDict["end"]),
                 duration: parseTime(attributeDict["dur"])
@@ -70,15 +63,10 @@ struct TTMLParser {
             _ parser: XMLParser,
             foundCharacters string: String
         ) {
-
-            guard currentParagraph != nil else {
-                return
-            }
-
-            if let currentSpan {
-                currentSpan.text += string
-            } else {
-                currentParagraph?.directText += string
+            if let span {
+                span.text += string
+            } else if paragraph != nil {
+                paragraph?.plainText += string
             }
         }
 
@@ -88,125 +76,79 @@ struct TTMLParser {
             namespaceURI: String?,
             qualifiedName qName: String?
         ) {
-
             let name = localName(elementName)
 
             if name == "span" {
-                if let span = currentSpan {
-                    currentParagraph?.spans.append(span)
+                if let span {
+                    paragraph?.spans.append(span)
                 }
-
-                currentSpan = nil
-
+                span = nil
             } else if name == "p" {
-
-                if let paragraph = currentParagraph {
-                    paragraphs.append(paragraph)
+                if let paragraph {
+                    lines.append(paragraph)
                 }
-
-                currentParagraph = nil
-                currentSpan = nil
+                self.paragraph = nil
+                self.span = nil
             }
         }
 
         private func localName(_ name: String) -> String {
-            if let last = name.split(separator: ":").last {
-                return String(last)
-            }
-
-            return name
+            name.split(separator: ":").last.map(String.init) ?? name
         }
 
         private func parseTime(_ value: String?) -> TimeInterval? {
+            guard let value else { return nil }
 
-            guard let value else {
-                return nil
+            let string = value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+
+            guard !string.isEmpty else { return nil }
+
+            if let seconds = Double(string) {
+                return seconds
             }
 
-            let raw = value
-                .trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
-
-            guard !raw.isEmpty else {
-                return nil
-            }
-
-            // Plain seconds:
-            // 12.45
-            if let seconds = Double(raw) {
-                return max(0, seconds)
-            }
-
-            let lower = raw.lowercased()
-
-            // milliseconds:
-            // 1250ms
-            if lower.hasSuffix("ms") {
-                let number = String(
-                    lower.dropLast(2)
-                )
-
-                if let value = Double(number) {
-                    return max(0, value / 1000.0)
+            if string.hasSuffix("ms") {
+                let number = String(string.dropLast(2))
+                if let milliseconds = Double(number) {
+                    return milliseconds / 1000.0
                 }
             }
 
-            // seconds:
-            // 12.45s
-            if lower.hasSuffix("s") {
-                let number = String(
-                    lower.dropLast()
-                )
-
-                if let value = Double(number) {
-                    return max(0, value)
+            if string.hasSuffix("s") {
+                let number = String(string.dropLast())
+                if let seconds = Double(number) {
+                    return seconds
                 }
             }
 
-            // MM:SS.mmm
-            // HH:MM:SS.mmm
-            let components = lower.split(
-                separator: ":"
-            )
+            let components = string.split(separator: ":")
 
             if components.count == 2,
                let minutes = Double(components[0]),
                let seconds = Double(components[1]) {
-
-                return max(
-                    0,
-                    minutes * 60 + seconds
-                )
+                return minutes * 60.0 + seconds
             }
 
             if components.count == 3,
                let hours = Double(components[0]),
                let minutes = Double(components[1]),
                let seconds = Double(components[2]) {
-
-                return max(
-                    0,
-                    hours * 3600 +
-                    minutes * 60 +
-                    seconds
-                )
+                return hours * 3600.0 + minutes * 60.0 + seconds
             }
 
             return nil
         }
     }
 
-    // MARK: - Paragraph
+    private final class TTMLParagraph {
+        let start: TimeInterval?
+        let end: TimeInterval?
+        let duration: TimeInterval?
 
-    private final class Paragraph {
-
-        var start: TimeInterval?
-        var end: TimeInterval?
-        var duration: TimeInterval?
-
-        var directText = ""
-        var spans: [Span] = []
+        var plainText = ""
+        var spans: [TTMLSpan] = []
 
         init(
             start: TimeInterval?,
@@ -219,105 +161,75 @@ struct TTMLParser {
         }
 
         func makeLyricLine() -> LyricLine? {
-
-            let timedSpans: [TimedSpan] = spans.compactMap {
-                span in
-
+            let timedWords: [LyricWord] = spans.compactMap { span in
                 guard let start = span.start else {
                     return nil
                 }
 
-                let text = normalize(
-                    span.text
-                )
+                let text = span.text
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
 
                 guard !text.isEmpty else {
                     return nil
                 }
 
-                let resolvedEnd: TimeInterval
+                let end: TimeInterval
 
-                if let end = span.end {
-                    resolvedEnd = max(
-                        start,
-                        end
-                    )
+                if let explicitEnd = span.end {
+                    end = max(start, explicitEnd)
                 } else if let duration = span.duration {
-                    resolvedEnd = start + max(
-                        0,
-                        duration
-                    )
+                    end = start + max(0, duration)
                 } else {
-                    resolvedEnd = start
+                    end = start
                 }
 
-                return TimedSpan(
+                return LyricWord(
                     text: text,
-                    start: start,
-                    end: resolvedEnd
+                    startTime: start,
+                    endTime: end
                 )
             }
 
             let lineStart =
                 start ??
-                timedSpans.first?.start ??
+                timedWords.first?.startTime ??
                 0
 
             let lineEnd: TimeInterval
 
             if let end {
-                lineEnd = max(
-                    lineStart,
-                    end
-                )
+                lineEnd = max(lineStart, end)
             } else if let duration {
-                lineEnd = lineStart + max(
-                    0,
-                    duration
-                )
+                lineEnd = lineStart + max(0, duration)
             } else {
-                lineEnd =
-                    timedSpans.last?.end ??
-                    lineStart
+                lineEnd = timedWords.last?.endTime ?? lineStart
+            }
+
+            let fallbackText = plainText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !timedWords.isEmpty || !fallbackText.isEmpty else {
+                return nil
             }
 
             let text: String
 
-            if timedSpans.isEmpty {
-                text = normalize(
-                    directText
-                )
+            if !timedWords.isEmpty {
+                text = timedWords.map(\.text).joined(separator: " ")
             } else {
-                text = join(
-                    timedSpans.map(\.text)
-                )
-            }
-
-            guard !text.isEmpty else {
-                return nil
-            }
-
-            let words = timedSpans.map {
-                LyricWord(
-                    text: $0.text,
-                    startTime: $0.start,
-                    endTime: $0.end
-                )
+                text = fallbackText
             }
 
             return LyricLine(
                 time: lineStart,
                 text: text,
                 endTime: lineEnd,
-                words: words
+                words: timedWords
             )
         }
     }
 
-    // MARK: - Span
-
-    private final class Span {
-
+    private final class TTMLSpan {
         let start: TimeInterval?
         let end: TimeInterval?
         let duration: TimeInterval?
@@ -333,75 +245,5 @@ struct TTMLParser {
             self.end = end
             self.duration = duration
         }
-    }
-
-    private struct TimedSpan {
-
-        let text: String
-        let start: TimeInterval
-        let end: TimeInterval
-    }
-
-    // MARK: - Text Helpers
-
-    private static func normalize(
-        _ text: String
-    ) -> String {
-
-        text
-            .replacingOccurrences(
-                of: "\n",
-                with: " "
-            )
-            .replacingOccurrences(
-                of: "\r",
-                with: " "
-            )
-            .split(
-                whereSeparator: {
-                    $0.isWhitespace
-                }
-            )
-            .joined(
-                separator: " "
-            )
-            .trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-    }
-
-    private static func join(
-        _ pieces: [String]
-    ) -> String {
-
-        var result = ""
-
-        for piece in pieces {
-
-            guard !piece.isEmpty else {
-                continue
-            }
-
-            if result.isEmpty {
-                result = piece
-                continue
-            }
-
-            if let first = piece.first,
-               first.isPunctuation ||
-               first.isSymbol {
-
-                result += piece
-
-            } else {
-
-                result += " " + piece
-            }
-        }
-
-        return result
-            .trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
     }
 }
