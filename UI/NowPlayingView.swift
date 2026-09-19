@@ -814,20 +814,55 @@ private struct WordTimedLyricLine: View {
     let active: Bool
     let currentTime: TimeInterval
 
+    @State private var anchorTime: TimeInterval = 0
+    @State private var anchorDate = Date()
+
     var body: some View {
-        WordFlow(words: line.words, currentTime: currentTime, active: active)
-            .font(
-                .system(
-                    size: 50,
-                    weight: .bold,
-                    design: .rounded
+        Group {
+            if active {
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+                    WordFlow(
+                        words: line.words,
+                        currentTime: interpolatedTime(at: timeline.date),
+                        active: true
+                    )
+                }
+            } else {
+                WordFlow(
+                    words: line.words,
+                    currentTime: currentTime,
+                    active: false
                 )
+            }
+        }
+        .font(
+            .system(
+                size: 50,
+                weight: .bold,
+                design: .rounded
             )
-            .foregroundStyle(.white)
-            .opacity(active ? 1 : 0.30)
-            .blur(radius: active ? 0 : 1.8)
-            .scaleEffect(active ? 1 : 0.985, anchor: .leading)
-            .animation(.easeInOut(duration: 0.22), value: active)
+        )
+        .foregroundStyle(.white)
+        .opacity(active ? 1 : 0.30)
+        .blur(radius: active ? 0 : 1.8)
+        .scaleEffect(active ? 1 : 0.985, anchor: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .onAppear {
+            anchorTime = currentTime
+            anchorDate = Date()
+        }
+        .onChange(of: currentTime) { _, newValue in
+            // The audio clock is intentionally throttled to protect the rest
+            // of the UI. Re-anchor the 60 FPS visual clock whenever the real
+            // playback position changes, including seeks.
+            anchorTime = newValue
+            anchorDate = Date()
+        }
+    }
+
+    private func interpolatedTime(at date: Date) -> TimeInterval {
+        guard active else { return currentTime }
+        return anchorTime + max(0, date.timeIntervalSince(anchorDate))
     }
 }
 
@@ -837,38 +872,199 @@ private struct WordFlow: View {
     let active: Bool
 
     var body: some View {
-        Text(attributedText)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var attributedText: AttributedString {
-        var output = AttributedString()
-
-        for (index, word) in words.enumerated() {
-            var part = AttributedString(word.text)
-            let progress = active ? wordProgress(word) : 0
-
-            // Base text is translucent. A foreground attribute cannot itself
-            // be partially clipped, so use SwiftUI's character-level color
-            // interpolation to create a close Apple Music-style sweep.
-            let opacity = 0.35 + (0.65 * progress)
-            part.foregroundColor = .white.opacity(opacity)
-            output.append(part)
-
-            if index < words.count - 1 {
-                output.append(AttributedString(" "))
+        FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
+            ForEach(words) { word in
+                WordReveal(
+                    word: word,
+                    progress: active ? wordProgress(word) : 0,
+                    active: active
+                )
             }
         }
-
-        return output
     }
 
     private func wordProgress(_ word: LyricWord) -> Double {
-        if currentTime >= word.endTime { return 1 }
-        if currentTime <= word.startTime { return 0 }
+        if currentTime >= word.endTime {
+            return 1
+        }
 
-        let duration = max(0.001, word.endTime - word.startTime)
-        return min(1, max(0, (currentTime - word.startTime) / duration))
+        if currentTime <= word.startTime {
+            return 0
+        }
+
+        let duration = max(
+            0.001,
+            word.endTime - word.startTime
+        )
+
+        let raw = min(
+            1,
+            max(
+                0,
+                (currentTime - word.startTime) / duration
+            )
+        )
+
+        // Smoothstep gives the highlight a continuous slope instead of the
+        // harsh step-by-word effect. Timing still comes directly from TTML.
+        return raw * raw * (3.0 - 2.0 * raw)
+    }
+}
+
+private struct WordReveal: View {
+    let word: LyricWord
+    let progress: Double
+    let active: Bool
+
+    var body: some View {
+        Text(word.text)
+            .foregroundStyle(.white.opacity(active ? 0.22 : 0.30))
+            .overlay(alignment: .leading) {
+                GeometryReader { geometry in
+                    Text(word.text)
+                        .foregroundStyle(.white)
+                        .frame(
+                            width: geometry.size.width,
+                            alignment: .leading
+                        )
+                        .clipped()
+                        .mask(alignment: .leading) {
+                            Rectangle()
+                                .frame(
+                                    width: geometry.size.width * progress,
+                                    height: geometry.size.height
+                                )
+                        }
+                }
+                .allowsHitTesting(false)
+            }
+            .fixedSize()
+    }
+}
+
+private struct FlowLayout: Layout {
+    var horizontalSpacing: CGFloat = 8
+    var verticalSpacing: CGFloat = 6
+
+    init(
+        horizontalSpacing: CGFloat = 8,
+        verticalSpacing: CGFloat = 6
+    ) {
+        self.horizontalSpacing = horizontalSpacing
+        self.verticalSpacing = verticalSpacing
+    }
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        let result = arrange(
+            maxWidth: maxWidth,
+            subviews: subviews,
+            place: false
+        )
+        return result.size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) {
+        let result = arrange(
+            maxWidth: bounds.width,
+            subviews: subviews,
+            place: true
+        )
+
+        for item in result.items {
+            subviews[item.index].place(
+                at: CGPoint(
+                    x: bounds.minX + item.x,
+                    y: bounds.minY + item.y
+                ),
+                proposal: ProposedViewSize(
+                    width: item.width,
+                    height: item.height
+                )
+            )
+        }
+    }
+
+    private func arrange(
+        maxWidth: CGFloat,
+        subviews: Subviews,
+        place: Bool
+    ) -> LayoutResult {
+        var items: [LayoutItem] = []
+
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+
+            let proposedX = x == 0
+                ? 0
+                : x + horizontalSpacing
+
+            if proposedX + size.width > maxWidth,
+               x > 0 {
+                x = 0
+                y += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+
+            let finalX = x == 0
+                ? 0
+                : x + horizontalSpacing
+
+            items.append(
+                LayoutItem(
+                    index: index,
+                    x: finalX,
+                    y: y,
+                    width: size.width,
+                    height: size.height
+                )
+            )
+
+            x = finalX + size.width
+            rowHeight = max(rowHeight, size.height)
+            usedWidth = max(usedWidth, x)
+        }
+
+        let height = items.isEmpty
+            ? 0
+            : y + rowHeight
+
+        return LayoutResult(
+            size: CGSize(
+                width: min(maxWidth, usedWidth),
+                height: height
+            ),
+            items: items
+        )
+    }
+
+    struct Cache {}
+
+    private struct LayoutItem {
+        let index: Int
+        let x: CGFloat
+        let y: CGFloat
+        let width: CGFloat
+        let height: CGFloat
+    }
+
+    private struct LayoutResult {
+        let size: CGSize
+        let items: [LayoutItem]
     }
 }
 
