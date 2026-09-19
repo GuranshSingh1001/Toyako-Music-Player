@@ -55,7 +55,7 @@ struct NowPlayingView: View {
                             .contentShape(Rectangle())
                             .gesture(dismissGesture(height: geometry.size.height))
 
-                        lyricsPane
+                        lyricsPane(compact: false)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .padding(.horizontal, 48)
@@ -160,7 +160,7 @@ struct NowPlayingView: View {
                     .opacity(showLyrics ? 0 : 1)
                     .allowsHitTesting(!showLyrics)
 
-                lyricsPane
+                lyricsPane(compact: true)
                     .frame(
                         maxWidth: .infinity,
                         minHeight: artworkSize,
@@ -565,9 +565,9 @@ struct NowPlayingView: View {
 
 // MARK: - Lyrics
 
-private var lyricsPane: some View {
+private func lyricsPane(compact: Bool = false) -> some View {
     let lyrics = audioManager.currentLyrics
-    let activeID = activeLyricID(lyrics: lyrics)
+    let activeID = activeLyricID(lyrics: lyrics, currentTime: clock.currentTime)
     let trackID = audioManager.currentTrack?.id
 
     return Group {
@@ -588,7 +588,8 @@ private var lyricsPane: some View {
                 activeID: activeID,
                 trackID: trackID,
                 currentTime: clock.currentTime,
-                isPlaying: audioManager.isPlaying
+                isPlaying: audioManager.isPlaying,
+                compact: compact
             ) { time in
                 audioManager.seek(to: time)
             }
@@ -596,9 +597,14 @@ private var lyricsPane: some View {
     }
 }
 
-private func activeLyricID(lyrics: [LyricLine]) -> UUID? {
+private func activeLyricID(lyrics: [LyricLine], currentTime: TimeInterval) -> UUID? {
     guard !lyrics.isEmpty else { return nil }
-    return lyrics.last { $0.time <= audioManager.currentTime }?.id
+
+    // Always derive the active line from the same playback clock used by
+    // SmoothLyricsView. Using AudioEngineManager.currentTime here could be one
+    // update behind when Now Playing is first presented, causing the current
+    // lyric to be temporarily missing until the next line change.
+    return lyrics.last { $0.time <= currentTime }?.id
 }
 
 // MARK: - Smooth Lyrics View
@@ -615,12 +621,13 @@ private struct SmoothLyricsView: View {
     let trackID: UUID?
     let currentTime: TimeInterval
     let isPlaying: Bool
+    let compact: Bool
     let onSeek: (TimeInterval) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 30) {
+                VStack(alignment: .leading, spacing: 30) {
                     ForEach(lyrics) { line in
                         lyricLine(
                             line: line,
@@ -636,8 +643,9 @@ private struct SmoothLyricsView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 220)
+                .padding(.vertical, compact ? 140 : 220)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .mask {
                 LinearGradient(
                     stops: [
@@ -658,7 +666,12 @@ private struct SmoothLyricsView: View {
             // before LazyVStack has the current lyric to scroll to. Re-anchor when
             // the lyric collection arrives.
             .onChange(of: lyrics.map(\.id)) { _, _ in
-                scrollToCurrentLyric(proxy: proxy, animated: false)
+                DispatchQueue.main.async {
+                    scrollToCurrentLyric(proxy: proxy, animated: false)
+                    DispatchQueue.main.async {
+                        scrollToCurrentLyric(proxy: proxy, animated: false)
+                    }
+                }
             }
             .onChange(of: trackID) { _, newTrackID in
                 guard newTrackID != nil else { return }
