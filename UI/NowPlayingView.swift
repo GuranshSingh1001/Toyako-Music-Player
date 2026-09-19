@@ -512,7 +512,8 @@ private var lyricsPane: some View {
             SmoothLyricsView(
                 lyrics: lyrics,
                 activeID: activeID,
-                trackID: trackID
+                trackID: trackID,
+                currentTime: clock.currentTime
             ) { time in
                 audioManager.seek(to: time)
             }
@@ -541,6 +542,7 @@ private struct SmoothLyricsView: View {
     let lyrics: [LyricLine]
     let activeID: UUID?
     let trackID: UUID?
+    let currentTime: TimeInterval
     let onSeek: (TimeInterval) -> Void
 
     var body: some View {
@@ -559,7 +561,8 @@ private struct SmoothLyricsView: View {
 
                         lyricLine(
                             line: line,
-                            active: line.id == activeID
+                            active: line.id == activeID,
+                            currentTime: currentTime
                         )
                         .id(line.id)
                         .contentShape(Rectangle())
@@ -683,7 +686,8 @@ private struct SmoothLyricsView: View {
     @ViewBuilder
     private func lyricLine(
         line: LyricLine,
-        active: Bool
+        active: Bool,
+        currentTime: TimeInterval
     ) -> some View {
 
         VStack(
@@ -727,36 +731,44 @@ private struct SmoothLyricsView: View {
 
             } else {
 
-                Text(line.text)
-                    .font(
-                        .system(
-                            size: 50,
-                            weight: .bold,
-                            design: .rounded
+                if line.hasWordTiming {
+                    WordTimedLyricLine(
+                        line: line,
+                        active: active,
+                        currentTime: currentTime
+                    )
+                } else {
+                    Text(line.text)
+                        .font(
+                            .system(
+                                size: 50,
+                                weight: .bold,
+                                design: .rounded
+                            )
                         )
-                    )
-                    .foregroundStyle(.white)
-                    .opacity(
-                        active
-                            ? 1
-                            : 0.30
-                    )
-                    .blur(
-                        radius:
+                        .foregroundStyle(.white)
+                        .opacity(
                             active
-                                ? 0
-                                : 1.8
-                    )
-                    .scaleEffect(
-                        active
-                            ? 1
-                            : 0.985,
-                        anchor: .leading
-                    )
-                    .fixedSize(
-                        horizontal: false,
-                        vertical: true
-                    )
+                                ? 1
+                                : 0.30
+                        )
+                        .blur(
+                            radius:
+                                active
+                                    ? 0
+                                    : 1.8
+                        )
+                        .scaleEffect(
+                            active
+                                ? 1
+                                : 0.985,
+                            anchor: .leading
+                        )
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                }
 
                 if let romanized = line.romanized,
                    !romanized.isEmpty {
@@ -792,6 +804,71 @@ private struct SmoothLyricsView: View {
             .easeInOut(duration: 0.22),
             value: active
         )
+    }
+}
+
+// MARK: - Word-Timed Lyrics
+
+private struct WordTimedLyricLine: View {
+    let line: LyricLine
+    let active: Bool
+    let currentTime: TimeInterval
+
+    var body: some View {
+        WordFlow(words: line.words, currentTime: currentTime, active: active)
+            .font(
+                .system(
+                    size: 50,
+                    weight: .bold,
+                    design: .rounded
+                )
+            )
+            .foregroundStyle(.white)
+            .opacity(active ? 1 : 0.30)
+            .blur(radius: active ? 0 : 1.8)
+            .scaleEffect(active ? 1 : 0.985, anchor: .leading)
+            .animation(.easeInOut(duration: 0.22), value: active)
+    }
+}
+
+private struct WordFlow: View {
+    let words: [LyricWord]
+    let currentTime: TimeInterval
+    let active: Bool
+
+    var body: some View {
+        Text(attributedText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var attributedText: AttributedString {
+        var output = AttributedString()
+
+        for (index, word) in words.enumerated() {
+            var part = AttributedString(word.text)
+            let progress = active ? wordProgress(word) : 0
+
+            // Base text is translucent. A foreground attribute cannot itself
+            // be partially clipped, so use SwiftUI's character-level color
+            // interpolation to create a close Apple Music-style sweep.
+            let opacity = 0.35 + (0.65 * progress)
+            part.foregroundColor = .white.opacity(opacity)
+            output.append(part)
+
+            if index < words.count - 1 {
+                output.append(AttributedString(" "))
+            }
+        }
+
+        return output
+    }
+
+    private func wordProgress(_ word: LyricWord) -> Double {
+        if currentTime >= word.endTime { return 1 }
+        if currentTime <= word.startTime { return 0 }
+
+        let duration = max(0.001, word.endTime - word.startTime)
+        return min(1, max(0, (currentTime - word.startTime) / duration))
     }
 }
 
