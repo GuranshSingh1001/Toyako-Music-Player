@@ -23,6 +23,15 @@ final class PlaybackClock: ObservableObject {
     @Published var playbackProgress: Double = 0.0
 }
 
+// MARK: - Lyrics Sources
+
+struct LyricsSource: Identifiable, Equatable {
+    let id: String
+    let displayName: String
+    let format: String
+    let lyrics: [LyricLine]
+}
+
 // MARK: - Audio Engine Manager
 
 class AudioEngineManager: ObservableObject {
@@ -87,6 +96,13 @@ class AudioEngineManager: ObservableObject {
 
     @Published var currentLyrics:
         [LyricLine] = []
+
+    /// All valid lyric files found for the current track. TTML and LRC are
+    /// kept as separate sources so the user can switch between them without
+    /// changing the audio track.
+    @Published private(set) var lyricsSources: [LyricsSource] = []
+
+    @Published private(set) var selectedLyricsSourceID: String?
 
     @Published var queue:
         [LocalTrack] = []
@@ -1534,151 +1550,105 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Lyrics
 
     private func loadLyrics(
-        for track:
-            LocalTrack
+        for track: LocalTrack
     ) {
+        let fileManager = FileManager.default
+        let audioURL = track.url.standardizedFileURL
+        let directoryURL = audioURL.deletingLastPathComponent()
+        let audioName = audioURL.deletingPathExtension().lastPathComponent
 
-        let fileManager =
-            FileManager.default
-
-        let audioURL =
-            track.url.standardizedFileURL
-
-        let directoryURL =
-            audioURL.deletingLastPathComponent()
-
-        let audioName =
-            audioURL
-                .deletingPathExtension()
-                .lastPathComponent
+        var sources: [LyricsSource] = []
 
         // ---------------------------------------------------------
         // TTML
         //
-        // Example:
-        // 06 DARKSIDE.m4a
-        // 06 DARKSIDE.ttml
-        //
-        // The TTML file must have the same filename stem.
+        // Exact sidecar first: Song.m4a -> Song.ttml
         // ---------------------------------------------------------
+        let exactTTMLURL = directoryURL
+            .appendingPathComponent(audioName)
+            .appendingPathExtension("ttml")
 
-        let exactTTMLURL =
-            directoryURL
-                .appendingPathComponent(
-                    audioName
-                )
-                .appendingPathExtension(
-                    "ttml"
-                )
+        var ttmlURL: URL?
 
-        if fileManager.fileExists(
-            atPath: exactTTMLURL.path
+        if fileManager.fileExists(atPath: exactTTMLURL.path) {
+            ttmlURL = exactTTMLURL
+        } else if let files = try? fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
         ) {
+            ttmlURL = files.first { url in
+                guard url.pathExtension.lowercased() == "ttml" else { return false }
+                let lyricName = url.deletingPathExtension().lastPathComponent
+                return lyricName.compare(
+                    audioName,
+                    options: [.caseInsensitive, .diacriticInsensitive]
+                ) == .orderedSame
+            }
+        }
 
-            if let content =
-                readLyricsFile(
-                    exactTTMLURL
-                ) {
-
-                let parsed =
-                    TTMLParser.parse(
-                        content: content
+        if let ttmlURL,
+           let content = readLyricsFile(ttmlURL) {
+            let parsed = TTMLParser.parse(content: content)
+            if !parsed.isEmpty {
+                sources.append(
+                    LyricsSource(
+                        id: "ttml",
+                        displayName: "Timed Lyrics",
+                        format: "TTML",
+                        lyrics: parsed
                     )
-
-                if !parsed.isEmpty {
-                    currentLyrics =
-                        parsed
-
-                    return
-                }
+                )
             }
         }
 
         // ---------------------------------------------------------
-        // Case-insensitive TTML sidecar lookup.
+        // LRC fallback/source.
         //
-        // This still requires the same filename stem.
+        // It is now retained even when valid TTML exists, so users can
+        // explicitly switch between the two available lyric versions.
         // ---------------------------------------------------------
+        let lrcURL = directoryURL
+            .appendingPathComponent(audioName)
+            .appendingPathExtension("lrc")
 
-        if let files =
-            try? fileManager.contentsOfDirectory(
-                at: directoryURL,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) {
-
-            let matchingTTML =
-                files.first { url in
-
-                    guard url.pathExtension
-                        .lowercased() == "ttml"
-                    else {
-                        return false
-                    }
-
-                    let lyricName =
-                        url
-                            .deletingPathExtension()
-                            .lastPathComponent
-
-                    return lyricName.compare(
-                        audioName,
-                        options: [
-                            .caseInsensitive,
-                            .diacriticInsensitive
-                        ]
-                    ) == .orderedSame
-                }
-
-            if let matchingTTML,
-               let content =
-                    readLyricsFile(
-                        matchingTTML
-                    ) {
-
-                let parsed =
-                    TTMLParser.parse(
-                        content: content
+        if let content = readLyricsFile(lrcURL) {
+            let parsed = LRCParser.parse(content: content)
+            if !parsed.isEmpty {
+                sources.append(
+                    LyricsSource(
+                        id: "lrc",
+                        displayName: "LRC Lyrics",
+                        format: "LRC",
+                        lyrics: parsed
                     )
-
-                if !parsed.isEmpty {
-                    currentLyrics =
-                        parsed
-
-                    return
-                }
+                )
             }
         }
 
-        // ---------------------------------------------------------
-        // LRC fallback
-        // ---------------------------------------------------------
+        lyricsSources = sources
 
-        let lrcURL =
-            directoryURL
-                .appendingPathComponent(
-                    audioName
-                )
-                .appendingPathExtension(
-                    "lrc"
-                )
-
-        if let content =
-            readLyricsFile(
-                lrcURL
-            ) {
-
-            currentLyrics =
-                LRCParser.parse(
-                    content:
-                        content
-                )
-
+        if let preferred = sources.first(where: { $0.id == selectedLyricsSourceID }) {
+            currentLyrics = preferred.lyrics
+        } else if let first = sources.first {
+            selectedLyricsSourceID = first.id
+            currentLyrics = first.lyrics
         } else {
-
-            currentLyrics =
-                []
+            selectedLyricsSourceID = nil
+            currentLyrics = []
         }
+    }
+
+    /// Switches the active lyric source without reloading or interrupting
+    /// playback. The Now Playing lyric view automatically re-anchors to the
+    /// current playback position because currentLyrics is published.
+    func selectLyricsSource(_ sourceID: String) {
+        guard let source = lyricsSources.first(where: { $0.id == sourceID }) else {
+            return
+        }
+
+        selectedLyricsSourceID = source.id
+        currentLyrics = source.lyrics
     }
 
     private func readLyricsFile(
