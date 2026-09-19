@@ -1534,37 +1534,28 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Lyrics
 
     private func loadLyrics(
-        for track:
-            LocalTrack
+        for track: LocalTrack
     ) {
+        let baseURL = track.url.deletingPathExtension()
 
-        let lrcURL =
-            track.url
-                .deletingPathExtension()
-                .appendingPathExtension(
-                    "lrc"
-                )
+        // Prefer Apple Music-style TTML because it can contain precise
+        // word-level timing. Fall back to LRC for normal line-synced lyrics.
+        let ttmlURL = baseURL.appendingPathExtension("ttml")
 
+        if let content = try? String(contentsOf: ttmlURL, encoding: .utf8) {
+            let parsed = TTMLParser.parse(content: content)
+            if !parsed.isEmpty {
+                currentLyrics = parsed
+                return
+            }
+        }
 
-        if let content =
-            try? String(
-                contentsOf:
-                    lrcURL,
+        let lrcURL = baseURL.appendingPathExtension("lrc")
 
-                encoding:
-                    .utf8
-            ) {
-
-            currentLyrics =
-                LRCParser.parse(
-                    content:
-                        content
-                )
-
+        if let content = try? String(contentsOf: lrcURL, encoding: .utf8) {
+            currentLyrics = LRCParser.parse(content: content)
         } else {
-
-            currentLyrics =
-                []
+            currentLyrics = []
         }
     }
 
