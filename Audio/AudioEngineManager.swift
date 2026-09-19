@@ -1534,32 +1534,209 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Lyrics
 
     private func loadLyrics(
-        for track: LocalTrack
+        for track:
+            LocalTrack
     ) {
-        let baseURL = track.url.deletingPathExtension()
 
-        // Prefer Apple Music-style TTML because it can contain precise
-        // word-level timing. Fall back to LRC for normal line-synced lyrics.
-        let ttmlURL = baseURL.appendingPathExtension("ttml")
+        let fileManager =
+            FileManager.default
 
-        if let content = try? String(contentsOf: ttmlURL, encoding: .utf8) {
-            let parsed = TTMLParser.parse(content: content)
-            if !parsed.isEmpty {
-                currentLyrics = parsed
-                return
+        let audioURL =
+            track.url.standardizedFileURL
+
+        let directoryURL =
+            audioURL.deletingLastPathComponent()
+
+        let audioName =
+            audioURL
+                .deletingPathExtension()
+                .lastPathComponent
+
+        // ---------------------------------------------------------
+        // TTML
+        //
+        // Example:
+        // 06 DARKSIDE.m4a
+        // 06 DARKSIDE.ttml
+        //
+        // The TTML file must have the same filename stem.
+        // ---------------------------------------------------------
+
+        let exactTTMLURL =
+            directoryURL
+                .appendingPathComponent(
+                    audioName
+                )
+                .appendingPathExtension(
+                    "ttml"
+                )
+
+        if fileManager.fileExists(
+            atPath: exactTTMLURL.path
+        ) {
+
+            if let content =
+                readLyricsFile(
+                    exactTTMLURL
+                ) {
+
+                let parsed =
+                    TTMLParser.parse(
+                        content: content
+                    )
+
+                if !parsed.isEmpty {
+                    currentLyrics =
+                        parsed
+
+                    return
+                }
             }
         }
 
-        let lrcURL = baseURL.appendingPathExtension("lrc")
+        // ---------------------------------------------------------
+        // Case-insensitive TTML sidecar lookup.
+        //
+        // This still requires the same filename stem.
+        // ---------------------------------------------------------
 
-        if let content = try? String(contentsOf: lrcURL, encoding: .utf8) {
-            currentLyrics = LRCParser.parse(content: content)
+        if let files =
+            try? fileManager.contentsOfDirectory(
+                at: directoryURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+
+            let matchingTTML =
+                files.first { url in
+
+                    guard url.pathExtension
+                        .lowercased() == "ttml"
+                    else {
+                        return false
+                    }
+
+                    let lyricName =
+                        url
+                            .deletingPathExtension()
+                            .lastPathComponent
+
+                    return lyricName.compare(
+                        audioName,
+                        options: [
+                            .caseInsensitive,
+                            .diacriticInsensitive
+                        ]
+                    ) == .orderedSame
+                }
+
+            if let matchingTTML,
+               let content =
+                    readLyricsFile(
+                        matchingTTML
+                    ) {
+
+                let parsed =
+                    TTMLParser.parse(
+                        content: content
+                    )
+
+                if !parsed.isEmpty {
+                    currentLyrics =
+                        parsed
+
+                    return
+                }
+            }
+        }
+
+        // ---------------------------------------------------------
+        // LRC fallback
+        // ---------------------------------------------------------
+
+        let lrcURL =
+            directoryURL
+                .appendingPathComponent(
+                    audioName
+                )
+                .appendingPathExtension(
+                    "lrc"
+                )
+
+        if let content =
+            readLyricsFile(
+                lrcURL
+            ) {
+
+            currentLyrics =
+                LRCParser.parse(
+                    content:
+                        content
+                )
+
         } else {
-            currentLyrics = []
+
+            currentLyrics =
+                []
         }
     }
 
+    private func readLyricsFile(
+        _ url: URL
+    ) -> String? {
 
+        guard FileManager.default.fileExists(
+            atPath: url.path
+        ) else {
+            return nil
+        }
+
+        if let content =
+            try? String(
+                contentsOf:
+                    url,
+                encoding:
+                    .utf8
+            ) {
+
+            return content
+        }
+
+        if let content =
+            try? String(
+                contentsOf:
+                    url,
+                encoding:
+                    .utf16
+            ) {
+
+            return content
+        }
+
+        if let content =
+            try? String(
+                contentsOf:
+                    url,
+                encoding:
+                    .utf16LittleEndian
+            ) {
+
+            return content
+        }
+
+        if let content =
+            try? String(
+                contentsOf:
+                    url,
+                encoding:
+                    .utf16BigEndian
+            ) {
+
+            return content
+        }
+
+        return nil
+    }
     // MARK: - Time Observer
 
     private func detachTimeObserver() {
