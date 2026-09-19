@@ -513,7 +513,8 @@ private var lyricsPane: some View {
                 lyrics: lyrics,
                 activeID: activeID,
                 trackID: trackID,
-                currentTime: clock.currentTime
+                currentTime: clock.currentTime,
+                isPlaying: audioManager.isPlaying
             ) { time in
                 audioManager.seek(to: time)
             }
@@ -543,6 +544,7 @@ private struct SmoothLyricsView: View {
     let activeID: UUID?
     let trackID: UUID?
     let currentTime: TimeInterval
+    let isPlaying: Bool
     let onSeek: (TimeInterval) -> Void
 
     var body: some View {
