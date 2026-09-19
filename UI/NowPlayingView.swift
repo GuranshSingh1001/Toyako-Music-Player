@@ -14,6 +14,7 @@ struct NowPlayingView: View {
     @State private var nextPressed = false
     @State private var showQueue = false
     @State private var showLyrics = false
+    @State private var showLyricsSourcePicker = false
 
     // The panel itself slides up via ContentView's `.move(edge: .bottom)`
     // transition. That transition is driven by a parent `withAnimation`,
@@ -80,17 +81,23 @@ struct NowPlayingView: View {
             }
             .overlay(alignment: .topTrailing) {
                 if !isCompact {
-                    Button {
-                        showQueue = true
-                    } label: {
-                        Image(systemName: "list.bullet")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .frame(width: 52, height: 52)
-                            .contentShape(Circle())
+                    HStack(spacing: 2) {
+                        if audioManager.lyricsSources.count > 1 {
+                            lyricsSourceButton(size: 52)
+                        }
+
+                        Button {
+                            showQueue = true
+                        } label: {
+                            Image(systemName: "list.bullet")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .frame(width: 52, height: 52)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Queue")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Queue")
                     .padding(.trailing, 10)
                     .padding(.top, 8)
                 }
@@ -207,7 +214,7 @@ struct NowPlayingView: View {
     }
 
     private var compactBottomActions: some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 20) {
             Button {
                 withAnimation(.easeInOut(duration: 0.22)) {
                     showLyrics.toggle()
@@ -222,6 +229,10 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(showLyrics ? "Show artwork" : "Show lyrics")
 
+            if audioManager.lyricsSources.count > 1 {
+                lyricsSourceButton(size: 48)
+            }
+
             Button {
                 showQueue = true
             } label: {
@@ -233,6 +244,72 @@ struct NowPlayingView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Queue")
+        }
+    }
+
+    private func lyricsSourceButton(size: CGFloat) -> some View {
+        Button {
+            showLyricsSourcePicker = true
+        } label: {
+            Image(systemName: "text.badge.plus")
+                .font(.system(size: size >= 52 ? 18 : 21, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(width: size, height: size)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Select lyrics")
+        .popover(isPresented: $showLyricsSourcePicker, attachmentAnchor: .point(.bottom), arrowEdge: .top) {
+            LyricsSourcePickerView()
+                .environmentObject(audioManager)
+                .frame(minWidth: 230)
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    // MARK: - Lyrics Source Picker
+
+    private struct LyricsSourcePickerView: View {
+        @EnvironmentObject private var audioManager: AudioEngineManager
+        @Environment(\.dismiss) private var dismiss
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Lyrics")
+                    .font(.headline)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+
+                ForEach(audioManager.lyricsSources) { source in
+                    Button {
+                        audioManager.selectLyricsSource(source.id)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: source.id == audioManager.selectedLyricsSourceID ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 18, weight: .semibold))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.displayName)
+                                    .font(.body.weight(.medium))
+                                Text(source.format.uppercased())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer(minLength: 8)
+                        }
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.bottom, 8)
         }
     }
 
