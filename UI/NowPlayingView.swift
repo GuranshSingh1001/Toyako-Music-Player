@@ -928,6 +928,28 @@ private struct WordReveal: View {
     let progress: Double
     let active: Bool
 
+    private var isCurrentWord: Bool {
+        active && progress > 0 && progress < 1
+    }
+
+    private var riseProgress: Double {
+        guard isCurrentWord else { return 0 }
+
+        // The active word gently lifts into place as it starts being sung.
+        // It reaches its full lift early in the word rather than bouncing.
+        let t = min(1, max(0, progress * 4.0))
+        return t * t * (3.0 - 2.0 * t)
+    }
+
+    private var glowOpacity: Double {
+        guard isCurrentWord else { return 0 }
+
+        // Strongest near the beginning/middle of the word, then settles
+        // naturally as the word finishes.
+        let pulse = sin(progress * .pi)
+        return 0.20 + (pulse * 0.38)
+    }
+
     var body: some View {
         Text(word.text)
             .foregroundStyle(.white.opacity(active ? 0.22 : 0.30))
@@ -950,6 +972,38 @@ private struct WordReveal: View {
                 }
                 .allowsHitTesting(false)
             }
+            // Apple Music-like soft ambient highlight. This is deliberately
+            // white/translucent instead of a solid blue selection highlight.
+            .overlay(alignment: .leading) {
+                if isCurrentWord {
+                    GeometryReader { geometry in
+                        Text(word.text)
+                            .foregroundStyle(.white.opacity(glowOpacity))
+                            .frame(
+                                width: geometry.size.width,
+                                alignment: .leading
+                            )
+                            .clipped()
+                            .mask(alignment: .leading) {
+                                Rectangle()
+                                    .frame(
+                                        width: geometry.size.width * progress,
+                                        height: geometry.size.height
+                                    )
+                            }
+                            .blur(radius: 7.0)
+                            .scaleEffect(1.012, anchor: .leading)
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+            .offset(y: -4.0 * riseProgress)
+            .shadow(
+                color: .white.opacity(isCurrentWord ? 0.16 : 0),
+                radius: isCurrentWord ? 5 : 0,
+                x: 0,
+                y: 0
+            )
             .fixedSize()
     }
 }
