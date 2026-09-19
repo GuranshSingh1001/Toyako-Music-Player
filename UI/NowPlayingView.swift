@@ -504,10 +504,7 @@ private var lyricsPane: some View {
                     .font(.headline)
                     .foregroundStyle(.white.opacity(0.42))
             }
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             SmoothLyricsView(
                 lyrics: lyrics,
@@ -522,24 +519,20 @@ private var lyricsPane: some View {
     }
 }
 
-private func activeLyricID(
-    lyrics: [LyricLine]
-) -> UUID? {
-
-    guard !lyrics.isEmpty else {
-        return nil
-    }
-
-    return lyrics.last {
-        $0.time <= audioManager.currentTime
-    }?.id
+private func activeLyricID(lyrics: [LyricLine]) -> UUID? {
+    guard !lyrics.isEmpty else { return nil }
+    return lyrics.last { $0.time <= audioManager.currentTime }?.id
 }
-
 
 // MARK: - Smooth Lyrics View
 
-private struct SmoothLyricsView: View {
+private enum LyricLineState: Equatable {
+    case past
+    case active
+    case future
+}
 
+private struct SmoothLyricsView: View {
     let lyrics: [LyricLine]
     let activeID: UUID?
     let trackID: UUID?
@@ -549,21 +542,12 @@ private struct SmoothLyricsView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-
-            ScrollView(
-                showsIndicators: false
-            ) {
-
-                LazyVStack(
-                    alignment: .leading,
-                    spacing: 30
-                ) {
-
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 30) {
                     ForEach(lyrics) { line in
-
                         lyricLine(
                             line: line,
-                            active: line.id == activeID,
+                            state: lineState(line),
                             currentTime: currentTime,
                             isPlaying: isPlaying
                         )
@@ -580,235 +564,139 @@ private struct SmoothLyricsView: View {
             .mask {
                 LinearGradient(
                     stops: [
-                        .init(
-                            color: .clear,
-                            location: 0
-                        ),
-
-                        .init(
-                            color: .black,
-                            location: 0.12
-                        ),
-
-                        .init(
-                            color: .black,
-                            location: 0.88
-                        ),
-
-                        .init(
-                            color: .clear,
-                            location: 1
-                        )
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 0.12),
+                        .init(color: .black, location: 0.88),
+                        .init(color: .clear, location: 1)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             }
-
-            // MARK: - Initial position when Lyrics opens
-
             .onAppear {
                 guard let activeID else { return }
-
-                // The lyrics view is newly created when the button is tapped,
-                // so `onChange(of: activeID)` cannot catch the initial position.
-                // Wait for the rows to enter the ScrollView before centering the
-                // lyric that is already playing.
                 DispatchQueue.main.async {
                     proxy.scrollTo(activeID, anchor: .center)
                 }
             }
-
-            // MARK: - Open Lyrics At Current Position
-
-            .onAppear {
-                guard let activeID else { return }
-
-                // The active lyric is already known when Lyrics is opened, so
-                // `onChange(of: activeID)` will not necessarily fire. Scroll
-                // explicitly after the first layout pass.
+            .onChange(of: trackID) { _, newTrackID in
+                guard newTrackID != nil, let firstLyric = lyrics.first else { return }
                 DispatchQueue.main.async {
-                    proxy.scrollTo(activeID, anchor: .center)
-                }
-            }
-
-            // MARK: - New Song
-
-            .onChange(
-                of: trackID
-            ) { _, newTrackID in
-
-                guard newTrackID != nil else {
-                    return
-                }
-
-                guard let firstLyric = lyrics.first else {
-                    return
-                }
-
-                // Wait one run-loop cycle so the new lyrics
-                // have been inserted into the ScrollView.
-                DispatchQueue.main.async {
-
-                    withAnimation(
-                        .easeOut(duration: 0.38)
-                    ) {
-                        proxy.scrollTo(
-                            firstLyric.id,
-                            anchor: .center
-                        )
+                    withAnimation(.easeOut(duration: 0.55)) {
+                        proxy.scrollTo(firstLyric.id, anchor: .center)
                     }
                 }
             }
-
-            // MARK: - Active Lyric
-
-            .onChange(
-                of: activeID
-            ) { _, newID in
-
-                guard let newID else {
-                    return
-                }
-
-                withAnimation(
-                    .smooth(
-                        duration: 0.55,
-                        extraBounce: 0.04
-                    )
-                ) {
-                    proxy.scrollTo(
-                        newID,
-                        anchor: .center
-                    )
+            .onChange(of: activeID) { _, newID in
+                guard let newID else { return }
+                // A deliberately slower, non-bouncy movement keeps the lyric
+                // surface calm. The line itself also fades/settles independently.
+                withAnimation(.timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.62)) {
+                    proxy.scrollTo(newID, anchor: .center)
                 }
             }
         }
     }
 
+    private func lineState(_ line: LyricLine) -> LyricLineState {
+        if line.id == activeID { return .active }
+        if line.time < currentTime { return .past }
+        return .future
+    }
+
     @ViewBuilder
     private func lyricLine(
         line: LyricLine,
-        active: Bool,
+        state: LyricLineState,
         currentTime: TimeInterval,
         isPlaying: Bool
     ) -> some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 7
-        ) {
-
-            if line.text
-                .trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
-                .isEmpty {
-
+        VStack(alignment: .leading, spacing: 7) {
+            if line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 HStack(spacing: 7) {
-
-                    Circle()
-                        .frame(
-                            width: 8,
-                            height: 8
-                        )
-
-                    Circle()
-                        .frame(
-                            width: 8,
-                            height: 8
-                        )
-
-                    Circle()
-                        .frame(
-                            width: 8,
-                            height: 8
-                        )
+                    Circle().frame(width: 8, height: 8)
+                    Circle().frame(width: 8, height: 8)
+                    Circle().frame(width: 8, height: 8)
                 }
                 .foregroundStyle(.white)
-                .opacity(
-                    active
-                        ? 0.9
-                        : 0.22
-                )
+                .opacity(state == .active ? 0.9 : 0.18)
                 .padding(.vertical, 10)
-
             } else {
-
                 if line.hasWordTiming {
                     WordTimedLyricLine(
                         line: line,
-                        active: active,
+                        state: state,
                         currentTime: currentTime,
                         isPlaying: isPlaying
                     )
                 } else {
                     Text(line.text)
-                        .font(
-                            .system(
-                                size: 50,
-                                weight: .bold,
-                                design: .rounded
-                            )
-                        )
+                        .font(.system(size: 50, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                        .opacity(
-                            active
-                                ? 1
-                                : 0.30
-                        )
-                        .blur(
-                            radius:
-                                active
-                                    ? 0
-                                    : 1.8
-                        )
-                        .scaleEffect(
-                            active
-                                ? 1
-                                : 0.985,
-                            anchor: .leading
-                        )
-                        .fixedSize(
-                            horizontal: false,
-                            vertical: true
-                        )
+                        .opacity(lineOpacity(state))
+                        .blur(radius: lineBlur(state))
+                        .scaleEffect(lineScale(state), anchor: .leading)
+                        .offset(y: lineOffset(state))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let romanized = line.romanized,
-                   !romanized.isEmpty {
-
+                if let romanized = line.romanized, !romanized.isEmpty {
                     Text(romanized)
-                        .font(
-                            .system(
-                                size: 22,
-                                weight: .medium,
-                                design: .rounded
-                            )
-                        )
+                        .font(.system(size: 22, weight: .medium, design: .rounded))
                         .foregroundStyle(.white)
-                        .opacity(
-                            active
-                                ? 0.72
-                                : 0.20
-                        )
-                        .blur(
-                            radius:
-                                active
-                                    ? 0
-                                    : 1.2
-                        )
-                        .fixedSize(
-                            horizontal: false,
-                            vertical: true
-                        )
+                        .opacity(romanizedOpacity(state))
+                        .blur(radius: state == .active ? 0 : 1.4)
+                        .offset(y: state == .past ? -7 : 0)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
+        // This animation is intentionally long enough to avoid the "jerk" the
+        // old implementation produced when active changed every lyric line.
         .animation(
-            .easeInOut(duration: 0.22),
-            value: active
+            .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.58),
+            value: state
         )
+    }
+
+    private func lineOpacity(_ state: LyricLineState) -> Double {
+        switch state {
+        case .active: return 1.0
+        case .future: return 0.27
+        case .past: return 0.12
+        }
+    }
+
+    private func romanizedOpacity(_ state: LyricLineState) -> Double {
+        switch state {
+        case .active: return 0.72
+        case .future: return 0.18
+        case .past: return 0.08
+        }
+    }
+
+    private func lineBlur(_ state: LyricLineState) -> CGFloat {
+        switch state {
+        case .active: return 0
+        case .future: return 1.6
+        case .past: return 3.8
+        }
+    }
+
+    private func lineScale(_ state: LyricLineState) -> CGFloat {
+        switch state {
+        case .active: return 1.0
+        case .future: return 0.985
+        case .past: return 0.972
+        }
+    }
+
+    private func lineOffset(_ state: LyricLineState) -> CGFloat {
+        switch state {
+        case .active: return 0
+        case .future: return 3
+        case .past: return -14
+        }
     }
 }
 
@@ -816,7 +704,7 @@ private struct SmoothLyricsView: View {
 
 private struct WordTimedLyricLine: View {
     let line: LyricLine
-    let active: Bool
+    let state: LyricLineState
     let currentTime: TimeInterval
     let isPlaying: Bool
 
@@ -825,7 +713,7 @@ private struct WordTimedLyricLine: View {
 
     var body: some View {
         Group {
-            if active {
+            if state == .active {
                 TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
                     WordFlow(
                         words: line.words,
@@ -843,41 +731,29 @@ private struct WordTimedLyricLine: View {
                 )
             }
         }
-        .font(
-            .system(
-                size: 50,
-                weight: .bold,
-                design: .rounded
-            )
-        )
+        .font(.system(size: 50, weight: .bold, design: .rounded))
         .foregroundStyle(.white)
-        .opacity(active ? 1 : 0.30)
-        .blur(radius: active ? 0 : 1.8)
-        .scaleEffect(active ? 1 : 0.985, anchor: .leading)
+        .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
+        .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
+        .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
+        .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             anchorTime = currentTime
             anchorDate = Date()
         }
         .onChange(of: currentTime) { _, newValue in
-            // Re-anchor whenever the real playback position changes, including
-            // seeks. This is also important when pausing in the middle of a
-            // word: the visual clock must resume from exactly this position.
             anchorTime = newValue
             anchorDate = Date()
         }
-        .onChange(of: isPlaying) { _, playing in
-            // Never let wall-clock time advance lyrics while audio is paused.
-            // When playback resumes, start interpolation from the exact audio
-            // position at which the pause occurred.
+        .onChange(of: isPlaying) { _, _ in
             anchorTime = currentTime
             anchorDate = Date()
-            _ = playing
         }
     }
 
     private func interpolatedTime(at date: Date) -> TimeInterval {
-        guard active, isPlaying else { return currentTime }
+        guard state == .active, isPlaying else { return currentTime }
         return anchorTime + max(0, date.timeIntervalSince(anchorDate))
     }
 }
@@ -893,6 +769,7 @@ private struct WordFlow: View {
                 WordReveal(
                     word: word,
                     progress: active ? wordProgress(word) : 0,
+                    currentTime: currentTime,
                     active: active
                 )
             }
@@ -900,29 +777,14 @@ private struct WordFlow: View {
     }
 
     private func wordProgress(_ word: LyricWord) -> Double {
-        if currentTime >= word.endTime {
-            return 1
-        }
+        if currentTime >= word.endTime { return 1 }
+        if currentTime <= word.startTime { return 0 }
 
-        if currentTime <= word.startTime {
-            return 0
-        }
+        let duration = max(0.001, word.endTime - word.startTime)
+        let raw = min(1, max(0, (currentTime - word.startTime) / duration))
 
-        let duration = max(
-            0.001,
-            word.endTime - word.startTime
-        )
-
-        let raw = min(
-            1,
-            max(
-                0,
-                (currentTime - word.startTime) / duration
-            )
-        )
-
-        // Smoothstep gives the highlight a continuous slope instead of the
-        // harsh step-by-word effect. Timing still comes directly from TTML.
+        // Keep the character mask perceptually smooth while preserving exact
+        // TTML timing. The mask itself moves continuously between letters.
         return raw * raw * (3.0 - 2.0 * raw)
     }
 }
@@ -930,41 +792,75 @@ private struct WordFlow: View {
 private struct WordReveal: View {
     let word: LyricWord
     let progress: Double
+    let currentTime: TimeInterval
     let active: Bool
 
-    private var isCurrentWord: Bool {
-        active && progress > 0 && progress < 1
+    private var wordDuration: TimeInterval {
+        max(0.001, word.endTime - word.startTime)
     }
 
-    private var riseProgress: Double {
-        guard isCurrentWord else { return 0 }
+    // A word should not "snap" upward at its start or immediately drop when
+    // the TTML end timestamp arrives. Instead it has three phases:
+    //   1. gentle lift-in
+    //   2. calm hold while sung
+    //   3. gentle settle after the word finishes
+    // The settle is derived from the same audio clock, so pause freezes it too.
+    private var liftAmount: CGFloat {
+        guard active else { return 0 }
 
-        // The active word gently lifts into place as it starts being sung.
-        // It reaches its full lift early in the word rather than bouncing.
-        let t = min(1, max(0, progress * 4.0))
-        return t * t * (3.0 - 2.0 * t)
+        let liftInDuration = min(0.34, max(0.18, wordDuration * 0.32))
+        let settleDuration = 0.34
+        let t = currentTime
+
+        if t < word.startTime {
+            return 0
+        }
+
+        if t < word.startTime + liftInDuration {
+            let p = smoothStep((t - word.startTime) / liftInDuration)
+            return -3.5 * CGFloat(p)
+        }
+
+        if t <= word.endTime {
+            return -3.5
+        }
+
+        let settleP = min(1, max(0, (t - word.endTime) / settleDuration))
+        return -3.5 * CGFloat(1 - smoothStep(settleP))
     }
 
-    private var glowOpacity: Double {
-        guard isCurrentWord else { return 0 }
+    private var currentGlow: Double {
+        guard active, currentTime >= word.startTime else { return 0 }
 
-        // Strongest near the beginning/middle of the word, then settles
-        // naturally as the word finishes.
-        let pulse = sin(progress * .pi)
-        return 0.20 + (pulse * 0.38)
+        if currentTime <= word.endTime {
+            let p = min(1, max(0, (currentTime - word.startTime) / wordDuration))
+            // Avoid a pulsing "breathing" effect. The glow ramps in softly,
+            // reaches a stable plateau, then gently relaxes at the end.
+            if p < 0.28 {
+                return 0.12 + 0.24 * smoothStep(p / 0.28)
+            }
+            if p < 0.82 {
+                return 0.36
+            }
+            return 0.36 * (1 - smoothStep((p - 0.82) / 0.18))
+        }
+
+        let settleP = min(1, max(0, (currentTime - word.endTime) / 0.34))
+        return 0.20 * (1 - smoothStep(settleP))
+    }
+
+    private var isVisuallyActive: Bool {
+        active && currentTime >= word.startTime && currentTime <= word.endTime + 0.34
     }
 
     var body: some View {
         Text(word.text)
-            .foregroundStyle(.white.opacity(active ? 0.22 : 0.30))
+            .foregroundStyle(.white.opacity(active ? 0.20 : 0.30))
             .overlay(alignment: .leading) {
                 GeometryReader { geometry in
                     Text(word.text)
                         .foregroundStyle(.white)
-                        .frame(
-                            width: geometry.size.width,
-                            alignment: .leading
-                        )
+                        .frame(width: geometry.size.width, alignment: .leading)
                         .clipped()
                         .mask(alignment: .leading) {
                             Rectangle()
@@ -976,17 +872,12 @@ private struct WordReveal: View {
                 }
                 .allowsHitTesting(false)
             }
-            // Apple Music-like soft ambient highlight. This is deliberately
-            // white/translucent instead of a solid blue selection highlight.
             .overlay(alignment: .leading) {
-                if isCurrentWord {
+                if isVisuallyActive && currentGlow > 0.001 {
                     GeometryReader { geometry in
                         Text(word.text)
-                            .foregroundStyle(.white.opacity(glowOpacity))
-                            .frame(
-                                width: geometry.size.width,
-                                alignment: .leading
-                            )
+                            .foregroundStyle(.white.opacity(currentGlow))
+                            .frame(width: geometry.size.width, alignment: .leading)
                             .clipped()
                             .mask(alignment: .leading) {
                                 Rectangle()
@@ -995,20 +886,25 @@ private struct WordReveal: View {
                                         height: geometry.size.height
                                     )
                             }
-                            .blur(radius: 7.0)
-                            .scaleEffect(1.012, anchor: .leading)
+                            .blur(radius: 8.5)
+                            .scaleEffect(1.008, anchor: .leading)
                     }
                     .allowsHitTesting(false)
                 }
             }
-            .offset(y: -4.0 * riseProgress)
+            .offset(y: liftAmount)
             .shadow(
-                color: .white.opacity(isCurrentWord ? 0.16 : 0),
-                radius: isCurrentWord ? 5 : 0,
+                color: .white.opacity(isVisuallyActive ? currentGlow * 0.24 : 0),
+                radius: isVisuallyActive ? 6 : 0,
                 x: 0,
                 y: 0
             )
             .fixedSize()
+    }
+
+    private func smoothStep(_ value: Double) -> Double {
+        let x = min(1, max(0, value))
+        return x * x * (3 - 2 * x)
     }
 }
 
@@ -1016,10 +912,7 @@ private struct FlowLayout: Layout {
     var horizontalSpacing: CGFloat = 8
     var verticalSpacing: CGFloat = 6
 
-    init(
-        horizontalSpacing: CGFloat = 8,
-        verticalSpacing: CGFloat = 6
-    ) {
+    init(horizontalSpacing: CGFloat = 8, verticalSpacing: CGFloat = 6) {
         self.horizontalSpacing = horizontalSpacing
         self.verticalSpacing = verticalSpacing
     }
@@ -1029,13 +922,7 @@ private struct FlowLayout: Layout {
         subviews: Subviews,
         cache: inout Cache
     ) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        let result = arrange(
-            maxWidth: maxWidth,
-            subviews: subviews,
-            place: false
-        )
-        return result.size
+        arrange(maxWidth: proposal.width ?? .infinity, subviews: subviews).size
     }
 
     func placeSubviews(
@@ -1044,33 +931,17 @@ private struct FlowLayout: Layout {
         subviews: Subviews,
         cache: inout Cache
     ) {
-        let result = arrange(
-            maxWidth: bounds.width,
-            subviews: subviews,
-            place: true
-        )
-
+        let result = arrange(maxWidth: bounds.width, subviews: subviews)
         for item in result.items {
             subviews[item.index].place(
-                at: CGPoint(
-                    x: bounds.minX + item.x,
-                    y: bounds.minY + item.y
-                ),
-                proposal: ProposedViewSize(
-                    width: item.width,
-                    height: item.height
-                )
+                at: CGPoint(x: bounds.minX + item.x, y: bounds.minY + item.y),
+                proposal: ProposedViewSize(width: item.width, height: item.height)
             )
         }
     }
 
-    private func arrange(
-        maxWidth: CGFloat,
-        subviews: Subviews,
-        place: Bool
-    ) -> LayoutResult {
+    private func arrange(maxWidth: CGFloat, subviews: Subviews) -> LayoutResult {
         var items: [LayoutItem] = []
-
         var x: CGFloat = 0
         var y: CGFloat = 0
         var rowHeight: CGFloat = 0
@@ -1078,46 +949,23 @@ private struct FlowLayout: Layout {
 
         for index in subviews.indices {
             let size = subviews[index].sizeThatFits(.unspecified)
+            let proposedX = x == 0 ? 0 : x + horizontalSpacing
 
-            let proposedX = x == 0
-                ? 0
-                : x + horizontalSpacing
-
-            if proposedX + size.width > maxWidth,
-               x > 0 {
+            if proposedX + size.width > maxWidth, x > 0 {
                 x = 0
                 y += rowHeight + verticalSpacing
                 rowHeight = 0
             }
 
-            let finalX = x == 0
-                ? 0
-                : x + horizontalSpacing
-
-            items.append(
-                LayoutItem(
-                    index: index,
-                    x: finalX,
-                    y: y,
-                    width: size.width,
-                    height: size.height
-                )
-            )
-
+            let finalX = x == 0 ? 0 : x + horizontalSpacing
+            items.append(LayoutItem(index: index, x: finalX, y: y, width: size.width, height: size.height))
             x = finalX + size.width
             rowHeight = max(rowHeight, size.height)
             usedWidth = max(usedWidth, x)
         }
 
-        let height = items.isEmpty
-            ? 0
-            : y + rowHeight
-
         return LayoutResult(
-            size: CGSize(
-                width: min(maxWidth, usedWidth),
-                height: height
-            ),
+            size: CGSize(width: min(maxWidth, usedWidth), height: items.isEmpty ? 0 : y + rowHeight),
             items: items
         )
     }
