@@ -735,7 +735,7 @@ private struct SmoothLyricsView: View {
         currentTime: TimeInterval,
         isPlaying: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: line.hasWordTiming && lineContainsJapanese(line) ? 7 : 0) {
             if line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 HStack(spacing: 7) {
                     Circle().frame(width: 8, height: 8)
@@ -745,33 +745,27 @@ private struct SmoothLyricsView: View {
                 .foregroundStyle(.white)
                 .opacity(state == .active ? 0.9 : 0.18)
                 .padding(.vertical, 10)
+            } else if line.hasWordTiming {
+                TimedLyricPair(
+                    line: line,
+                    state: state,
+                    currentTime: currentTime,
+                    isPlaying: isPlaying,
+                    showRomanized: lineContainsJapanese(line)
+                )
             } else {
-                if line.hasWordTiming {
-                    WordTimedLyricLine(
-                        line: line,
-                        state: state,
-                        currentTime: currentTime,
-                        isPlaying: isPlaying
-                    )
-                } else {
-                    Text(line.text)
-                        .font(.system(size: 50, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .opacity(lineOpacity(state))
-                        .blur(radius: lineBlur(state))
-                        .scaleEffect(lineScale(state), anchor: .leading)
-                        .offset(y: lineOffset(state))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text(line.text)
+                    .font(.system(size: 50, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .opacity(lineOpacity(state))
+                    .blur(radius: lineBlur(state))
+                    .scaleEffect(lineScale(state), anchor: .leading)
+                    .offset(y: lineOffset(state))
+                    .fixedSize(horizontal: false, vertical: true)
 
-                if line.hasWordTiming {
-                    RomanizedTimedLyricLine(
-                        line: line,
-                        state: state,
-                        currentTime: currentTime,
-                        isPlaying: isPlaying
-                    )
-                } else if let romanized = line.romanized, !romanized.isEmpty {
+                if lineContainsJapanese(line),
+                   let romanized = line.romanized,
+                   !romanized.isEmpty {
                     Text(romanized)
                         .font(.system(size: 22, weight: .medium, design: .rounded))
                         .foregroundStyle(.white)
@@ -782,12 +776,30 @@ private struct SmoothLyricsView: View {
                 }
             }
         }
-        // This animation is intentionally long enough to avoid the "jerk" the
-        // old implementation produced when active changed every lyric line.
         .animation(
             .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.58),
             value: state
         )
+    }
+
+    private func lineContainsJapanese(_ line: LyricLine) -> Bool {
+        containsJapaneseCharacters(line.text)
+    }
+
+    private func containsJapaneseCharacters(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x3040...0x309F, // Hiragana
+                 0x30A0...0x30FF, // Katakana
+                 0x31F0...0x31FF, // Katakana extensions
+                 0x3400...0x4DBF, // CJK extension A
+                 0x4E00...0x9FFF, // CJK unified ideographs
+                 0xF900...0xFAFF: // CJK compatibility ideographs
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     private func lineOpacity(_ state: LyricLineState) -> Double {
@@ -833,46 +845,38 @@ private struct SmoothLyricsView: View {
 
 // MARK: - Word-Timed Lyrics
 
-private struct WordTimedLyricLine: View {
+private struct TimedLyricPair: View {
     let line: LyricLine
     let state: LyricLineState
     let currentTime: TimeInterval
     let isPlaying: Bool
+    let showRomanized: Bool
 
     @State private var anchorTime: TimeInterval = 0
     @State private var anchorDate = Date()
 
+    private let japaneseFont = Font.system(size: 50, weight: .bold, design: .rounded)
+    private let romanizedFont = Font.system(size: 22, weight: .medium, design: .rounded)
+
+    private var romanizedWords: [LyricWord] {
+        guard showRomanized else { return [] }
+        return line.words.compactMap { word in
+            let text = word.text.toJapaneseRomaji() ?? ""
+            guard !text.isEmpty else { return nil }
+            return LyricWord(text: text, startTime: word.startTime, endTime: word.endTime)
+        }
+    }
+
     var body: some View {
         Group {
             if state == .active {
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
-                    WordFlow(
-                        words: line.words,
-                        currentTime: isPlaying
-                            ? interpolatedTime(at: timeline.date)
-                            : currentTime,
-                        active: true,
-                        font: .system(size: 50, weight: .bold, design: .rounded),
-                        baseOpacity: 1.0
-                    )
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isPlaying)) { timeline in
+                    timedContent(currentTime: isPlaying ? interpolatedTime(at: timeline.date) : currentTime)
                 }
             } else {
-                WordFlow(
-                    words: line.words,
-                    currentTime: currentTime,
-                    active: false,
-                    font: .system(size: 50, weight: .bold, design: .rounded),
-                    baseOpacity: state == .future ? 0.27 : 0.12
-                )
+                timedContent(currentTime: currentTime)
             }
         }
-        .font(.system(size: 50, weight: .bold, design: .rounded))
-        .foregroundStyle(.white)
-        .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
-        .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
-        .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
-        .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
-        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             anchorTime = currentTime
             anchorDate = Date()
@@ -887,9 +891,65 @@ private struct WordTimedLyricLine: View {
         }
     }
 
+    @ViewBuilder
+    private func timedContent(currentTime: TimeInterval) -> some View {
+        VStack(alignment: .leading, spacing: showRomanized ? 7 : 0) {
+            WordFlow(
+                words: line.words,
+                currentTime: currentTime,
+                active: state == .active,
+                font: japaneseFont,
+                baseOpacity: state == .future ? 0.27 : (state == .past ? 0.12 : 1.0)
+            )
+            .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
+            .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
+            .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
+            .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
+
+            if showRomanized {
+                WordFlow(
+                    words: romanizedWords,
+                    currentTime: currentTime,
+                    active: state == .active,
+                    font: romanizedFont,
+                    baseOpacity: state == .future ? 0.18 : (state == .past ? 0.08 : 0.72)
+                )
+                .opacity(state == .active ? 1 : (state == .future ? 0.18 : 0.08))
+                .blur(radius: state == .active ? 0 : 1.4)
+                .offset(y: state == .past ? -7 : 0)
+            }
+        }
+    }
+
     private func interpolatedTime(at date: Date) -> TimeInterval {
         guard state == .active, isPlaying else { return currentTime }
         return anchorTime + max(0, date.timeIntervalSince(anchorDate))
+    }
+}
+
+// Kept as a small compatibility wrapper for any existing call sites.
+private struct WordTimedLyricLine: View {
+    let line: LyricLine
+    let state: LyricLineState
+    let currentTime: TimeInterval
+    let isPlaying: Bool
+
+    var body: some View {
+        TimedLyricPair(
+            line: line,
+            state: state,
+            currentTime: currentTime,
+            isPlaying: isPlaying,
+            showRomanized: line.text.unicodeScalars.contains { scalar in
+                switch scalar.value {
+                case 0x3040...0x309F, 0x30A0...0x30FF, 0x31F0...0x31FF,
+                     0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
+                    return true
+                default:
+                    return false
+                }
+            }
+        )
     }
 }
 
@@ -912,77 +972,8 @@ private struct WordFlow: View {
                 )
             }
         }
-        // Let FlowLayout receive the finite width of the lyrics column. It then
-        // calculates its own height, so wrapped lines occupy real vertical space
-        // instead of collapsing inside a GeometryReader.
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-private struct RomanizedTimedLyricLine: View {
-    let line: LyricLine
-    let state: LyricLineState
-    let currentTime: TimeInterval
-    let isPlaying: Bool
-
-    @State private var anchorTime: TimeInterval = 0
-    @State private var anchorDate = Date()
-
-    private var romanizedWords: [LyricWord] {
-        line.words.map { word in
-            let text = word.text.toJapaneseRomaji() ?? ""
-            return LyricWord(
-                text: text.isEmpty ? word.text : text,
-                startTime: word.startTime,
-                endTime: word.endTime
-            )
-        }
-    }
-
-    var body: some View {
-        Group {
-            if state == .active {
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
-                    WordFlow(
-                        words: romanizedWords,
-                        currentTime: isPlaying ? interpolatedTime(at: timeline.date) : currentTime,
-                        active: true,
-                        font: .system(size: 22, weight: .medium, design: .rounded),
-                        baseOpacity: 0.72
-                    )
-                }
-            } else {
-                WordFlow(
-                    words: romanizedWords,
-                    currentTime: currentTime,
-                    active: false,
-                    font: .system(size: 22, weight: .medium, design: .rounded),
-                    baseOpacity: state == .future ? 0.18 : 0.08
-                )
-            }
-        }
-        .foregroundStyle(.white)
-        .opacity(state == .active ? 1 : 1)
-        .blur(radius: state == .active ? 0 : 1.4)
-        .offset(y: state == .past ? -7 : 0)
-        .onAppear {
-            anchorTime = currentTime
-            anchorDate = Date()
-        }
-        .onChange(of: currentTime) { _, newValue in
-            anchorTime = newValue
-            anchorDate = Date()
-        }
-        .onChange(of: isPlaying) { _, _ in
-            anchorTime = currentTime
-            anchorDate = Date()
-        }
-    }
-
-    private func interpolatedTime(at date: Date) -> TimeInterval {
-        guard state == .active, isPlaying else { return currentTime }
-        return anchorTime + max(0, date.timeIntervalSince(anchorDate))
     }
 }
 
@@ -1063,21 +1054,20 @@ private struct CharacterReveal: View {
         Text(character)
             .font(font)
             .foregroundStyle(.white.opacity(revealed || isActiveCharacter ? 1.0 : baseOpacity * 0.42))
-            .shadow(
-                color: .white.opacity(isActiveCharacter ? 0.55 : 0),
-                radius: isActiveCharacter ? 7 : 0
-            )
-            .scaleEffect(isActiveCharacter ? 1.018 : 1.0)
             .offset(y: lift)
+            .scaleEffect(isActiveCharacter ? 1.018 : 1.0, anchor: .center)
+            .shadow(
+                color: .white.opacity(isActiveCharacter ? 0.42 : 0),
+                radius: isActiveCharacter ? 5 : 0
+            )
             .overlay {
                 if isActiveCharacter {
                     Text(character)
                         .font(font)
-                        .foregroundStyle(.white.opacity(0.42))
-                        .blur(radius: 3.5)
+                        .foregroundStyle(.white.opacity(0.32))
+                        .blur(radius: 3)
                 }
             }
-            .animation(.linear(duration: 0.03), value: currentTime)
     }
 
     private func smoothStep(_ value: Double) -> Double {
