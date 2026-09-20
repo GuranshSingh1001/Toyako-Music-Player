@@ -870,10 +870,10 @@ private struct TimedLyricPair: View {
     var body: some View {
         Group {
             if state == .active && isPlaying {
-                // One shared display clock for the entire lyric pair. The old
-                // implementation created character views for every word and
-                // kept them alive for every lyric line, which made scrolling and
-                // playback unnecessarily expensive.
+                // One shared 30 Hz clock for the active lyric pair. The renderer
+                // itself is deliberately animation-free: every frame is derived
+                // directly from the audio clock, avoiding hundreds of SwiftUI
+                // animations competing with playback.
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
                     timedContent(currentTime: interpolatedTime(at: timeline.date))
                 }
@@ -898,22 +898,21 @@ private struct TimedLyricPair: View {
     @ViewBuilder
     private func timedContent(currentTime: TimeInterval) -> some View {
         VStack(alignment: .leading, spacing: showRomanized ? 7 : 0) {
-            // English and other non-Japanese TTML remains WORD timed. Only
-            // Japanese gets the more expensive character-level reveal.
             if showRomanized && state == .active {
+                // Japanese is the only language that gets character-level timing.
                 JapaneseCharacterFlow(
                     words: line.words,
                     currentTime: currentTime,
                     font: japaneseFont
                 )
-                .opacity(1)
             } else {
+                // English/non-Japanese stays word-by-word. No character effects.
                 WordFlow(
                     words: line.words,
                     currentTime: currentTime,
-                    active: state == .active,
                     font: japaneseFont,
-                    baseOpacity: state == .future ? 0.27 : (state == .past ? 0.12 : 1.0)
+                    baseOpacity: state == .future ? 0.27 : (state == .past ? 0.12 : 1.0),
+                    riseAmplitude: 3.2
                 )
                 .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
                 .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
@@ -922,14 +921,14 @@ private struct TimedLyricPair: View {
             }
 
             if showRomanized {
-                // Romanization is always WORD timed, using the exact same
-                // TTML word start/end times as the Japanese source words.
+                // The romanized word rises on the EXACT same word interval as
+                // its Japanese source word. It does not slide/reveal left-to-right.
                 WordFlow(
                     words: romanizedWords,
                     currentTime: currentTime,
-                    active: state == .active,
                     font: romanizedFont,
-                    baseOpacity: state == .future ? 0.18 : (state == .past ? 0.08 : 0.72)
+                    baseOpacity: state == .future ? 0.18 : (state == .past ? 0.08 : 0.72),
+                    riseAmplitude: 2.7
                 )
                 .opacity(state == .active ? 1 : (state == .future ? 0.18 : 0.08))
                 .blur(radius: state == .active ? 0 : 1.4)
@@ -975,9 +974,8 @@ private struct WordTimedLyricLine: View {
 
 // MARK: - Japanese character timing
 
-// Character-level rendering exists ONLY for Japanese active lines. Future and
-// past lines use the cheap word renderer, so the ScrollView is not carrying
-// hundreds of individual character views for every lyric line.
+// Only the active Japanese line is rendered at character granularity. Every
+// other line uses the lightweight word renderer below.
 private struct JapaneseCharacterFlow: View {
     let words: [LyricWord]
     let currentTime: TimeInterval
@@ -1043,99 +1041,90 @@ private struct JapaneseCharacterReveal: View {
         currentTime >= endTime
     }
 
-    private var progress: Double {
-        guard active else { return revealed ? 1 : 0 }
+    // A cheap triangular bump: the glyph rises into focus and naturally settles
+    // back down before the next character. No implicit SwiftUI animation.
+    private var rise: CGFloat {
+        guard active else { return 0 }
         let raw = (currentTime - startTime) / max(0.001, endTime - startTime)
         let x = min(1, max(0, raw))
-        return x * x * (3 - 2 * x)
+        return -3.8 * CGFloat(sin(.pi * x))
+    }
+
+    private var focus: Double {
+        guard active else { return 0 }
+        let raw = (currentTime - startTime) / max(0.001, endTime - startTime)
+        let x = min(1, max(0, raw))
+        return sin(.pi * x)
     }
 
     var body: some View {
         Text(character)
             .font(font)
             .foregroundStyle(.white.opacity(revealed || active ? 1 : 0.30))
-            .offset(y: active ? -3.8 * CGFloat(progress) : 0)
-            .scaleEffect(active ? 1.012 : 1, anchor: .center)
-            .shadow(
-                color: .white.opacity(active ? 0.28 : 0),
-                radius: active ? 3.5 : 0
-            )
-            .overlay {
-                if active {
-                    Text(character)
-                        .font(font)
-                        .foregroundStyle(.white.opacity(0.20))
-                        .blur(radius: 2.5)
-                }
-            }
+            .offset(y: rise)
+            .scaleEffect(1 + CGFloat(focus) * 0.012, anchor: .center)
+            .shadow(color: .white.opacity(focus * 0.18), radius: focus > 0 ? 2.5 : 0)
     }
 }
 
-// MARK: - Cheap word timing
+// MARK: - Lightweight word timing
 
 private struct WordFlow: View {
     let words: [LyricWord]
     let currentTime: TimeInterval
-    let active: Bool
     let font: Font
     let baseOpacity: Double
+    let riseAmplitude: CGFloat
 
     var body: some View {
         FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
             ForEach(words) { word in
-                WordReveal(
+                WordRiseReveal(
                     word: word,
                     currentTime: currentTime,
-                    active: active,
                     font: font,
-                    baseOpacity: baseOpacity
+                    baseOpacity: baseOpacity,
+                    riseAmplitude: riseAmplitude
                 )
             }
         }
     }
 }
 
-private struct WordReveal: View {
+// No GeometryReader, masks, per-word blur layers, or implicit animations here.
+// The word simply rises and settles according to the shared audio clock.
+private struct WordRiseReveal: View {
     let word: LyricWord
     let currentTime: TimeInterval
-    let active: Bool
     let font: Font
     let baseOpacity: Double
+    let riseAmplitude: CGFloat
 
-    private var progress: Double {
-        guard active else { return 0 }
-        if currentTime <= word.startTime { return 0 }
-        if currentTime >= word.endTime { return 1 }
+    private var activeProgress: Double {
+        guard currentTime >= word.startTime && currentTime < word.endTime else { return 0 }
         let x = min(1, max(0, (currentTime - word.startTime) / max(0.001, word.endTime - word.startTime)))
-        return x * x * (3 - 2 * x)
+        return sin(.pi * x)
     }
 
     private var isActive: Bool {
-        active && currentTime >= word.startTime && currentTime < word.endTime
+        currentTime >= word.startTime && currentTime < word.endTime
+    }
+
+    private var opacity: Double {
+        if isActive { return 1.0 }
+        if currentTime >= word.endTime { return 0.82 }
+        return baseOpacity
     }
 
     var body: some View {
         Text(word.text)
             .font(font)
-            .foregroundStyle(.white.opacity(active ? 0.30 : baseOpacity))
-            .overlay(alignment: .leading) {
-                GeometryReader { geometry in
-                    Text(word.text)
-                        .font(font)
-                        .foregroundStyle(.white)
-                        .frame(width: geometry.size.width, alignment: .leading)
-                        .mask(alignment: .leading) {
-                            Rectangle()
-                                .frame(width: geometry.size.width * progress, height: geometry.size.height)
-                        }
-                }
-                .allowsHitTesting(false)
-            }
-            .offset(y: isActive ? -2.2 : 0)
-            .scaleEffect(isActive ? 1.008 : 1, anchor: .leading)
+            .foregroundStyle(.white.opacity(opacity))
+            .offset(y: -riseAmplitude * CGFloat(activeProgress))
+            .scaleEffect(1 + CGFloat(activeProgress) * 0.006, anchor: .center)
             .shadow(
-                color: .white.opacity(isActive ? 0.20 : 0),
-                radius: isActive ? 3 : 0
+                color: .white.opacity(activeProgress * 0.13),
+                radius: activeProgress > 0 ? 2.2 : 0
             )
             .fixedSize(horizontal: true, vertical: false)
     }
