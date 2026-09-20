@@ -869,9 +869,13 @@ private struct TimedLyricPair: View {
 
     var body: some View {
         Group {
-            if state == .active {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isPlaying)) { timeline in
-                    timedContent(currentTime: isPlaying ? interpolatedTime(at: timeline.date) : currentTime)
+            if state == .active && isPlaying {
+                // One shared display clock for the entire lyric pair. The old
+                // implementation created character views for every word and
+                // kept them alive for every lyric line, which made scrolling and
+                // playback unnecessarily expensive.
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+                    timedContent(currentTime: interpolatedTime(at: timeline.date))
                 }
             } else {
                 timedContent(currentTime: currentTime)
@@ -894,19 +898,32 @@ private struct TimedLyricPair: View {
     @ViewBuilder
     private func timedContent(currentTime: TimeInterval) -> some View {
         VStack(alignment: .leading, spacing: showRomanized ? 7 : 0) {
-            WordFlow(
-                words: line.words,
-                currentTime: currentTime,
-                active: state == .active,
-                font: japaneseFont,
-                baseOpacity: state == .future ? 0.27 : (state == .past ? 0.12 : 1.0)
-            )
-            .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
-            .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
-            .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
-            .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
+            // English and other non-Japanese TTML remains WORD timed. Only
+            // Japanese gets the more expensive character-level reveal.
+            if showRomanized && state == .active {
+                JapaneseCharacterFlow(
+                    words: line.words,
+                    currentTime: currentTime,
+                    font: japaneseFont
+                )
+                .opacity(1)
+            } else {
+                WordFlow(
+                    words: line.words,
+                    currentTime: currentTime,
+                    active: state == .active,
+                    font: japaneseFont,
+                    baseOpacity: state == .future ? 0.27 : (state == .past ? 0.12 : 1.0)
+                )
+                .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
+                .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
+                .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
+                .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
+            }
 
             if showRomanized {
+                // Romanization is always WORD timed, using the exact same
+                // TTML word start/end times as the Japanese source words.
                 WordFlow(
                     words: romanizedWords,
                     currentTime: currentTime,
@@ -927,7 +944,6 @@ private struct TimedLyricPair: View {
     }
 }
 
-// Kept as a small compatibility wrapper for any existing call sites.
 private struct WordTimedLyricLine: View {
     let line: LyricLine
     let state: LyricLineState
@@ -940,18 +956,122 @@ private struct WordTimedLyricLine: View {
             state: state,
             currentTime: currentTime,
             isPlaying: isPlaying,
-            showRomanized: line.text.unicodeScalars.contains { scalar in
-                switch scalar.value {
-                case 0x3040...0x309F, 0x30A0...0x30FF, 0x31F0...0x31FF,
-                     0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
-                    return true
-                default:
-                    return false
-                }
-            }
+            showRomanized: containsJapaneseCharacters(line.text)
         )
     }
+
+    private func containsJapaneseCharacters(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x3040...0x309F, 0x30A0...0x30FF, 0x31F0...0x31FF,
+                 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
+                return true
+            default:
+                return false
+            }
+        }
+    }
 }
+
+// MARK: - Japanese character timing
+
+// Character-level rendering exists ONLY for Japanese active lines. Future and
+// past lines use the cheap word renderer, so the ScrollView is not carrying
+// hundreds of individual character views for every lyric line.
+private struct JapaneseCharacterFlow: View {
+    let words: [LyricWord]
+    let currentTime: TimeInterval
+    let font: Font
+
+    var body: some View {
+        FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
+            ForEach(words) { word in
+                JapaneseCharacterWord(
+                    word: word,
+                    currentTime: currentTime,
+                    font: font
+                )
+            }
+        }
+    }
+}
+
+private struct JapaneseCharacterWord: View {
+    let word: LyricWord
+    let currentTime: TimeInterval
+    let font: Font
+
+    private var characters: [String] { Array(word.text).map(String.init) }
+    private var duration: TimeInterval { max(0.001, word.endTime - word.startTime) }
+    private var characterDuration: TimeInterval {
+        duration / TimeInterval(max(1, characters.count))
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(characters.enumerated()), id: \.offset) { index, character in
+                let start = word.startTime + characterDuration * TimeInterval(index)
+                let end = index == characters.count - 1
+                    ? word.endTime
+                    : start + characterDuration
+
+                JapaneseCharacterReveal(
+                    character: character,
+                    startTime: start,
+                    endTime: end,
+                    currentTime: currentTime,
+                    font: font
+                )
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+private struct JapaneseCharacterReveal: View {
+    let character: String
+    let startTime: TimeInterval
+    let endTime: TimeInterval
+    let currentTime: TimeInterval
+    let font: Font
+
+    private var active: Bool {
+        currentTime >= startTime && currentTime < endTime
+    }
+
+    private var revealed: Bool {
+        currentTime >= endTime
+    }
+
+    private var progress: Double {
+        guard active else { return revealed ? 1 : 0 }
+        let raw = (currentTime - startTime) / max(0.001, endTime - startTime)
+        let x = min(1, max(0, raw))
+        return x * x * (3 - 2 * x)
+    }
+
+    var body: some View {
+        Text(character)
+            .font(font)
+            .foregroundStyle(.white.opacity(revealed || active ? 1 : 0.30))
+            .offset(y: active ? -3.8 * CGFloat(progress) : 0)
+            .scaleEffect(active ? 1.012 : 1, anchor: .center)
+            .shadow(
+                color: .white.opacity(active ? 0.28 : 0),
+                radius: active ? 3.5 : 0
+            )
+            .overlay {
+                if active {
+                    Text(character)
+                        .font(font)
+                        .foregroundStyle(.white.opacity(0.20))
+                        .blur(radius: 2.5)
+                }
+            }
+    }
+}
+
+// MARK: - Cheap word timing
 
 private struct WordFlow: View {
     let words: [LyricWord]
@@ -963,7 +1083,7 @@ private struct WordFlow: View {
     var body: some View {
         FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
             ForEach(words) { word in
-                CharacterTimedWord(
+                WordReveal(
                     word: word,
                     currentTime: currentTime,
                     active: active,
@@ -972,107 +1092,52 @@ private struct WordFlow: View {
                 )
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-private struct CharacterTimedWord: View {
+private struct WordReveal: View {
     let word: LyricWord
     let currentTime: TimeInterval
     let active: Bool
     let font: Font
     let baseOpacity: Double
 
-    private var characters: [String] { Array(word.text).map(String.init) }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(characters.enumerated()), id: \.offset) { index, character in
-                CharacterReveal(
-                    character: character,
-                    startTime: characterStart(index),
-                    endTime: characterEnd(index),
-                    currentTime: currentTime,
-                    active: active,
-                    font: font,
-                    baseOpacity: baseOpacity
-                )
-            }
-        }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private var characterDuration: TimeInterval {
-        wordDuration / TimeInterval(max(1, characters.count))
-    }
-
-    private var wordDuration: TimeInterval {
-        max(0.001, word.endTime - word.startTime)
-    }
-
-    private func characterStart(_ index: Int) -> TimeInterval {
-        word.startTime + characterDuration * TimeInterval(index)
-    }
-
-    private func characterEnd(_ index: Int) -> TimeInterval {
-        if index == characters.count - 1 { return word.endTime }
-        return characterStart(index + 1)
-    }
-}
-
-private struct CharacterReveal: View {
-    let character: String
-    let startTime: TimeInterval
-    let endTime: TimeInterval
-    let currentTime: TimeInterval
-    let active: Bool
-    let font: Font
-    let baseOpacity: Double
-
-    private var isActiveCharacter: Bool {
-        active && currentTime >= startTime && currentTime < endTime
-    }
-
-    private var revealed: Bool {
-        active && currentTime >= endTime
-    }
-
     private var progress: Double {
         guard active else { return 0 }
-        if currentTime <= startTime { return 0 }
-        if currentTime >= endTime { return 1 }
-        return smoothStep((currentTime - startTime) / max(0.001, endTime - startTime))
+        if currentTime <= word.startTime { return 0 }
+        if currentTime >= word.endTime { return 1 }
+        let x = min(1, max(0, (currentTime - word.startTime) / max(0.001, word.endTime - word.startTime)))
+        return x * x * (3 - 2 * x)
     }
 
-    private var lift: CGFloat {
-        guard isActiveCharacter else { return revealed ? 0 : 0 }
-        return -3.8 * CGFloat(smoothStep(progress))
+    private var isActive: Bool {
+        active && currentTime >= word.startTime && currentTime < word.endTime
     }
 
     var body: some View {
-        Text(character)
+        Text(word.text)
             .font(font)
-            .foregroundStyle(.white.opacity(revealed || isActiveCharacter ? 1.0 : baseOpacity * 0.42))
-            .offset(y: lift)
-            .scaleEffect(isActiveCharacter ? 1.018 : 1.0, anchor: .center)
-            .shadow(
-                color: .white.opacity(isActiveCharacter ? 0.42 : 0),
-                radius: isActiveCharacter ? 5 : 0
-            )
-            .overlay {
-                if isActiveCharacter {
-                    Text(character)
+            .foregroundStyle(.white.opacity(active ? 0.30 : baseOpacity))
+            .overlay(alignment: .leading) {
+                GeometryReader { geometry in
+                    Text(word.text)
                         .font(font)
-                        .foregroundStyle(.white.opacity(0.32))
-                        .blur(radius: 3)
+                        .foregroundStyle(.white)
+                        .frame(width: geometry.size.width, alignment: .leading)
+                        .mask(alignment: .leading) {
+                            Rectangle()
+                                .frame(width: geometry.size.width * progress, height: geometry.size.height)
+                        }
                 }
+                .allowsHitTesting(false)
             }
-    }
-
-    private func smoothStep(_ value: Double) -> Double {
-        let x = min(1, max(0, value))
-        return x * x * (3 - 2 * x)
+            .offset(y: isActive ? -2.2 : 0)
+            .scaleEffect(isActive ? 1.008 : 1, anchor: .leading)
+            .shadow(
+                color: .white.opacity(isActive ? 0.20 : 0),
+                radius: isActive ? 3 : 0
+            )
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
 
