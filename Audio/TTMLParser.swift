@@ -65,8 +65,14 @@ struct TTMLParser {
         ) {
             if let span {
                 span.text += string
-            } else if paragraph != nil {
-                paragraph?.plainText += string
+            } else if let paragraph {
+                // IMPORTANT: text outside a <span> is part of the TTML
+                // document order. In Apple-style word timing this is often
+                // where the actual spaces between timed spans live. The old
+                // parser discarded this boundary information and therefore
+                // merged unrelated words such as "So" + "I" + "guess".
+                paragraph.events.append(.text(string))
+                paragraph.plainText += string
             }
         }
 
@@ -80,6 +86,7 @@ struct TTMLParser {
 
             if name == "span" {
                 if let span {
+                    paragraph?.events.append(.span(span))
                     paragraph?.spans.append(span)
                 }
                 span = nil
@@ -142,6 +149,11 @@ struct TTMLParser {
         }
     }
 
+    private enum TTMLEvent {
+        case text(String)
+        case span(TTMLSpan)
+    }
+
     private final class TTMLParagraph {
         let start: TimeInterval?
         let end: TimeInterval?
@@ -149,6 +161,7 @@ struct TTMLParser {
 
         var plainText = ""
         var spans: [TTMLSpan] = []
+        var events: [TTMLEvent] = []
 
         init(
             start: TimeInterval?,
@@ -161,11 +174,13 @@ struct TTMLParser {
         }
 
         func makeLyricLine() -> LyricLine? {
-            // Apple-style TTML can split one spoken/sung word across multiple
-            // timed spans (for example "to" + "geth" + "er"). Whitespace
-            // spans are the authoritative word boundaries. The old parser
-            // treated every timed span as a separate word and later the UI
-            // inserted spacing between them, producing "to geth er".
+            // TTML word timing is not equivalent to "one span = one word".
+            // A word can be split across adjacent timed spans ("to" +
+            // "geth" + "er"), while a real word boundary can be represented
+            // by whitespace OUTSIDE a span or by a dedicated whitespace span.
+            // We therefore process the original child order and only merge
+            // timed fragments when no whitespace boundary occurred between
+            // them.
             var timedWords: [LyricWord] = []
             var pendingText = ""
             var pendingStart: TimeInterval?
@@ -173,6 +188,7 @@ struct TTMLParser {
 
             func flushPending() {
                 let text = pendingText.trimmingCharacters(in: .whitespacesAndNewlines)
+
                 guard !text.isEmpty, let start = pendingStart else {
                     pendingText = ""
                     pendingStart = nil
@@ -193,47 +209,91 @@ struct TTMLParser {
                 pendingEnd = nil
             }
 
-            for span in spans {
-                let raw = span.text
-                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            for event in events {
+                switch event {
+                case .text(let rawText):
+                    // Text outside timed spans is especially important: in
+                    // Apple/TTML lyrics a literal space between two spans is
+                    // the authoritative word boundary. Any whitespace here
+                    // terminates the pending word.
+                    if rawText.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
+                        flushPending()
+                    } else if !rawText.isEmpty {
+                        // Untimed visible text cannot safely be assigned a
+                        // karaoke timestamp, so it is kept only in plainText.
+                        // It must nevertheless prevent timed fragments on
+                        // either side from being merged together.
+                        flushPending()
+                    }
 
-                // Untimed whitespace spans are explicit word boundaries.
-                if trimmed.isEmpty {
-                    flushPending()
-                    continue
-                }
+                case .span(let span):
+                    let raw = span.text
 
-                guard let start = span.start else {
-                    continue
-                }
+                    // A whitespace-only span is an explicit word boundary.
+                    if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        flushPending()
+                        continue
+                    }
 
-                let end: TimeInterval
-                if let explicitEnd = span.end {
-                    end = max(start, explicitEnd)
-                } else if let duration = span.duration {
-                    end = start + max(0, duration)
-                } else {
-                    end = start
-                }
+                    guard let start = span.start else {
+                        // Untimed visible spans are not safe to merge with
+                        // timed karaoke spans. Treat them as a boundary.
+                        flushPending()
+                        continue
+                    }
 
-                let hasLeadingWhitespace = raw.first?.isWhitespace == true
-                let hasTrailingWhitespace = raw.last?.isWhitespace == true
+                    let end: TimeInterval
+                    if let explicitEnd = span.end {
+                        end = max(start, explicitEnd)
+                    } else if let duration = span.duration {
+                        end = start + max(0, duration)
+                    } else {
+                        end = start
+                    }
 
-                // A leading whitespace character means this starts a new word.
-                if hasLeadingWhitespace {
-                    flushPending()
-                }
+                    let hasLeadingWhitespace = raw.first?.isWhitespace == true
+                    let hasTrailingWhitespace = raw.last?.isWhitespace == true
 
-                if pendingStart == nil {
-                    pendingStart = start
-                }
+                    if hasLeadingWhitespace {
+                        flushPending()
+                    }
 
-                pendingText += trimmed
-                pendingEnd = max(pendingEnd ?? end, end)
+                    // Remove only boundary whitespace. Internal visible
+                    // whitespace is handled below so "foo bar" cannot become
+                    // the single logical word "foobar".
+                    let pieces = raw.split(whereSeparator: { $0.isWhitespace })
 
-                // A trailing whitespace character explicitly terminates this word.
-                if hasTrailingWhitespace {
-                    flushPending()
+                    if pieces.isEmpty {
+                        flushPending()
+                        continue
+                    }
+
+                    for (index, piece) in pieces.enumerated() {
+                        if piece.isEmpty { continue }
+
+                        // If the span itself contains an internal whitespace
+                        // boundary, every piece after it starts a new word.
+                        if index > 0 {
+                            flushPending()
+                        }
+
+                        if pendingStart == nil {
+                            pendingStart = start
+                        }
+
+                        pendingText += piece
+                        pendingEnd = max(pendingEnd ?? end, end)
+
+                        // If this is not the last piece, there was whitespace
+                        // inside this span, so finalize before continuing.
+                        if index < pieces.count - 1 {
+                            flushPending()
+                        }
+                    }
+
+                    if hasTrailingWhitespace {
+                        flushPending()
+                    }
                 }
             }
 
@@ -261,16 +321,12 @@ struct TTMLParser {
                 return nil
             }
 
-            // Reconstruct the line without inventing spaces between timed
-            // spans. Explicit whitespace spans are preserved by the grouping
-            // above, so syllable spans such as "to" + "geth" + "er" become
-            // the single visual word "together".
-            let text: String
-            if !timedWords.isEmpty {
-                text = timedWords.map(\.text).joined(separator: " ")
-            } else {
-                text = fallbackText
-            }
+            // The timedWords array already contains real word boundaries.
+            // Joining with one visual space is therefore correct: it does not
+            // split syllable fragments, and it does not collapse actual words.
+            let text = timedWords.isEmpty
+                ? fallbackText
+                : timedWords.map(\.text).joined(separator: " ")
 
             return LyricLine(
                 time: lineStart,
