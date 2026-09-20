@@ -893,8 +893,8 @@ private struct WordFlow: View {
     let words: [LyricWord]
     let currentTime: TimeInterval
     let active: Bool
-    let font: Font
-    let baseOpacity: Double
+    let font: Font = .system(size: 50, weight: .bold, design: .rounded)
+    let baseOpacity: Double = 1.0
 
     var body: some View {
         GeometryReader { geometry in
@@ -930,7 +930,7 @@ private struct RomanizedTimedLyricLine: View {
 
     private var romanizedWords: [LyricWord] {
         line.words.map { word in
-            let text = word.text.toJapaneseRomaji()
+            let text = word.text.toJapaneseRomaji() ?? ""
             return LyricWord(
                 text: text.isEmpty ? word.text : text,
                 startTime: word.startTime,
