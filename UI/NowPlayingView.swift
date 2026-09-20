@@ -893,8 +893,22 @@ private struct WordFlow: View {
     let words: [LyricWord]
     let currentTime: TimeInterval
     let active: Bool
-    let font: Font = .system(size: 50, weight: .bold, design: .rounded)
-    let baseOpacity: Double = 1.0
+    let font: Font
+    let baseOpacity: Double
+
+    init(
+        words: [LyricWord],
+        currentTime: TimeInterval,
+        active: Bool,
+        font: Font = .system(size: 50, weight: .bold, design: .rounded),
+        baseOpacity: Double = 1.0
+    ) {
+        self.words = words
+        self.currentTime = currentTime
+        self.active = active
+        self.font = font
+        self.baseOpacity = baseOpacity
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -909,13 +923,16 @@ private struct WordFlow: View {
                     )
                 }
             }
-            .frame(width: geometry.size.width, alignment: .leading)
+            .frame(
+                width: geometry.size.width,
+                alignment: .leading
+            )
         }
-        // GeometryReader gives FlowLayout the real lyric-column width.
-        // Without this explicit width SwiftUI can propose an unbounded width
-        // and the final characters disappear outside the lyric section.
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 2)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: 2,
+            alignment: .leading
+        )
     }
 }
 
