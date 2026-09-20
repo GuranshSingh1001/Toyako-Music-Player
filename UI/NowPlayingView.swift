@@ -764,7 +764,14 @@ private struct SmoothLyricsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let romanized = line.romanized, !romanized.isEmpty {
+                if line.hasWordTiming {
+                    RomanizedTimedLyricLine(
+                        line: line,
+                        state: state,
+                        currentTime: currentTime,
+                        isPlaying: isPlaying
+                    )
+                } else if let romanized = line.romanized, !romanized.isEmpty {
                     Text(romanized)
                         .font(.system(size: 22, weight: .medium, design: .rounded))
                         .foregroundStyle(.white)
@@ -886,205 +893,189 @@ private struct WordFlow: View {
     let words: [LyricWord]
     let currentTime: TimeInterval
     let active: Bool
+    let font: Font
+    let baseOpacity: Double
 
     var body: some View {
-        FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
-            ForEach(words) { word in
-                WordReveal(
-                    word: word,
-                    progress: active ? wordProgress(word) : 0,
+        GeometryReader { geometry in
+            FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
+                ForEach(words) { word in
+                    CharacterTimedWord(
+                        word: word,
+                        currentTime: currentTime,
+                        active: active,
+                        font: font,
+                        baseOpacity: baseOpacity
+                    )
+                }
+            }
+            .frame(width: geometry.size.width, alignment: .leading)
+        }
+        // GeometryReader gives FlowLayout the real lyric-column width.
+        // Without this explicit width SwiftUI can propose an unbounded width
+        // and the final characters disappear outside the lyric section.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 2)
+    }
+}
+
+private struct RomanizedTimedLyricLine: View {
+    let line: LyricLine
+    let state: LyricLineState
+    let currentTime: TimeInterval
+    let isPlaying: Bool
+
+    @State private var anchorTime: TimeInterval = 0
+    @State private var anchorDate = Date()
+
+    private var romanizedWords: [LyricWord] {
+        line.words.map { word in
+            let text = word.text.toJapaneseRomaji()
+            return LyricWord(
+                text: text.isEmpty ? word.text : text,
+                startTime: word.startTime,
+                endTime: word.endTime
+            )
+        }
+    }
+
+    var body: some View {
+        Group {
+            if state == .active {
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+                    WordFlow(
+                        words: romanizedWords,
+                        currentTime: isPlaying ? interpolatedTime(at: timeline.date) : currentTime,
+                        active: true,
+                        font: .system(size: 22, weight: .medium, design: .rounded),
+                        baseOpacity: 0.72
+                    )
+                }
+            } else {
+                WordFlow(
+                    words: romanizedWords,
                     currentTime: currentTime,
-                    active: active
+                    active: false,
+                    font: .system(size: 22, weight: .medium, design: .rounded),
+                    baseOpacity: state == .future ? 0.18 : 0.08
+                )
+            }
+        }
+        .foregroundStyle(.white)
+        .opacity(state == .active ? 1 : 1)
+        .blur(radius: state == .active ? 0 : 1.4)
+        .offset(y: state == .past ? -7 : 0)
+        .onAppear {
+            anchorTime = currentTime
+            anchorDate = Date()
+        }
+        .onChange(of: currentTime) { _, newValue in
+            anchorTime = newValue
+            anchorDate = Date()
+        }
+        .onChange(of: isPlaying) { _, _ in
+            anchorTime = currentTime
+            anchorDate = Date()
+        }
+    }
+
+    private func interpolatedTime(at date: Date) -> TimeInterval {
+        guard state == .active, isPlaying else { return currentTime }
+        return anchorTime + max(0, date.timeIntervalSince(anchorDate))
+    }
+}
+
+private struct CharacterTimedWord: View {
+    let word: LyricWord
+    let currentTime: TimeInterval
+    let active: Bool
+    let font: Font
+    let baseOpacity: Double
+
+    private var characters: [String] { Array(word.text).map(String.init) }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(characters.enumerated()), id: \.offset) { index, character in
+                CharacterReveal(
+                    character: character,
+                    startTime: characterStart(index),
+                    endTime: characterEnd(index),
+                    currentTime: currentTime,
+                    active: active,
+                    font: font,
+                    baseOpacity: baseOpacity
                 )
             }
         }
     }
 
-    private func wordProgress(_ word: LyricWord) -> Double {
-        if currentTime >= word.endTime { return 1 }
-        if currentTime <= word.startTime { return 0 }
-
-        let duration = max(0.001, word.endTime - word.startTime)
-        let raw = min(1, max(0, (currentTime - word.startTime) / duration))
-
-        // Keep the character mask perceptually smooth while preserving exact
-        // TTML timing. The mask itself moves continuously between letters.
-        return raw * raw * (3.0 - 2.0 * raw)
+    private var characterDuration: TimeInterval {
+        wordDuration / TimeInterval(max(1, characters.count))
     }
-}
-
-private struct WordReveal: View {
-    let word: LyricWord
-    let progress: Double
-    let currentTime: TimeInterval
-    let active: Bool
 
     private var wordDuration: TimeInterval {
         max(0.001, word.endTime - word.startTime)
     }
 
-    // The motion is derived directly from the audio clock rather than from
-    // SwiftUI's implicit animations. That makes every effect pause exactly
-    // with playback and resume from the same visual position.
-    private var liftAmount: CGFloat {
+    private func characterStart(_ index: Int) -> TimeInterval {
+        word.startTime + characterDuration * TimeInterval(index)
+    }
+
+    private func characterEnd(_ index: Int) -> TimeInterval {
+        if index == characters.count - 1 { return word.endTime }
+        return characterStart(index + 1)
+    }
+}
+
+private struct CharacterReveal: View {
+    let character: String
+    let startTime: TimeInterval
+    let endTime: TimeInterval
+    let currentTime: TimeInterval
+    let active: Bool
+    let font: Font
+    let baseOpacity: Double
+
+    private var isActiveCharacter: Bool {
+        active && currentTime >= startTime && currentTime < endTime
+    }
+
+    private var revealed: Bool {
+        active && currentTime >= endTime
+    }
+
+    private var progress: Double {
         guard active else { return 0 }
-
-        let liftInDuration = min(0.34, max(0.18, wordDuration * 0.32))
-        let settleDuration = 0.42
-        let t = currentTime
-
-        if t < word.startTime {
-            return 0
-        }
-
-        if t < word.startTime + liftInDuration {
-            let p = smoothStep((t - word.startTime) / liftInDuration)
-            return -3.5 * CGFloat(p)
-        }
-
-        if t <= word.endTime {
-            return -3.5
-        }
-
-        let settleP = min(1, max(0, (t - word.endTime) / settleDuration))
-        return -3.5 * CGFloat(1 - smoothStep(settleP))
+        if currentTime <= startTime { return 0 }
+        if currentTime >= endTime { return 1 }
+        return smoothStep((currentTime - startTime) / max(0.001, endTime - startTime))
     }
 
-    // A restrained scale change makes the active word feel slightly closer
-    // without producing the obvious "pop" of a spring animation.
-    private var focusScale: CGFloat {
-        guard active else { return 1.0 }
-        let focus = currentGlow
-        return 1.0 + CGFloat(focus) * 0.010
-    }
-
-    private var currentGlow: Double {
-        guard active, currentTime >= word.startTime else { return 0 }
-
-        if currentTime <= word.endTime {
-            let p = min(1, max(0, (currentTime - word.startTime) / wordDuration))
-
-            if p < 0.24 {
-                return 0.08 + 0.30 * smoothStep(p / 0.24)
-            }
-
-            if p < 0.78 {
-                return 0.38
-            }
-
-            return 0.38 * (1 - 0.18 * smoothStep((p - 0.78) / 0.22))
-        }
-
-        // A short residual halo prevents the word from looking as though its
-        // illumination was switched off at the exact TTML end timestamp.
-        let settleP = min(1, max(0, (currentTime - word.endTime) / 0.42))
-        return 0.31 * (1 - smoothStep(settleP))
-    }
-
-    private var isVisuallyActive: Bool {
-        active && currentTime >= word.startTime && currentTime <= word.endTime + 0.42
-    }
-
-    // The edge of the character reveal is feathered. This is deliberately
-    // wider than a single pixel so the reveal reads as a soft diffusion rather
-    // than a rectangular wipe.
-    private var revealFeather: Double {
-        min(0.075, max(0.045, 2.5 / max(30, Double(word.text.count) * 8)))
-    }
-
-    @ViewBuilder
-    private func revealedMask(progress: Double, width: CGFloat, height: CGFloat) -> some View {
-        let p = min(1, max(0, progress))
-        let feather = revealFeather
-        let hardEdge = max(0, p - feather)
-
-        LinearGradient(
-            stops: [
-                .init(color: .black, location: 0),
-                .init(color: .black, location: hardEdge),
-                .init(color: .black.opacity(0.82), location: max(hardEdge, p - feather * 0.45)),
-                .init(color: .clear, location: p),
-                .init(color: .clear, location: 1)
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-        .frame(width: width, height: height)
+    private var lift: CGFloat {
+        guard isActiveCharacter else { return revealed ? 0 : 0 }
+        return -3.8 * CGFloat(smoothStep(progress))
     }
 
     var body: some View {
-        Text(word.text)
-            // The unhighlighted glyphs remain visible underneath the reveal,
-            // just like the muted lyrics around the active portion in Apple Music.
-            .foregroundStyle(.white.opacity(active ? 0.24 : 0.30))
-            .overlay(alignment: .leading) {
-                GeometryReader { geometry in
-                    Text(word.text)
-                        .foregroundStyle(.white)
-                        .frame(width: geometry.size.width, alignment: .leading)
-                        .mask {
-                            revealedMask(
-                                progress: progress,
-                                width: geometry.size.width,
-                                height: geometry.size.height
-                            )
-                        }
-                }
-                .allowsHitTesting(false)
-            }
-            // Wide ambient bloom. It is intentionally very soft and low
-            // contrast so it feels like illumination rather than a colored tag.
-            .overlay(alignment: .leading) {
-                if isVisuallyActive && currentGlow > 0.001 {
-                    GeometryReader { geometry in
-                        Text(word.text)
-                            .foregroundStyle(.white.opacity(currentGlow * 0.34))
-                            .frame(width: geometry.size.width, alignment: .leading)
-                            .mask {
-                                revealedMask(
-                                    progress: progress,
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
-                                )
-                            }
-                            .blur(radius: 15)
-                            .scaleEffect(1.018, anchor: .leading)
-                    }
-                    .allowsHitTesting(false)
-                }
-            }
-            // A tighter halo gives the active characters definition on top of
-            // the wider ambient bloom.
-            .overlay(alignment: .leading) {
-                if isVisuallyActive && currentGlow > 0.001 {
-                    GeometryReader { geometry in
-                        Text(word.text)
-                            .foregroundStyle(.white.opacity(currentGlow * 0.42))
-                            .frame(width: geometry.size.width, alignment: .leading)
-                            .mask {
-                                revealedMask(
-                                    progress: progress,
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
-                                )
-                            }
-                            .blur(radius: 4.5)
-                    }
-                    .allowsHitTesting(false)
-                }
-            }
-            // A tiny focus shadow gives the active glyphs depth without a
-            // visible outline or colored drop shadow.
+        Text(character)
+            .font(font)
+            .foregroundStyle(.white.opacity(revealed || isActiveCharacter ? 1.0 : baseOpacity * 0.42))
             .shadow(
-                color: .white.opacity(isVisuallyActive ? currentGlow * 0.18 : 0),
-                radius: isVisuallyActive ? 5 : 0,
-                x: 0,
-                y: 0
+                color: .white.opacity(isActiveCharacter ? 0.55 : 0),
+                radius: isActiveCharacter ? 7 : 0
             )
-            .offset(y: liftAmount)
-            .scaleEffect(focusScale, anchor: .leading)
-            .fixedSize()
-            .compositingGroup()
+            .scaleEffect(isActiveCharacter ? 1.018 : 1.0)
+            .offset(y: lift)
+            .overlay {
+                if isActiveCharacter {
+                    Text(character)
+                        .font(font)
+                        .foregroundStyle(.white.opacity(0.42))
+                        .blur(radius: 3.5)
+                }
+            }
+            .animation(.linear(duration: 0.03), value: currentTime)
     }
 
     private func smoothStep(_ value: Double) -> Double {
