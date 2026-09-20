@@ -931,7 +931,7 @@ private struct RomanizedTimedLyricLine: View {
 
     private var romanizedWords: [LyricWord] {
         line.words.map { word in
-            let text = word.text.toJapaneseRomaji()
+            let text = word.text.toJapaneseRomaji() ?? ""
             return LyricWord(
                 text: text.isEmpty ? word.text : text,
                 startTime: word.startTime,
