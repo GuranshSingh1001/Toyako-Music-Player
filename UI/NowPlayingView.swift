@@ -919,14 +919,17 @@ private struct WordReveal: View {
         max(0.001, word.endTime - word.startTime)
     }
 
-    // The motion is derived directly from the audio clock rather than from
-    // SwiftUI's implicit animations. That makes every effect pause exactly
-    // with playback and resume from the same visual position.
+    // A word should not "snap" upward at its start or immediately drop when
+    // the TTML end timestamp arrives. Instead it has three phases:
+    //   1. gentle lift-in
+    //   2. calm hold while sung
+    //   3. gentle settle after the word finishes
+    // The settle is derived from the same audio clock, so pause freezes it too.
     private var liftAmount: CGFloat {
         guard active else { return 0 }
 
         let liftInDuration = min(0.34, max(0.18, wordDuration * 0.32))
-        let settleDuration = 0.42
+        let settleDuration = 0.34
         let t = currentTime
 
         if t < word.startTime {
@@ -946,141 +949,77 @@ private struct WordReveal: View {
         return -3.5 * CGFloat(1 - smoothStep(settleP))
     }
 
-    // A restrained scale change makes the active word feel slightly closer
-    // without producing the obvious "pop" of a spring animation.
-    private var focusScale: CGFloat {
-        guard active else { return 1.0 }
-        let focus = currentGlow
-        return 1.0 + CGFloat(focus) * 0.010
-    }
-
     private var currentGlow: Double {
         guard active, currentTime >= word.startTime else { return 0 }
 
         if currentTime <= word.endTime {
             let p = min(1, max(0, (currentTime - word.startTime) / wordDuration))
-
-            if p < 0.24 {
-                return 0.08 + 0.30 * smoothStep(p / 0.24)
+            // Avoid a pulsing "breathing" effect. The glow ramps in softly,
+            // reaches a stable plateau, then gently relaxes at the end.
+            if p < 0.28 {
+                return 0.12 + 0.24 * smoothStep(p / 0.28)
             }
-
-            if p < 0.78 {
-                return 0.38
+            if p < 0.82 {
+                return 0.36
             }
-
-            return 0.38 * (1 - 0.18 * smoothStep((p - 0.78) / 0.22))
+            return 0.36 * (1 - smoothStep((p - 0.82) / 0.18))
         }
 
-        // A short residual halo prevents the word from looking as though its
-        // illumination was switched off at the exact TTML end timestamp.
-        let settleP = min(1, max(0, (currentTime - word.endTime) / 0.42))
-        return 0.31 * (1 - smoothStep(settleP))
+        let settleP = min(1, max(0, (currentTime - word.endTime) / 0.34))
+        return 0.20 * (1 - smoothStep(settleP))
     }
 
     private var isVisuallyActive: Bool {
-        active && currentTime >= word.startTime && currentTime <= word.endTime + 0.42
-    }
-
-    // The edge of the character reveal is feathered. This is deliberately
-    // wider than a single pixel so the reveal reads as a soft diffusion rather
-    // than a rectangular wipe.
-    private var revealFeather: Double {
-        min(0.075, max(0.045, 2.5 / max(30, Double(word.text.count) * 8)))
-    }
-
-    @ViewBuilder
-    private func revealedMask(progress: Double, width: CGFloat, height: CGFloat) -> some View {
-        let p = min(1, max(0, progress))
-        let feather = revealFeather
-        let hardEdge = max(0, p - feather)
-
-        LinearGradient(
-            stops: [
-                .init(color: .black, location: 0),
-                .init(color: .black, location: hardEdge),
-                .init(color: .black.opacity(0.82), location: max(hardEdge, p - feather * 0.45)),
-                .init(color: .clear, location: p),
-                .init(color: .clear, location: 1)
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-        .frame(width: width, height: height)
+        active && currentTime >= word.startTime && currentTime <= word.endTime + 0.34
     }
 
     var body: some View {
         Text(word.text)
-            // The unhighlighted glyphs remain visible underneath the reveal,
-            // just like the muted lyrics around the active portion in Apple Music.
-            .foregroundStyle(.white.opacity(active ? 0.24 : 0.30))
+            .foregroundStyle(.white.opacity(active ? 0.20 : 0.30))
             .overlay(alignment: .leading) {
                 GeometryReader { geometry in
                     Text(word.text)
                         .foregroundStyle(.white)
                         .frame(width: geometry.size.width, alignment: .leading)
-                        .mask {
-                            revealedMask(
-                                progress: progress,
-                                width: geometry.size.width,
-                                height: geometry.size.height
-                            )
+                        .clipped()
+                        .mask(alignment: .leading) {
+                            Rectangle()
+                                .frame(
+                                    width: geometry.size.width * progress,
+                                    height: geometry.size.height
+                                )
                         }
                 }
                 .allowsHitTesting(false)
             }
-            // Wide ambient bloom. It is intentionally very soft and low
-            // contrast so it feels like illumination rather than a colored tag.
             .overlay(alignment: .leading) {
                 if isVisuallyActive && currentGlow > 0.001 {
                     GeometryReader { geometry in
                         Text(word.text)
-                            .foregroundStyle(.white.opacity(currentGlow * 0.34))
+                            .foregroundStyle(.white.opacity(currentGlow))
                             .frame(width: geometry.size.width, alignment: .leading)
-                            .mask {
-                                revealedMask(
-                                    progress: progress,
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
-                                )
+                            .clipped()
+                            .mask(alignment: .leading) {
+                                Rectangle()
+                                    .frame(
+                                        width: geometry.size.width * progress,
+                                        height: geometry.size.height
+                                    )
                             }
-                            .blur(radius: 15)
-                            .scaleEffect(1.018, anchor: .leading)
+                            .blur(radius: 8.5)
+                            .scaleEffect(1.008, anchor: .leading)
                     }
                     .allowsHitTesting(false)
                 }
             }
-            // A tighter halo gives the active characters definition on top of
-            // the wider ambient bloom.
-            .overlay(alignment: .leading) {
-                if isVisuallyActive && currentGlow > 0.001 {
-                    GeometryReader { geometry in
-                        Text(word.text)
-                            .foregroundStyle(.white.opacity(currentGlow * 0.42))
-                            .frame(width: geometry.size.width, alignment: .leading)
-                            .mask {
-                                revealedMask(
-                                    progress: progress,
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
-                                )
-                            }
-                            .blur(radius: 4.5)
-                    }
-                    .allowsHitTesting(false)
-                }
-            }
-            // A tiny focus shadow gives the active glyphs depth without a
-            // visible outline or colored drop shadow.
+            .offset(y: liftAmount)
             .shadow(
-                color: .white.opacity(isVisuallyActive ? currentGlow * 0.18 : 0),
-                radius: isVisuallyActive ? 5 : 0,
+                color: .white.opacity(isVisuallyActive ? currentGlow * 0.24 : 0),
+                radius: isVisuallyActive ? 6 : 0,
                 x: 0,
                 y: 0
             )
-            .offset(y: liftAmount)
-            .scaleEffect(focusScale, anchor: .leading)
             .fixedSize()
-            .compositingGroup()
     }
 
     private func smoothStep(_ value: Double) -> Double {
