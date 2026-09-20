@@ -923,12 +923,10 @@ private struct TimedLyricPair: View {
             if showRomanized {
                 // The romanized word rises on the EXACT same word interval as
                 // its Japanese source word. It does not slide/reveal left-to-right.
-                WordFlow(
-                    words: romanizedWords,
+                JapaneseRomanizedFlow(
+                    words: line.words,
                     currentTime: currentTime,
-                    font: romanizedFont,
-                    baseOpacity: state == .future ? 0.18 : (state == .past ? 0.08 : 0.72),
-                    riseAmplitude: 2.7
+                    font: romanizedFont
                 )
                 .opacity(state == .active ? 1 : (state == .future ? 0.18 : 0.08))
                 .blur(radius: state == .active ? 0 : 1.4)
@@ -974,8 +972,9 @@ private struct WordTimedLyricLine: View {
 
 // MARK: - Japanese character timing
 
-// Only the active Japanese line is rendered at character granularity. Every
-// other line uses the lightweight word renderer below.
+// Japanese uses character-level motion only for the active Japanese line.
+// Romanized text remains word-level, but each romanized word is driven by the
+// exact same source-word interval as its Japanese counterpart.
 private struct JapaneseCharacterFlow: View {
     let words: [LyricWord]
     let currentTime: TimeInterval
@@ -999,10 +998,14 @@ private struct JapaneseCharacterWord: View {
     let currentTime: TimeInterval
     let font: Font
 
-    private var characters: [String] { Array(word.text).map(String.init) }
-    private var duration: TimeInterval { max(0.001, word.endTime - word.startTime) }
+    private var characters: [String] {
+        Array(word.text).map(String.init)
+    }
+
+    // TTML gives us word timing, not character timing. We derive a lightweight
+    // character position inside that word purely for the Japanese visual effect.
     private var characterDuration: TimeInterval {
-        duration / TimeInterval(max(1, characters.count))
+        max(0.001, word.endTime - word.startTime) / TimeInterval(max(1, characters.count))
     }
 
     var body: some View {
@@ -1033,37 +1036,91 @@ private struct JapaneseCharacterReveal: View {
     let currentTime: TimeInterval
     let font: Font
 
-    private var active: Bool {
-        currentTime >= startTime && currentTime < endTime
+    private var progress: CGFloat {
+        guard currentTime >= startTime else { return 0 }
+        guard currentTime < endTime else { return 1 }
+        return CGFloat(min(1, max(0, (currentTime - startTime) / max(0.001, endTime - startTime))))
     }
 
-    private var revealed: Bool {
-        currentTime >= endTime
+    private var activeFocus: CGFloat {
+        guard currentTime >= startTime && currentTime < endTime else { return 0 }
+        // Ease in and out, rather than sliding continuously in one direction.
+        let x = min(1, max(0, (currentTime - startTime) / max(0.001, endTime - startTime)))
+        return CGFloat(sin(.pi * x))
     }
 
-    // A cheap triangular bump: the glyph rises into focus and naturally settles
-    // back down before the next character. No implicit SwiftUI animation.
-    private var rise: CGFloat {
-        guard active else { return 0 }
-        let raw = (currentTime - startTime) / max(0.001, endTime - startTime)
-        let x = min(1, max(0, raw))
-        return -3.8 * CGFloat(sin(.pi * x))
-    }
-
-    private var focus: Double {
-        guard active else { return 0 }
-        let raw = (currentTime - startTime) / max(0.001, endTime - startTime)
-        let x = min(1, max(0, raw))
-        return sin(.pi * x)
-    }
+    private var isFuture: Bool { currentTime < startTime }
 
     var body: some View {
         Text(character)
             .font(font)
-            .foregroundStyle(.white.opacity(revealed || active ? 1 : 0.30))
-            .offset(y: rise)
-            .scaleEffect(1 + CGFloat(focus) * 0.012, anchor: .center)
-            .shadow(color: .white.opacity(focus * 0.18), radius: focus > 0 ? 2.5 : 0)
+            .foregroundStyle(.white.opacity(isFuture ? 0.30 : 1.0))
+            // The glyph rises into focus and then settles back to its exact
+            // baseline. There is no horizontal translation.
+            .offset(y: -3.8 * activeFocus)
+            .scaleEffect(1 + activeFocus * 0.012, anchor: .center)
+            .shadow(
+                color: .white.opacity(activeFocus * 0.16),
+                radius: activeFocus > 0 ? 2.2 : 0
+            )
+            .transaction { transaction in
+                // Never let SwiftUI interpolate this view's position between
+                // audio-clock updates. The audio clock itself supplies motion.
+                transaction.animation = nil
+            }
+    }
+}
+
+// A romanized word must be visually paired with the exact Japanese TTML word
+// that produced it. The shared interval is what keeps the two rises locked.
+private struct JapaneseRomanizedWord: View {
+    let sourceWord: LyricWord
+    let romanized: String
+    let currentTime: TimeInterval
+    let font: Font
+
+    private var focus: CGFloat {
+        guard currentTime >= sourceWord.startTime && currentTime < sourceWord.endTime else { return 0 }
+        let x = min(1, max(0, (currentTime - sourceWord.startTime) / max(0.001, sourceWord.endTime - sourceWord.startTime)))
+        return CGFloat(sin(.pi * x))
+    }
+
+    private var future: Bool { currentTime < sourceWord.startTime }
+
+    var body: some View {
+        Text(romanized)
+            .font(font)
+            .foregroundStyle(.white.opacity(future ? 0.18 : 0.72))
+            .offset(y: -2.7 * focus)
+            .scaleEffect(1 + focus * 0.006, anchor: .center)
+            .shadow(
+                color: .white.opacity(focus * 0.12),
+                radius: focus > 0 ? 2 : 0
+            )
+            .fixedSize(horizontal: true, vertical: false)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+    }
+}
+
+private struct JapaneseRomanizedFlow: View {
+    let words: [LyricWord]
+    let currentTime: TimeInterval
+    let font: Font
+
+    var body: some View {
+        FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
+            ForEach(words) { word in
+                let romanized = word.text.toJapaneseRomaji() ?? word.text
+                JapaneseRomanizedWord(
+                    sourceWord: word,
+                    romanized: romanized,
+                    currentTime: currentTime,
+                    font: font
+                )
+            }
+        }
     }
 }
 
