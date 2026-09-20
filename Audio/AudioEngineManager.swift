@@ -1628,7 +1628,13 @@ class AudioEngineManager: ObservableObject {
 
         lyricsSources = sources
 
-        if let preferred = sources.first(where: { $0.id == selectedLyricsSourceID }) {
+        // TTML is the default lyric format whenever a valid matching
+        // TTML sidecar is available. LRC remains available as a manual
+        // fallback/source choice through the lyric source selector.
+        if let ttml = sources.first(where: { $0.id == "ttml" }) {
+            selectedLyricsSourceID = ttml.id
+            currentLyrics = ttml.lyrics
+        } else if let preferred = sources.first(where: { $0.id == selectedLyricsSourceID }) {
             currentLyrics = preferred.lyrics
         } else if let first = sources.first {
             selectedLyricsSourceID = first.id
