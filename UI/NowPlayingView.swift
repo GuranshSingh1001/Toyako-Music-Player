@@ -851,14 +851,18 @@ private struct WordTimedLyricLine: View {
                         currentTime: isPlaying
                             ? interpolatedTime(at: timeline.date)
                             : currentTime,
-                        active: true
+                        active: true,
+                        font: .system(size: 50, weight: .bold, design: .rounded),
+                        baseOpacity: 1.0
                     )
                 }
             } else {
                 WordFlow(
                     words: line.words,
                     currentTime: currentTime,
-                    active: false
+                    active: false,
+                    font: .system(size: 50, weight: .bold, design: .rounded),
+                    baseOpacity: state == .future ? 0.27 : 0.12
                 )
             }
         }
@@ -896,43 +900,23 @@ private struct WordFlow: View {
     let font: Font
     let baseOpacity: Double
 
-    init(
-        words: [LyricWord],
-        currentTime: TimeInterval,
-        active: Bool,
-        font: Font = .system(size: 50, weight: .bold, design: .rounded),
-        baseOpacity: Double = 1.0
-    ) {
-        self.words = words
-        self.currentTime = currentTime
-        self.active = active
-        self.font = font
-        self.baseOpacity = baseOpacity
-    }
-
     var body: some View {
-        GeometryReader { geometry in
-            FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
-                ForEach(words) { word in
-                    CharacterTimedWord(
-                        word: word,
-                        currentTime: currentTime,
-                        active: active,
-                        font: font,
-                        baseOpacity: baseOpacity
-                    )
-                }
+        FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
+            ForEach(words) { word in
+                CharacterTimedWord(
+                    word: word,
+                    currentTime: currentTime,
+                    active: active,
+                    font: font,
+                    baseOpacity: baseOpacity
+                )
             }
-            .frame(
-                width: geometry.size.width,
-                alignment: .leading
-            )
         }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 2,
-            alignment: .leading
-        )
+        // Let FlowLayout receive the finite width of the lyrics column. It then
+        // calculates its own height, so wrapped lines occupy real vertical space
+        // instead of collapsing inside a GeometryReader.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -947,7 +931,7 @@ private struct RomanizedTimedLyricLine: View {
 
     private var romanizedWords: [LyricWord] {
         line.words.map { word in
-            let text = word.text.toJapaneseRomaji() ?? ""
+            let text = word.text.toJapaneseRomaji()
             return LyricWord(
                 text: text.isEmpty ? word.text : text,
                 startTime: word.startTime,
@@ -1025,6 +1009,7 @@ private struct CharacterTimedWord: View {
                 )
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var characterDuration: TimeInterval {
