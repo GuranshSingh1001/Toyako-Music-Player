@@ -925,8 +925,7 @@ private struct TimedLyricPair: View {
                 // its Japanese source word. It does not slide/reveal left-to-right.
                 JapaneseKaraokeRomanizationFlow(
                     words: line.words,
-                    currentTime: currentTime,
-                    font: romanizedFont
+                    currentTime: currentTime
                 )
                 .opacity(state == .active ? 1 : (state == .future ? 0.18 : 0.08))
                 .blur(radius: state == .active ? 0 : 1.4)
