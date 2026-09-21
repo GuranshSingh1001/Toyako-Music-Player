@@ -7,9 +7,6 @@ struct ToyakoPreferences {
     static let lyricsLineSpacingKey = "Toyako.Lyrics.LineSpacing"
     static let lyricsAnimationStyleKey = "Toyako.Lyrics.AnimationStyle"
     static let showAudioInfoKey = "Toyako.NowPlaying.ShowAudioInfo"
-    static let crossfadeKey = "Toyako.Playback.Crossfade"
-    static let crossfadeDurationKey = "Toyako.Playback.CrossfadeDuration"
-    static let gaplessKey = "Toyako.Playback.Gapless"
     static let translationKey = "Toyako.Lyrics.Translation"
 
     static func registerDefaults() {
@@ -20,9 +17,6 @@ struct ToyakoPreferences {
             lyricsLineSpacingKey: 30.0,
             lyricsAnimationStyleKey: "dynamic",
             showAudioInfoKey: true,
-            crossfadeKey: true,
-            crossfadeDurationKey: 0.75,
-            gaplessKey: false,
             translationKey: false
         ])
 

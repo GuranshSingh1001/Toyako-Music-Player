@@ -11,9 +11,6 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
-    @AppStorage(ToyakoPreferences.crossfadeKey) private var crossfadeEnabled = true
-    @AppStorage(ToyakoPreferences.crossfadeDurationKey) private var crossfadeDuration = 0.75
-    @AppStorage(ToyakoPreferences.gaplessKey) private var gaplessEnabled = true
 
     var body: some View {
         NavigationStack {
@@ -57,51 +54,6 @@ struct SettingsView: View {
                     Toggle("Show Audio Quality", isOn: $showAudioInfo)
                 }
 
-                Section("Playback") {
-                    Toggle("Crossfade", isOn: $crossfadeEnabled)
-                        .onChange(of: crossfadeEnabled) { _, newValue in
-                            if newValue {
-                                gaplessEnabled = false
-                                audioManager.setGaplessEnabled(false)
-                            }
-                            audioManager.setCrossfadeEnabled(newValue)
-                        }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Toggle("Gapless Playback", isOn: $gaplessEnabled)
-                            .onChange(of: gaplessEnabled) { _, newValue in
-                                if newValue {
-                                    crossfadeEnabled = false
-                                    audioManager.setCrossfadeEnabled(false)
-                                }
-                                audioManager.setGaplessEnabled(newValue)
-                            }
-
-                        Text("Crossfade and gapless playback are mutually exclusive.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if crossfadeEnabled {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Crossfade Length")
-                                Spacer()
-                                Text(String(format: "%.1f sec", crossfadeDuration))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                            Slider(value: Binding(
-                                get: { crossfadeDuration },
-                                set: { newValue in
-                                    crossfadeDuration = newValue
-                                    audioManager.setCrossfadeDuration(newValue)
-                                }
-                            ), in: 0.50...3.00, step: 0.05)
-                        }
-                    }
-                }
-
                 Section("About") {
                     LabeledContent("App", value: "Toyako")
                     LabeledContent("Version", value: "1.3")
@@ -117,12 +69,6 @@ struct SettingsView: View {
         }
         .onAppear {
             ToyakoPreferences.registerDefaults()
-            if gaplessEnabled {
-                crossfadeEnabled = false
-            }
-            audioManager.crossfadeEnabled = crossfadeEnabled
-            audioManager.crossfadeDuration = max(0.5, min(3.0, crossfadeDuration))
-            audioManager.gaplessEnabled = gaplessEnabled
         }
     }
 }

@@ -37,7 +37,6 @@ struct LyricsSource: Identifiable, Equatable {
 class AudioEngineManager: ObservableObject {
 
     private var player: AVQueuePlayer = AVQueuePlayer()
-    private var secondaryPlayer: AVQueuePlayer = AVQueuePlayer()
 
     private var timeObserverToken:
         Any?
@@ -54,8 +53,6 @@ class AudioEngineManager: ObservableObject {
 
     private var interruptionObserverToken: NSObjectProtocol?
     private var remoteCommandTargets: [(command: MPRemoteCommand, token: Any)] = []
-    private var fadeOutTimer: Timer?
-    private var fadeInTimer: Timer?
 
     private var lastPersistedTime:
         TimeInterval = -100
@@ -82,12 +79,6 @@ class AudioEngineManager: ObservableObject {
         let clamped = min(1.0, max(0.0, value))
         volume = clamped
         player.volume = clamped
-    }
-
-    func setCrossfadeDuration(_ value: TimeInterval) {
-        let clamped = min(3.0, max(0.5, value))
-        crossfadeDuration = clamped
-        UserDefaults.standard.set(clamped, forKey: ToyakoPreferences.crossfadeDurationKey)
     }
 
     /// Fast-ticking playback position, kept off this object on purpose.
@@ -130,15 +121,6 @@ class AudioEngineManager: ObservableObject {
     @Published var repeatMode:
         RepeatMode = .off
 
-    @Published var crossfadeEnabled:
-        Bool = true
-
-    @Published var crossfadeDuration:
-        TimeInterval = 0.45
-
-    @Published var gaplessEnabled:
-        Bool = true
-
     /// Small local history used by the Home screen. Artwork is intentionally
     /// not persisted, so loading it adds essentially no startup cost.
     @Published private(set) var recentlyPlayed:
@@ -149,13 +131,6 @@ class AudioEngineManager: ObservableObject {
 
     init() {
         ToyakoPreferences.registerDefaults()
-        crossfadeEnabled = UserDefaults.standard.bool(forKey: ToyakoPreferences.crossfadeKey)
-        crossfadeDuration = UserDefaults.standard.double(forKey: ToyakoPreferences.crossfadeDurationKey)
-        gaplessEnabled = UserDefaults.standard.bool(forKey: ToyakoPreferences.gaplessKey)
-        if crossfadeDuration < 0.5 || crossfadeDuration > 3.0 {
-            crossfadeDuration = 0.75
-        }
-
         loadRecentlyPlayed()
         setupRemoteControls()
         setupInterruptionHandling()
@@ -1032,8 +1007,6 @@ class AudioEngineManager: ObservableObject {
             LocalTrack
     ) {
 
-        cancelTransitionFades()
-
         currentTrack =
             track
 
@@ -1066,103 +1039,13 @@ class AudioEngineManager: ObservableObject {
             )
 
 
-        if crossfadeEnabled && isPlaying {
-            fadeOutAndSwitch(
-                to: playerItem,
-                track: track
-            )
-        } else if gaplessEnabled && !crossfadeEnabled {
-            playGapless(
-                track: track,
-                playerItem: playerItem
-            )
-        } else {
-            player.volume = volume
-            player.removeAllItems()
-            player.replaceCurrentItem(with: playerItem)
-            player.play()
-            finalizePlay(track: track, playerItem: playerItem)
-        }
-    }
-
-
-    // MARK: - Gapless Playback
-
-    /// Uses AVQueuePlayer so the next queued item is prepared before the
-    /// current item reaches its end. Crossfade deliberately takes precedence
-    /// when enabled because it requires overlapping volume control.
-    private func playGapless(track: LocalTrack, playerItem: AVPlayerItem) {
-        cancelTransitionFades()
-        player.removeAllItems()
-        player.insert(playerItem, after: nil)
-
-        if queue.indices.contains(queueIndex + 1) {
-            for nextTrack in queue[(queueIndex + 1)...] {
-                player.insert(makePlayerItem(url: nextTrack.url), after: player.items().last)
-            }
-        } else if repeatMode == .all && !queue.isEmpty {
-            for nextTrack in queue {
-                player.insert(makePlayerItem(url: nextTrack.url), after: player.items().last)
-            }
-        }
-
         player.volume = volume
+        player.removeAllItems()
+        player.replaceCurrentItem(with: playerItem)
         player.play()
         finalizePlay(track: track, playerItem: playerItem)
     }
 
-    // MARK: - Crossfade
-
-    private func cancelTransitionFades() {
-        fadeOutTimer?.invalidate()
-        fadeOutTimer = nil
-        fadeInTimer?.invalidate()
-        fadeInTimer = nil
-    }
-
-    private func fadeOutAndSwitch(
-        to newItem: AVPlayerItem,
-        track: LocalTrack
-    ) {
-        cancelTransitionFades()
-
-        let oldPlayer = player
-        let newPlayer = secondaryPlayer
-        let duration = max(0.5, min(3.0, crossfadeDuration))
-        let targetVolume = volume
-        let startDate = Date()
-
-        newPlayer.pause()
-        newPlayer.removeAllItems()
-        newPlayer.volume = 0
-        newPlayer.insert(newItem, after: nil)
-        newPlayer.play()
-
-        fadeOutTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak oldPlayer, weak newPlayer] timer in
-            guard let self, let oldPlayer, let newPlayer else {
-                timer.invalidate()
-                return
-            }
-
-            let progress = min(1, max(0, Date().timeIntervalSince(startDate) / duration))
-            let curve = progress * progress * (3 - 2 * progress)
-
-            oldPlayer.volume = targetVolume * Float(1 - curve)
-            newPlayer.volume = targetVolume * Float(curve)
-
-            guard progress >= 1 else { return }
-
-            timer.invalidate()
-            self.fadeOutTimer = nil
-            oldPlayer.pause()
-            oldPlayer.removeAllItems()
-            newPlayer.volume = targetVolume
-
-            self.player = newPlayer
-            self.secondaryPlayer = oldPlayer
-            self.finalizePlay(track: track, playerItem: newItem)
-        }
-    }
 
     // MARK: - Finalize Playback
 
@@ -1228,46 +1111,11 @@ class AudioEngineManager: ObservableObject {
             play(track: queue.indices.contains(queueIndex) ? queue[queueIndex] : currentTrack ?? queue.first!)
 
         case .all:
-            if gaplessEnabled && !crossfadeEnabled {
-                if queueIndex + 1 < queue.count {
-                    queueIndex += 1
-                    let next = queue[queueIndex]
-                    currentTrack = next
-                    recordRecentlyPlayed(next)
-                    loadLyrics(for: next)
-                    currentTime = 0
-                    playbackProgress = 0
-                    if let item = player.items().first {
-                        detachTimeObserver()
-                        detachEndObserver()
-                        finalizePlay(track: next, playerItem: item)
-                    }
-                } else {
-                    queueIndex = 0
-                    play(track: queue[0])
-                }
-            } else {
-                forward()
-            }
+            forward()
 
         case .off:
             if queueIndex + 1 < queue.count {
-                if gaplessEnabled && !crossfadeEnabled {
-                    queueIndex += 1
-                    let next = queue[queueIndex]
-                    currentTrack = next
-                    recordRecentlyPlayed(next)
-                    loadLyrics(for: next)
-                    currentTime = 0
-                    playbackProgress = 0
-                    if let item = player.items().first {
-                        detachTimeObserver()
-                        detachEndObserver()
-                        finalizePlay(track: next, playerItem: item)
-                    }
-                } else {
-                    forward()
-                }
+                forward()
             } else {
                 player.pause()
                 isPlaying = false
@@ -1280,16 +1128,6 @@ class AudioEngineManager: ObservableObject {
 
 
     // MARK: - Shuffle
-
-    func setCrossfadeEnabled(_ enabled: Bool) {
-        crossfadeEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: ToyakoPreferences.crossfadeKey)
-    }
-
-    func setGaplessEnabled(_ enabled: Bool) {
-        gaplessEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: ToyakoPreferences.gaplessKey)
-    }
 
     func toggleShuffle() {
 
@@ -2112,7 +1950,6 @@ class AudioEngineManager: ObservableObject {
                 true
         )
 
-        cancelTransitionFades()
         detachTimeObserver()
         detachEndObserver()
 
