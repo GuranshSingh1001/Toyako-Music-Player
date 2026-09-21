@@ -509,7 +509,8 @@ struct ContentView: View {
                 allTracks:
                     library.tracks,
                 library:
-                    library
+                    library,
+                replaceQueueOnPlay: true
             )
 
         case .albums:

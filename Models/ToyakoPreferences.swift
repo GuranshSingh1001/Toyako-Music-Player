@@ -10,6 +10,7 @@ struct ToyakoPreferences {
     static let crossfadeKey = "Toyako.Playback.Crossfade"
     static let crossfadeDurationKey = "Toyako.Playback.CrossfadeDuration"
     static let gaplessKey = "Toyako.Playback.Gapless"
+    static let translationKey = "Toyako.Lyrics.Translation"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -20,16 +21,21 @@ struct ToyakoPreferences {
             lyricsAnimationStyleKey: "dynamic",
             showAudioInfoKey: true,
             crossfadeKey: true,
-            crossfadeDurationKey: 0.45,
-            gaplessKey: true
+            crossfadeDurationKey: 0.75,
+            gaplessKey: false,
+            translationKey: false
         ])
+
+        // Classic was removed because it was visually too close to Smooth.
+        if UserDefaults.standard.string(forKey: lyricsAnimationStyleKey) == "classic" {
+            UserDefaults.standard.set("smooth", forKey: lyricsAnimationStyleKey)
+        }
     }
 }
 
 enum LyricsAnimationStyle: String, CaseIterable, Identifiable {
     case dynamic
     case smooth
-    case classic
     case minimal
 
     var id: String { rawValue }
@@ -38,7 +44,6 @@ enum LyricsAnimationStyle: String, CaseIterable, Identifiable {
         switch self {
         case .dynamic: "Dynamic"
         case .smooth: "Smooth"
-        case .classic: "Classic"
         case .minimal: "Minimal"
         }
     }

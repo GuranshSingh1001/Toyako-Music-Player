@@ -6,12 +6,13 @@ struct SettingsView: View {
 
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
     @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
+    @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
     @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
     @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
     @AppStorage(ToyakoPreferences.crossfadeKey) private var crossfadeEnabled = true
-    @AppStorage(ToyakoPreferences.crossfadeDurationKey) private var crossfadeDuration = 0.45
+    @AppStorage(ToyakoPreferences.crossfadeDurationKey) private var crossfadeDuration = 0.75
     @AppStorage(ToyakoPreferences.gaplessKey) private var gaplessEnabled = true
 
     var body: some View {
@@ -20,6 +21,7 @@ struct SettingsView: View {
                 Section("Lyrics") {
                     Toggle("Show Romanization", isOn: $showRomanization)
                     Toggle("Karaoke Glow", isOn: $karaokeGlow)
+                    Toggle("Translate Japanese Lyrics", isOn: $showTranslation)
 
                     Picker("Animation", selection: $lyricsAnimationStyle) {
                         ForEach(LyricsAnimationStyle.allCases) { style in
@@ -56,22 +58,34 @@ struct SettingsView: View {
                 }
 
                 Section("Playback") {
-                    Toggle("Smooth Track Transitions", isOn: $crossfadeEnabled)
+                    Toggle("Crossfade", isOn: $crossfadeEnabled)
                         .onChange(of: crossfadeEnabled) { _, newValue in
+                            if newValue {
+                                gaplessEnabled = false
+                                audioManager.setGaplessEnabled(false)
+                            }
                             audioManager.setCrossfadeEnabled(newValue)
                         }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle("Gapless Playback", isOn: $gaplessEnabled)
                             .onChange(of: gaplessEnabled) { _, newValue in
+                                if newValue {
+                                    crossfadeEnabled = false
+                                    audioManager.setCrossfadeEnabled(false)
+                                }
                                 audioManager.setGaplessEnabled(newValue)
                             }
+
+                        Text("Crossfade and gapless playback are mutually exclusive.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     if crossfadeEnabled {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text("Transition Length")
+                                Text("Crossfade Length")
                                 Spacer()
                                 Text(String(format: "%.1f sec", crossfadeDuration))
                                     .foregroundStyle(.secondary)
@@ -83,7 +97,7 @@ struct SettingsView: View {
                                     crossfadeDuration = newValue
                                     audioManager.setCrossfadeDuration(newValue)
                                 }
-                            ), in: 0.20...1.50, step: 0.05)
+                            ), in: 0.50...3.00, step: 0.05)
                         }
                     }
                 }
@@ -103,8 +117,11 @@ struct SettingsView: View {
         }
         .onAppear {
             ToyakoPreferences.registerDefaults()
+            if gaplessEnabled {
+                crossfadeEnabled = false
+            }
             audioManager.crossfadeEnabled = crossfadeEnabled
-            audioManager.crossfadeDuration = crossfadeDuration
+            audioManager.crossfadeDuration = max(0.5, min(3.0, crossfadeDuration))
             audioManager.gaplessEnabled = gaplessEnabled
         }
     }

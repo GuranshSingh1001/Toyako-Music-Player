@@ -36,8 +36,8 @@ struct LyricsSource: Identifiable, Equatable {
 
 class AudioEngineManager: ObservableObject {
 
-    private let player =
-        AVPlayer()
+    private var player: AVQueuePlayer = AVQueuePlayer()
+    private var secondaryPlayer: AVQueuePlayer = AVQueuePlayer()
 
     private var timeObserverToken:
         Any?
@@ -85,7 +85,7 @@ class AudioEngineManager: ObservableObject {
     }
 
     func setCrossfadeDuration(_ value: TimeInterval) {
-        let clamped = min(1.5, max(0.2, value))
+        let clamped = min(3.0, max(0.5, value))
         crossfadeDuration = clamped
         UserDefaults.standard.set(clamped, forKey: ToyakoPreferences.crossfadeDurationKey)
     }
@@ -152,8 +152,8 @@ class AudioEngineManager: ObservableObject {
         crossfadeEnabled = UserDefaults.standard.bool(forKey: ToyakoPreferences.crossfadeKey)
         crossfadeDuration = UserDefaults.standard.double(forKey: ToyakoPreferences.crossfadeDurationKey)
         gaplessEnabled = UserDefaults.standard.bool(forKey: ToyakoPreferences.gaplessKey)
-        if crossfadeDuration <= 0 {
-            crossfadeDuration = 0.45
+        if crossfadeDuration < 0.5 || crossfadeDuration > 3.0 {
+            crossfadeDuration = 0.75
         }
 
         loadRecentlyPlayed()
@@ -1066,40 +1066,50 @@ class AudioEngineManager: ObservableObject {
             )
 
 
-        if crossfadeEnabled &&
-            isPlaying &&
-            !gaplessEnabled {
-
+        if crossfadeEnabled && isPlaying {
             fadeOutAndSwitch(
-                to:
-                    playerItem,
-
-                track:
-                    track
+                to: playerItem,
+                track: track
             )
-
+        } else if gaplessEnabled && !crossfadeEnabled {
+            playGapless(
+                track: track,
+                playerItem: playerItem
+            )
         } else {
-
-            player.volume =
-                volume
-
-            player.replaceCurrentItem(
-                with:
-                    playerItem
-            )
-
+            player.volume = volume
+            player.removeAllItems()
+            player.replaceCurrentItem(with: playerItem)
             player.play()
-
-            finalizePlay(
-                track:
-                    track,
-
-                playerItem:
-                    playerItem
-            )
+            finalizePlay(track: track, playerItem: playerItem)
         }
     }
 
+
+    // MARK: - Gapless Playback
+
+    /// Uses AVQueuePlayer so the next queued item is prepared before the
+    /// current item reaches its end. Crossfade deliberately takes precedence
+    /// when enabled because it requires overlapping volume control.
+    private func playGapless(track: LocalTrack, playerItem: AVPlayerItem) {
+        cancelTransitionFades()
+        player.removeAllItems()
+        player.insert(playerItem, after: nil)
+
+        if queue.indices.contains(queueIndex + 1) {
+            for nextTrack in queue[(queueIndex + 1)...] {
+                player.insert(makePlayerItem(url: nextTrack.url), after: player.items().last)
+            }
+        } else if repeatMode == .all && !queue.isEmpty {
+            for nextTrack in queue {
+                player.insert(makePlayerItem(url: nextTrack.url), after: player.items().last)
+            }
+        }
+
+        player.volume = volume
+        player.play()
+        finalizePlay(track: track, playerItem: playerItem)
+    }
 
     // MARK: - Crossfade
 
@@ -1116,54 +1126,41 @@ class AudioEngineManager: ObservableObject {
     ) {
         cancelTransitionFades()
 
-        let duration = max(0.2, min(1.5, crossfadeDuration))
-        let startingVolume = max(0, player.volume)
+        let oldPlayer = player
+        let newPlayer = secondaryPlayer
+        let duration = max(0.5, min(3.0, crossfadeDuration))
+        let targetVolume = volume
         let startDate = Date()
 
-        fadeOutTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] timer in
-            guard let self else {
+        newPlayer.pause()
+        newPlayer.removeAllItems()
+        newPlayer.volume = 0
+        newPlayer.insert(newItem, after: nil)
+        newPlayer.play()
+
+        fadeOutTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak oldPlayer, weak newPlayer] timer in
+            guard let self, let oldPlayer, let newPlayer else {
                 timer.invalidate()
                 return
             }
 
-            let progress = min(1, startDate.timeIntervalSinceNow.magnitude / duration)
-            let remaining = max(0, 1 - progress)
-            self.player.volume = startingVolume * Float(remaining)
+            let progress = min(1, max(0, Date().timeIntervalSince(startDate) / duration))
+            let curve = progress * progress * (3 - 2 * progress)
+
+            oldPlayer.volume = targetVolume * Float(1 - curve)
+            newPlayer.volume = targetVolume * Float(curve)
 
             guard progress >= 1 else { return }
 
             timer.invalidate()
             self.fadeOutTimer = nil
-            self.player.volume = 0
-            self.player.replaceCurrentItem(with: newItem)
-            self.player.play()
-            self.fadeIn()
+            oldPlayer.pause()
+            oldPlayer.removeAllItems()
+            newPlayer.volume = targetVolume
+
+            self.player = newPlayer
+            self.secondaryPlayer = oldPlayer
             self.finalizePlay(track: track, playerItem: newItem)
-        }
-    }
-
-    private func fadeIn() {
-        fadeInTimer?.invalidate()
-
-        let duration = max(0.2, min(1.5, crossfadeDuration))
-        let targetVolume = volume
-        let startDate = Date()
-        player.volume = 0
-
-        fadeInTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] timer in
-            guard let self else {
-                timer.invalidate()
-                return
-            }
-
-            let progress = min(1, startDate.timeIntervalSinceNow.magnitude / duration)
-            self.player.volume = targetVolume * Float(progress)
-
-            guard progress >= 1 else { return }
-
-            timer.invalidate()
-            self.fadeInTimer = nil
-            self.player.volume = targetVolume
         }
     }
 
@@ -1226,49 +1223,56 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Track Ended
 
     private func handleTrackEnded() {
-
         switch repeatMode {
-
         case .one:
-
-            seek(
-                to:
-                    0.0
-            )
-
-            player.play()
-
-            isPlaying =
-                true
-
-            updatePlaybackState()
-
+            play(track: queue.indices.contains(queueIndex) ? queue[queueIndex] : currentTrack ?? queue.first!)
 
         case .all:
-
-            forward()
-
+            if gaplessEnabled && !crossfadeEnabled {
+                if queueIndex + 1 < queue.count {
+                    queueIndex += 1
+                    let next = queue[queueIndex]
+                    currentTrack = next
+                    recordRecentlyPlayed(next)
+                    loadLyrics(for: next)
+                    currentTime = 0
+                    playbackProgress = 0
+                    if let item = player.items().first {
+                        detachTimeObserver()
+                        detachEndObserver()
+                        finalizePlay(track: next, playerItem: item)
+                    }
+                } else {
+                    queueIndex = 0
+                    play(track: queue[0])
+                }
+            } else {
+                forward()
+            }
 
         case .off:
-
-            if queueIndex + 1 <
-                queue.count {
-
-                forward()
-
+            if queueIndex + 1 < queue.count {
+                if gaplessEnabled && !crossfadeEnabled {
+                    queueIndex += 1
+                    let next = queue[queueIndex]
+                    currentTrack = next
+                    recordRecentlyPlayed(next)
+                    loadLyrics(for: next)
+                    currentTime = 0
+                    playbackProgress = 0
+                    if let item = player.items().first {
+                        detachTimeObserver()
+                        detachEndObserver()
+                        finalizePlay(track: next, playerItem: item)
+                    }
+                } else {
+                    forward()
+                }
             } else {
-
                 player.pause()
-
-                isPlaying =
-                    false
-
-                currentTime =
-                    0
-
-                playbackProgress =
-                    0
-
+                isPlaying = false
+                currentTime = 0
+                playbackProgress = 0
                 updatePlaybackState()
             }
         }

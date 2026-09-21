@@ -15,7 +15,7 @@ struct HomeView: View {
     let onTogglePlayPause: () -> Void
     let onShuffleAll: () -> Void
 
-    @State private var recommendationSeed = UUID()
+    @State private var recommendationSeed = UInt64.random(in: 1...UInt64.max)
 
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
@@ -27,18 +27,18 @@ struct HomeView: View {
     }
 
     private var recommendedArtists: [ArtistGroup] {
-        var rng = SeededGenerator(seed: recommendationSeed.hashValue &+ 17)
+        var rng = SeededGenerator(seed: recommendationSeed &+ 17)
         return Array(artists.shuffled(using: &rng).prefix(8))
     }
 
     private var recommendedPlaylists: [Playlist] {
-        var rng = SeededGenerator(seed: recommendationSeed.hashValue &+ 31)
+        var rng = SeededGenerator(seed: recommendationSeed &+ 31)
         return Array(playlists.shuffled(using: &rng).prefix(8))
     }
 
     private var recommendedTracks: [LocalTrack] {
-        var rng = SeededGenerator(seed: recommendationSeed.hashValue &+ 53)
-        return Array(tracks.filter { $0.id != currentTrack?.id }.shuffled(using: &rng).prefix(12))
+        var rng = SeededGenerator(seed: recommendationSeed &+ 53)
+        return Array(tracks.shuffled(using: &rng).prefix(12))
     }
 
     var body: some View {
@@ -91,9 +91,7 @@ struct HomeView: View {
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
-        .task {
-            recommendationSeed = UUID()
-        }
+
     }
 
     private var header: some View {
@@ -384,8 +382,11 @@ private struct HomeStatCard: View {
 
 private struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
-    init(seed: UUID) { self.init(seed: seed.uuidString.hashValue) }
-    init(seed: Int) { state = UInt64(bitPattern: Int64(seed)) ^ 0x9E3779B97F4A7C15 }
+
+    init(seed: UInt64) {
+        state = seed ^ 0x9E3779B97F4A7C15
+    }
+
     mutating func next() -> UInt64 {
         state &+= 0x9E3779B97F4A7C15
         var z = state
@@ -394,3 +395,4 @@ private struct SeededGenerator: RandomNumberGenerator {
         return z ^ (z >> 31)
     }
 }
+
