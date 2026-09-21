@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import AVFoundation
 import MediaPlayer
+import Translation
 
 struct NowPlayingView: View {
     @Binding var isPresented: Bool
@@ -662,6 +663,9 @@ private struct SmoothLyricsView: View {
     let onSeek: (TimeInterval) -> Void
 
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
+    @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
+    @State private var translations: [UUID: String] = [:]
+    @State private var translationConfiguration: TranslationSession.Configuration?
     @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
     @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
@@ -692,6 +696,37 @@ private struct SmoothLyricsView: View {
                 .padding(.vertical, compact ? 140 : 220)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .id("\(trackID?.uuidString ?? "none")-\(lyrics.count)-\(lyrics.first?.id.uuidString ?? "")-\(lyrics.last?.id.uuidString ?? "")")
+            .translationTask(translationConfiguration) { session in
+                guard showTranslation else { return }
+
+                let japaneseLines = lyrics.filter {
+                    $0.containsJapanese && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+
+                guard !japaneseLines.isEmpty else { return }
+
+                let requests = japaneseLines.map {
+                    TranslationSession.Request(sourceText: $0.text)
+                }
+
+                do {
+                    let responses = try await session.translations(from: requests)
+                    guard !Task.isCancelled else { return }
+
+                    var result: [UUID: String] = [:]
+                    for (line, response) in zip(japaneseLines, responses) {
+                        result[line.id] = response.targetText
+                    }
+
+                    await MainActor.run {
+                        translations = result
+                    }
+                } catch {
+                    // Translation may be unavailable until Apple's Japanese and
+                    // English language models are installed. Keep the lyrics visible.
+                }
+            }
             .mask {
                 LinearGradient(
                     stops: [
@@ -706,12 +741,15 @@ private struct SmoothLyricsView: View {
             }
             .onAppear {
                 scrollToCurrentLyric(proxy: proxy, animated: false)
+                updateTranslationConfiguration()
             }
             // Lyrics are loaded asynchronously after NowPlayingView can already
             // be on screen. In that case the original onAppear fires too early,
             // before LazyVStack has the current lyric to scroll to. Re-anchor when
             // the lyric collection arrives.
             .onChange(of: lyrics.map(\.id)) { _, _ in
+                translations.removeAll()
+                updateTranslationConfiguration(invalidate: true)
                 DispatchQueue.main.async {
                     scrollToCurrentLyric(proxy: proxy, animated: false)
                     DispatchQueue.main.async {
@@ -720,10 +758,20 @@ private struct SmoothLyricsView: View {
                 }
             }
             .onChange(of: trackID) { _, newTrackID in
+                translations.removeAll()
+                updateTranslationConfiguration(invalidate: true)
                 guard newTrackID != nil else { return }
                 // Give the new lyric collection one layout pass before scrolling.
                 DispatchQueue.main.async {
                     scrollToCurrentLyric(proxy: proxy, animated: false)
+                }
+            }
+            .onChange(of: showTranslation) { _, enabled in
+                translations.removeAll()
+                if enabled {
+                    updateTranslationConfiguration(invalidate: true)
+                } else {
+                    translationConfiguration = nil
                 }
             }
             .onChange(of: activeID) { _, newID in
@@ -734,6 +782,24 @@ private struct SmoothLyricsView: View {
                     proxy.scrollTo(newID, anchor: .center)
                 }
             }
+        }
+    }
+
+    private func updateTranslationConfiguration(invalidate: Bool = false) {
+        guard showTranslation else {
+            translationConfiguration = nil
+            return
+        }
+
+        if invalidate || translationConfiguration == nil {
+            // TranslationSession.Configuration is a value type and `invalidate()`
+            // is mutating. Recreate the configuration instead of mutating a
+            // temporary `let` binding, which also cleanly restarts translation
+            // when the lyric set changes.
+            translationConfiguration = TranslationSession.Configuration(
+                source: Locale.Language(identifier: "ja"),
+                target: Locale.Language(identifier: "en")
+            )
         }
     }
 
@@ -793,7 +859,8 @@ private struct SmoothLyricsView: View {
                     state: state,
                     currentTime: currentTime,
                     isPlaying: isPlaying,
-                    compact: compact
+                    compact: compact,
+                    translatedText: translations[line.id]
                 )
             } else {
                 Text(line.text)
@@ -817,14 +884,23 @@ private struct SmoothLyricsView: View {
                         .offset(y: state == .past ? -7 : 0)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                if showTranslation,
+                   lineContainsJapanese(line),
+                   let translated = translations[line.id],
+                   !translated.isEmpty {
+                    Text(translated)
+                        .font(.system(size: (compact ? 15 : 18) * lyricsFontScale, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(state == .active ? 0.72 : 0.22))
+                        .blur(radius: state == .active ? 0 : (state == .future ? 2.4 : 5.0))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .animation(
             animationStyle == .minimal
                 ? .easeInOut(duration: 0.22)
-                : animationStyle == .classic
-                    ? .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.42)
-                    : animationStyle == .smooth
+                : animationStyle == .smooth
                         ? .smooth(duration: 0.58)
                         : .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.62),
             value: state
@@ -884,6 +960,7 @@ private struct TimedLyricPair: View {
     let currentTime: TimeInterval
     let isPlaying: Bool
     let compact: Bool
+    let translatedText: String?
 
     @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
 
@@ -925,7 +1002,8 @@ private struct TimedLyricPair: View {
                 state: state,
                 currentTime: currentTime,
                 japaneseFont: japaneseFont,
-                romanizedFont: romanizedFont
+                romanizedFont: romanizedFont,
+                translatedText: translatedText
             )
             .scaleEffect(lyricsFontScale * (compact ? 0.86 : 1.0), anchor: .leading)
         } else {
@@ -959,6 +1037,9 @@ private struct JapaneseTimedLine: View {
     let currentTime: TimeInterval
     let japaneseFont: Font
     let romanizedFont: Font
+    let translatedText: String?
+
+    @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
 
     private var allUnits: [LyricUnit] {
         line.words.flatMap(\.units)
@@ -976,6 +1057,13 @@ private struct JapaneseTimedLine: View {
                         romanizedFont: romanizedFont
                     )
                 }
+            }
+            if showTranslation, let translatedText, !translatedText.isEmpty {
+                Text(translatedText)
+                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(state == .active ? 0.72 : 0.22))
+                    .blur(radius: state == .active ? 0 : (state == .future ? 2.4 : 5.0))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
@@ -1025,7 +1113,6 @@ private struct JapaneseLyricUnitView: View {
         switch animationStyle {
         case .dynamic: return -4 * CGFloat(sin(.pi * progress))
         case .smooth: return -3 * CGFloat(sin(.pi * progress))
-        case .classic: return -1.5 * CGFloat(sin(.pi * progress))
         case .minimal: return 0
         }
     }
@@ -1034,7 +1121,6 @@ private struct JapaneseLyricUnitView: View {
         switch animationStyle {
         case .dynamic: return CGFloat(progress) * 0.006
         case .smooth: return CGFloat(progress) * 0.0045
-        case .classic: return CGFloat(progress) * 0.003
         case .minimal: return 0
         }
     }
@@ -1047,8 +1133,8 @@ private struct JapaneseLyricUnitView: View {
                 .offset(y: activeOffset)
                 .scaleEffect(1 + activeScale)
                 .shadow(
-                    color: .white.opacity(karaokeGlow ? progress * (animationStyle == .minimal ? 0.05 : 0.16) : 0),
-                    radius: karaokeGlow && progress > 0 ? (animationStyle == .dynamic ? 2.5 : (animationStyle == .smooth ? 2.0 : 1.5)) : 0
+                    color: .white.opacity(karaokeGlow && progress > 0 ? 0.72 * progress : 0),
+                    radius: karaokeGlow && progress > 0 ? (animationStyle == .dynamic ? 9.0 : (animationStyle == .smooth ? 7.0 : 5.0)) : 0
                 )
 
             if showRomanization, let romanized = unit.romanized,
@@ -1122,11 +1208,11 @@ private struct WordRiseReveal: View {
         Text(word.text)
             .font(font)
             .foregroundStyle(.white.opacity(opacity))
-            .offset(y: animationStyle == .dynamic || animationStyle == .smooth ? -riseAmplitude * CGFloat(activeProgress) : (animationStyle == .classic ? -1.5 * CGFloat(activeProgress) : 0))
-            .scaleEffect(animationStyle == .minimal ? 1 : 1 + CGFloat(activeProgress) * (animationStyle == .dynamic ? 0.006 : (animationStyle == .smooth ? 0.004 : 0.003)), anchor: .center)
+            .offset(y: animationStyle == .dynamic || animationStyle == .smooth ? -riseAmplitude * CGFloat(activeProgress) : (0))
+            .scaleEffect(animationStyle == .minimal ? 1 : 1 + CGFloat(activeProgress) * (animationStyle == .dynamic ? 0.006 : 0.004), anchor: .center)
             .shadow(
-                color: .white.opacity(karaokeGlow ? activeProgress * (animationStyle == .dynamic ? 0.13 : 0.06) : 0),
-                radius: karaokeGlow && activeProgress > 0 ? 2.2 : 0
+                color: .white.opacity(karaokeGlow && activeProgress > 0 ? 0.68 * activeProgress : 0),
+                radius: karaokeGlow && activeProgress > 0 ? (animationStyle == .dynamic ? 8.0 : 6.0) : 0
             )
             .fixedSize(horizontal: true, vertical: false)
     }
