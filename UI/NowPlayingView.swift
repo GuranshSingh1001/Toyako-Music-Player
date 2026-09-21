@@ -791,9 +791,11 @@ private struct SmoothLyricsView: View {
             return
         }
 
-        if let configuration = translationConfiguration, invalidate {
-            configuration.invalidate()
-        } else if translationConfiguration == nil {
+        if invalidate || translationConfiguration == nil {
+            // TranslationSession.Configuration is a value type and `invalidate()`
+            // is mutating. Recreate the configuration instead of mutating a
+            // temporary `let` binding, which also cleanly restarts translation
+            // when the lyric set changes.
             translationConfiguration = TranslationSession.Configuration(
                 source: Locale.Language(identifier: "ja"),
                 target: Locale.Language(identifier: "en")
