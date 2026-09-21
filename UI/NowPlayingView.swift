@@ -923,7 +923,7 @@ private struct TimedLyricPair: View {
             if showRomanized {
                 // The romanized word rises on the EXACT same word interval as
                 // its Japanese source word. It does not slide/reveal left-to-right.
-                JapaneseRomanizedFlow(
+                JapaneseKaraokeRomanizationFlow(
                     words: line.words,
                     currentTime: currentTime,
                     font: romanizedFont
@@ -1089,6 +1089,55 @@ private struct JapaneseCharacterFlow: View {
                 }
             }
         }
+    }
+}
+
+private struct JapaneseKaraokeRomanizationFlow: View {
+    let words: [LyricWord]
+    let currentTime: TimeInterval
+
+    var body: some View {
+        FlowLayout(
+            horizontalSpacing: 0,
+            verticalSpacing: 2
+        ) {
+            ForEach(tokens) { token in
+                JapaneseKaraokeRomanizationTokenView(
+                    token: token,
+                    currentTime: currentTime
+                )
+            }
+        }
+    }
+
+    private var tokens: [TimedLyricToken] {
+        var result: [TimedLyricToken] = []
+
+        for word in words {
+            let characters = Array(word.text).map(String.init)
+            guard !characters.isEmpty else { continue }
+
+            let duration = max(0.001, word.endTime - word.startTime)
+            let characterDuration = duration / Double(characters.count)
+
+            for (index, character) in characters.enumerated() {
+                let start = word.startTime + characterDuration * Double(index)
+                let end = index == characters.count - 1
+                    ? word.endTime
+                    : start + characterDuration
+
+                result.append(
+                    TimedLyricToken(
+                        text: character,
+                        romanization: character.toJapaneseRomaji() ?? "",
+                        start: start,
+                        end: end
+                    )
+                )
+            }
+        }
+
+        return result
     }
 }
 
