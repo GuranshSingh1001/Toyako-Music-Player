@@ -65,6 +65,7 @@ struct TTMLParser {
         ) {
             if let span {
                 span.text += string
+                paragraph?.plainText += string
             } else if let paragraph {
                 // IMPORTANT: text outside a <span> is part of the TTML
                 // document order. In Apple-style word timing this is often
@@ -196,11 +197,12 @@ struct TTMLParser {
                     return
                 }
 
+                let finalEnd = max(start, pendingEnd ?? start)
                 timedWords.append(
                     LyricWord(
                         text: text,
                         startTime: start,
-                        endTime: max(start, pendingEnd ?? start)
+                        endTime: finalEnd
                     )
                 )
 
@@ -256,6 +258,28 @@ struct TTMLParser {
 
                     if hasLeadingWhitespace {
                         flushPending()
+                    }
+
+                    // Japanese karaoke TTML commonly uses adjacent spans with
+                    // no whitespace between them, with each span carrying its
+                    // own timing. Never merge those spans into one LyricWord:
+                    // their individual intervals are what allow character-level
+                    // highlighting. Latin fragments retain the older merge
+                    // behavior because a word may legitimately be split across
+                    // multiple TTML spans.
+                    if containsJapaneseCharacters(raw) {
+                        flushPending()
+                        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !text.isEmpty {
+                            timedWords.append(
+                                LyricWord(
+                                    text: text,
+                                    startTime: start,
+                                    endTime: end
+                                )
+                            )
+                        }
+                        continue
                     }
 
                     // Remove only boundary whitespace. Internal visible
@@ -324,9 +348,9 @@ struct TTMLParser {
             // The timedWords array already contains real word boundaries.
             // Joining with one visual space is therefore correct: it does not
             // split syllable fragments, and it does not collapse actual words.
-            let text = timedWords.isEmpty
-                ? fallbackText
-                : timedWords.map(\.text).joined(separator: " ")
+            let text = fallbackText.isEmpty
+                ? timedWords.map(\.text).joined(separator: " ")
+                : fallbackText
 
             return LyricLine(
                 time: lineStart,
