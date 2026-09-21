@@ -54,6 +54,8 @@ class AudioEngineManager: ObservableObject {
 
     private var interruptionObserverToken: NSObjectProtocol?
     private var remoteCommandTargets: [(command: MPRemoteCommand, token: Any)] = []
+    private var fadeOutTimer: Timer?
+    private var fadeInTimer: Timer?
 
     private var lastPersistedTime:
         TimeInterval = -100
@@ -80,6 +82,12 @@ class AudioEngineManager: ObservableObject {
         let clamped = min(1.0, max(0.0, value))
         volume = clamped
         player.volume = clamped
+    }
+
+    func setCrossfadeDuration(_ value: TimeInterval) {
+        let clamped = min(1.5, max(0.2, value))
+        crossfadeDuration = clamped
+        UserDefaults.standard.set(clamped, forKey: ToyakoPreferences.crossfadeDurationKey)
     }
 
     /// Fast-ticking playback position, kept off this object on purpose.
@@ -125,6 +133,9 @@ class AudioEngineManager: ObservableObject {
     @Published var crossfadeEnabled:
         Bool = true
 
+    @Published var crossfadeDuration:
+        TimeInterval = 0.45
+
     /// Small local history used by the Home screen. Artwork is intentionally
     /// not persisted, so loading it adds essentially no startup cost.
     @Published private(set) var recentlyPlayed:
@@ -134,7 +145,12 @@ class AudioEngineManager: ObservableObject {
     // MARK: Initialization
 
     init() {
-
+        ToyakoPreferences.registerDefaults()
+        crossfadeEnabled = UserDefaults.standard.bool(forKey: ToyakoPreferences.crossfadeKey)
+        crossfadeDuration = UserDefaults.standard.double(forKey: ToyakoPreferences.crossfadeDurationKey)
+        if crossfadeDuration <= 0 {
+            crossfadeDuration = 0.45
+        }
 
         loadRecentlyPlayed()
         setupRemoteControls()
@@ -366,6 +382,11 @@ class AudioEngineManager: ObservableObject {
                 refreshedOriginal
         }
 
+        let refreshedHistory = recentlyPlayed.compactMap(resolve)
+        if refreshedHistory != recentlyPlayed {
+            recentlyPlayed = refreshedHistory
+            saveRecentlyPlayedCache()
+        }
 
         if currentTrack != nil {
 
@@ -1007,6 +1028,8 @@ class AudioEngineManager: ObservableObject {
             LocalTrack
     ) {
 
+        cancelTransitionFades()
+
         currentTrack =
             track
 
@@ -1075,118 +1098,69 @@ class AudioEngineManager: ObservableObject {
 
     // MARK: - Crossfade
 
+    private func cancelTransitionFades() {
+        fadeOutTimer?.invalidate()
+        fadeOutTimer = nil
+        fadeInTimer?.invalidate()
+        fadeInTimer = nil
+    }
+
     private func fadeOutAndSwitch(
-        to newItem:
-            AVPlayerItem,
-
-        track:
-            LocalTrack
+        to newItem: AVPlayerItem,
+        track: LocalTrack
     ) {
+        cancelTransitionFades()
 
-        var currentVol =
-            player.volume
+        let duration = max(0.2, min(1.5, crossfadeDuration))
+        let startingVolume = max(0, player.volume)
+        let startDate = Date()
 
-
-        Timer.scheduledTimer(
-            withTimeInterval:
-                0.04,
-
-            repeats:
-                true
-
-        ) { [weak self] timer in
-
-            guard
-                let self
-            else {
-
+        fadeOutTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] timer in
+            guard let self else {
                 timer.invalidate()
                 return
             }
 
+            let progress = min(1, startDate.timeIntervalSinceNow.magnitude / duration)
+            let remaining = max(0, 1 - progress)
+            self.player.volume = startingVolume * Float(remaining)
 
-            currentVol -=
-                0.15
+            guard progress >= 1 else { return }
 
-
-            if currentVol <= 0.05 {
-
-                timer.invalidate()
-
-                self.player.replaceCurrentItem(
-                    with:
-                        newItem
-                )
-
-                self.player.play()
-
-                self.fadeIn()
-
-                self.finalizePlay(
-                    track:
-                        track,
-
-                    playerItem:
-                        newItem
-                )
-
-            } else {
-
-                self.player.volume =
-                    currentVol
-            }
+            timer.invalidate()
+            self.fadeOutTimer = nil
+            self.player.volume = 0
+            self.player.replaceCurrentItem(with: newItem)
+            self.player.play()
+            self.fadeIn()
+            self.finalizePlay(track: track, playerItem: newItem)
         }
     }
-
 
     private func fadeIn() {
+        fadeInTimer?.invalidate()
 
-        var currentVol:
-            Float = 0.0
-
+        let duration = max(0.2, min(1.5, crossfadeDuration))
         let targetVolume = volume
+        let startDate = Date()
+        player.volume = 0
 
-        player.volume =
-            0.0
-
-
-        Timer.scheduledTimer(
-            withTimeInterval:
-                0.04,
-
-            repeats:
-                true
-
-        ) { [weak self] timer in
-
-            guard
-                let self
-            else {
-
+        fadeInTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] timer in
+            guard let self else {
                 timer.invalidate()
                 return
             }
 
+            let progress = min(1, startDate.timeIntervalSinceNow.magnitude / duration)
+            self.player.volume = targetVolume * Float(progress)
 
-            currentVol +=
-                0.15
+            guard progress >= 1 else { return }
 
-
-            if currentVol >= targetVolume {
-
-                self.player.volume =
-                    targetVolume
-
-                timer.invalidate()
-
-            } else {
-
-                self.player.volume =
-                    min(currentVol, targetVolume)
-            }
+            timer.invalidate()
+            self.fadeInTimer = nil
+            self.player.volume = targetVolume
         }
     }
-
 
     // MARK: - Finalize Playback
 
@@ -1297,6 +1271,11 @@ class AudioEngineManager: ObservableObject {
 
 
     // MARK: - Shuffle
+
+    func setCrossfadeEnabled(_ enabled: Bool) {
+        crossfadeEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: ToyakoPreferences.crossfadeKey)
+    }
 
     func toggleShuffle() {
 
@@ -2119,6 +2098,7 @@ class AudioEngineManager: ObservableObject {
                 true
         )
 
+        cancelTransitionFades()
         detachTimeObserver()
         detachEndObserver()
 

@@ -5,6 +5,7 @@ struct HomeView: View {
     let albums: [AlbumGroup]
     let artists: [ArtistGroup]
     let playlists: [Playlist]
+    let recentlyPlayed: [LocalTrack]
     let library: LocalLibrary
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
@@ -38,6 +39,13 @@ struct HomeView: View {
 
                 if let current = currentTrack {
                     continueListening(current)
+                }
+
+                let recent = recentlyPlayed.filter { $0.id != currentTrack?.id }
+                if !recent.isEmpty {
+                    section("Recently Played") {
+                        horizontalTracks(Array(recent.prefix(12)))
+                    }
                 }
 
                 if !featuredAlbums.isEmpty {

@@ -14,13 +14,13 @@ struct QueueView: View {
             onSelect: { index in audioManager.playQueuedTrack(at: index) },
             onRemove: { index in audioManager.removeFromQueue(at: IndexSet(integer: index)) },
             onClear: { audioManager.clearQueue() },
+            onMove: { from, to in audioManager.moveQueue(from: IndexSet(integer: from), to: to) },
             onDismiss: { dismiss() }
         )
-        .equatable()
     }
 }
 
-private struct QueueContent: View, Equatable {
+private struct QueueContent: View {
     let currentTrack: LocalTrack?
     let queue: [LocalTrack]
     let queueIndex: Int
@@ -29,19 +29,8 @@ private struct QueueContent: View, Equatable {
     let onSelect: (Int) -> Void
     let onRemove: (Int) -> Void
     let onClear: () -> Void
+    let onMove: (Int, Int) -> Void
     let onDismiss: () -> Void
-
-    static func == (lhs: QueueContent, rhs: QueueContent) -> Bool {
-        lhs.queueIndex == rhs.queueIndex &&
-        lhs.isPlaying == rhs.isPlaying &&
-        trackFingerprint(lhs.currentTrack) == trackFingerprint(rhs.currentTrack) &&
-        lhs.queue.map(trackFingerprint) == rhs.queue.map(trackFingerprint)
-    }
-
-    private static func trackFingerprint(_ track: LocalTrack?) -> String {
-        guard let track else { return "nil" }
-        return "\(track.id.uuidString)|\(track.title)|\(track.artist)|\(track.album)"
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,7 +45,10 @@ private struct QueueContent: View, Equatable {
                             current: true,
                             isPlaying: isPlaying,
                             onSelect: nil,
-                            onRemove: nil
+                            onRemove: nil,
+                            reorderIndex: nil,
+                            queueStartIndex: start,
+                            onMove: nil
                         )
                     }
 
@@ -72,7 +64,10 @@ private struct QueueContent: View, Equatable {
                                 current: false,
                                 isPlaying: false,
                                 onSelect: { onSelect(index) },
-                                onRemove: { onRemove(index) }
+                                onRemove: { onRemove(index) },
+                                reorderIndex: index,
+                                queueStartIndex: start,
+                                onMove: onMove
                             )
                         }
                     } else if currentTrack != nil {
@@ -139,6 +134,15 @@ private struct QueueRow: View {
     let isPlaying: Bool
     let onSelect: (() -> Void)?
     let onRemove: (() -> Void)?
+    let reorderIndex: Int?
+    let queueStartIndex: Int
+    let onMove: ((Int, Int) -> Void)?
+
+    @State private var isReordering = false
+    @State private var dragStartIndex: Int?
+    @State private var lastTranslationY: CGFloat = 0
+
+    private let rowHeight: CGFloat = 64
 
     var body: some View {
         HStack(spacing: 12) {
@@ -157,13 +161,25 @@ private struct QueueRow: View {
 
             Spacer(minLength: 8)
 
+            if let reorderIndex, onMove != nil {
+                ReorderHandle(
+                    isActive: isReordering,
+                    onChanged: { translation in
+                        handleReorderChange(translation: translation, index: reorderIndex)
+                    },
+                    onEnded: {
+                        finishReordering()
+                    }
+                )
+            }
+
             if current {
                 Image(systemName: isPlaying ? "waveform" : "pause.fill")
                     .foregroundStyle(.tint)
                     .contentTransition(.symbolEffect(.replace))
             }
         }
-        .frame(minHeight: 64)
+        .frame(minHeight: rowHeight)
         .contentShape(Rectangle())
         .onTapGesture { onSelect?() }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -181,7 +197,71 @@ private struct QueueRow: View {
         }
     }
 
+    private func handleReorderChange(translation: CGFloat, index: Int) {
+        guard let onMove, !current else { return }
+
+        if !isReordering {
+            isReordering = true
+            dragStartIndex = index
+            lastTranslationY = 0
+        }
+
+        guard let workingIndex = dragStartIndex else { return }
+
+        let delta = translation - lastTranslationY
+        guard abs(delta) >= rowHeight * 0.48 else { return }
+
+        let direction = delta > 0 ? 1 : -1
+        let destination = workingIndex + direction
+
+        guard destination >= queueStartIndex else { return }
+        onMove(workingIndex, destination)
+        dragStartIndex = destination
+        lastTranslationY = translation
+    }
+
+    private func finishReordering() {
+        isReordering = false
+        dragStartIndex = nil
+        lastTranslationY = 0
+    }
+
     private var artwork: some View {
         LazyArtwork(url: track.url, size: 44, cornerRadius: 8)
+    }
+}
+
+private struct ReorderHandle: View {
+    let isActive: Bool
+    let onChanged: (CGFloat) -> Void
+    let onEnded: () -> Void
+
+    var body: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(isActive ? .primary : .secondary)
+            .frame(width: 40, height: 44)
+            .contentShape(Rectangle())
+            .scaleEffect(isActive ? 1.08 : 1)
+            .animation(.easeOut(duration: 0.16), value: isActive)
+            .gesture(
+                LongPressGesture(minimumDuration: 0.24)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { value in
+                        switch value {
+                        case .first(true):
+                            break
+                        case .second(true, let drag):
+                            onChanged(drag?.translation.height ?? 0)
+                        default:
+                            break
+                        }
+                    }
+                    .onEnded { _ in
+                        onEnded()
+                    }
+            )
+            .accessibilityLabel("Reorder")
+            .accessibilityHint("Hold and slide up or down to change the song order")
     }
 }

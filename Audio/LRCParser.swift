@@ -3,31 +3,47 @@ import Foundation
 struct LRCParser {
     static func parse(content: String) -> [LyricLine] {
         var lines: [LyricLine] = []
-        let pattern = #"\[(\d{2,}):(\d{2}(?:\.\d{1,3})?)\](.*)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }
-        let nsContent = content as NSString
+        let pattern = #"\[(\d{1,3}):(\d{2}(?:\.\d{1,6})?)\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
 
-        let matches = regex.matches(in: content, options: [], range: NSRange(location: 0, length: nsContent.length))
-        for match in matches {
-            guard match.numberOfRanges == 4 else { continue }
-            let minStr = nsContent.substring(with: match.range(at: 1))
-            let secStr = nsContent.substring(with: match.range(at: 2))
-            let text = nsContent.substring(with: match.range(at: 3)).trimmingCharacters(in: .whitespaces)
+        for rawLine in content.components(separatedBy: .newlines) {
+            let nsLine = rawLine as NSString
+            let matches = regex.matches(
+                in: rawLine,
+                options: [],
+                range: NSRange(location: 0, length: nsLine.length)
+            )
+            guard !matches.isEmpty else { continue }
 
-            if let mins = Double(minStr), let secs = Double(secStr), !text.isEmpty {
-                lines.append(LyricLine(time: (mins * 60.0) + secs, text: text))
+            let lastTimeTagEnd = matches.reduce(0) { max($0, NSMaxRange($1.range)) }
+            let text = nsLine
+                .substring(from: lastTimeTagEnd)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !text.isEmpty else { continue }
+
+            for match in matches {
+                guard match.numberOfRanges == 3 else { continue }
+                let minute = Double(nsLine.substring(with: match.range(at: 1))) ?? 0
+                let second = Double(nsLine.substring(with: match.range(at: 2))) ?? 0
+                let timestamp = minute * 60 + second
+                lines.append(LyricLine(time: max(0, timestamp), text: text))
             }
         }
 
         if lines.isEmpty {
-            let splitLines = content.components(separatedBy: .newlines)
             var offset: TimeInterval = 0
-            for line in splitLines where !line.trimmingCharacters(in: .whitespaces).isEmpty {
-                lines.append(LyricLine(time: offset, text: line))
+            for line in content.components(separatedBy: .newlines) {
+                let clean = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !clean.isEmpty else { continue }
+                lines.append(LyricLine(time: offset, text: clean))
                 offset += 4.0
             }
         }
 
-        return lines.sorted { $0.time < $1.time }
+        return lines.sorted {
+            if $0.time == $1.time { return $0.id.uuidString < $1.id.uuidString }
+            return $0.time < $1.time
+        }
     }
 }

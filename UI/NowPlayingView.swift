@@ -26,7 +26,11 @@ struct NowPlayingView: View {
     // and fade in together with the panel every time it opens.
     @State private var artworkVisible = false
     @State private var nowPlayingArtworkData: Data?
+    @State private var artworkTint: Color = .black
+    @State private var audioFormatInfo: AudioFormatInfo?
     @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
+
+    @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
 
     var body: some View {
         GeometryReader { geometry in
@@ -40,7 +44,8 @@ struct NowPlayingView: View {
                 Color.black.ignoresSafeArea()
 
                 AppleMusicMovingBleedBackground(
-                    artworkData: nowPlayingArtworkData
+                    artworkData: nowPlayingArtworkData,
+                    accentColor: artworkTint
                 )
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
@@ -121,14 +126,33 @@ struct NowPlayingView: View {
         .task(id: audioManager.currentTrack?.id) {
             guard let url = audioManager.currentTrack?.url else {
                 nowPlayingArtworkData = nil
+                artworkTint = .black
+                audioFormatInfo = nil
                 return
             }
 
-            let loaded = await ArtworkStore.shared.data(for: url)
+            async let artwork = ArtworkStore.shared.data(for: url)
+            async let format = AudioFormatInfo.load(url: url)
+
+            let loadedArtwork = await artwork
+            let loadedFormat = await format
             guard !Task.isCancelled else { return }
 
-            withAnimation(.easeOut(duration: 0.35)) {
-                nowPlayingArtworkData = loaded
+            if let loadedArtwork {
+                async let palette = ArtworkPalette.averageColor(from: loadedArtwork)
+                let tint = await palette
+
+                guard !Task.isCancelled else { return }
+
+                withAnimation(.easeOut(duration: 0.35)) {
+                    nowPlayingArtworkData = loadedArtwork
+                    audioFormatInfo = loadedFormat
+                    if let tint {
+                        artworkTint = Color(uiColor: tint)
+                    }
+                }
+            } else {
+                audioFormatInfo = loadedFormat
             }
         }
         .onChange(of: isPresented) { _, presented in
@@ -428,6 +452,14 @@ struct NowPlayingView: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.white.opacity(0.68))
                 .lineLimit(1)
+
+            if showAudioInfo, let audioFormatInfo {
+                Text(audioFormatInfo.displayString)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.22), value: audioManager.currentTrack?.id)
@@ -629,6 +661,14 @@ private struct SmoothLyricsView: View {
     let compact: Bool
     let onSeek: (TimeInterval) -> Void
 
+    @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
+    @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
+    @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
+
+    private var animationStyle: LyricsAnimationStyle {
+        LyricsAnimationStyle(rawValue: lyricsAnimationStyle) ?? .dynamic
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
@@ -751,11 +791,12 @@ private struct SmoothLyricsView: View {
                     line: line,
                     state: state,
                     currentTime: currentTime,
-                    isPlaying: isPlaying
+                    isPlaying: isPlaying,
+                    compact: compact
                 )
             } else {
                 Text(line.text)
-                    .font(.system(size: 50, weight: .bold, design: .rounded))
+                    .font(.system(size: (compact ? 42 : 50) * lyricsFontScale, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .opacity(lineOpacity(state))
                     .blur(radius: lineBlur(state))
@@ -763,11 +804,12 @@ private struct SmoothLyricsView: View {
                     .offset(y: lineOffset(state))
                     .fixedSize(horizontal: false, vertical: true)
 
-                if lineContainsJapanese(line),
+                if showRomanization,
+                   lineContainsJapanese(line),
                    let romanized = line.romanized,
                    !romanized.isEmpty {
                     Text(romanized)
-                        .font(.system(size: 22, weight: .medium, design: .rounded))
+                        .font(.system(size: (compact ? 18 : 22) * lyricsFontScale, weight: .medium, design: .rounded))
                         .foregroundStyle(.white)
                         .opacity(romanizedOpacity(state))
                         .blur(radius: state == .active ? 0 : 1.4)
@@ -777,7 +819,9 @@ private struct SmoothLyricsView: View {
             }
         }
         .animation(
-            .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.58),
+            animationStyle == .minimal
+                ? .easeInOut(duration: 0.22)
+                : .timingCurve(0.22, 0.72, 0.25, 1.0, duration: animationStyle == .classic ? 0.42 : 0.58),
             value: state
         )
     }
@@ -834,12 +878,15 @@ private struct TimedLyricPair: View {
     let state: LyricLineState
     let currentTime: TimeInterval
     let isPlaying: Bool
+    let compact: Bool
+
+    @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
 
     @State private var anchorTime: TimeInterval = 0
     @State private var anchorDate = Date()
 
-    private let japaneseFont = Font.system(size: 50, weight: .bold, design: .rounded)
-    private let romanizedFont = Font.system(size: 21, weight: .medium, design: .rounded)
+    private var japaneseFont: Font { Font.system(size: compact ? 42 : 50, weight: .bold, design: .rounded) }
+    private var romanizedFont: Font { Font.system(size: compact ? 18 : 21, weight: .medium, design: .rounded) }
 
     var body: some View {
         Group {
@@ -875,6 +922,7 @@ private struct TimedLyricPair: View {
                 japaneseFont: japaneseFont,
                 romanizedFont: romanizedFont
             )
+            .scaleEffect(lyricsFontScale * (compact ? 0.86 : 1.0), anchor: .leading)
         } else {
             WordFlow(
                 words: line.words,
@@ -883,6 +931,7 @@ private struct TimedLyricPair: View {
                 baseOpacity: state == .future ? 0.27 : (state == .past ? 0.12 : 1.0),
                 riseAmplitude: 3.2
             )
+            .scaleEffect(lyricsFontScale * (compact ? 0.86 : 1.0), anchor: .leading)
             .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
             .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
             .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
@@ -938,6 +987,14 @@ private struct JapaneseLyricUnitView: View {
     let japaneseFont: Font
     let romanizedFont: Font
 
+    @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
+    @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
+    @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
+
+    private var animationStyle: LyricsAnimationStyle {
+        LyricsAnimationStyle(rawValue: lyricsAnimationStyle) ?? .dynamic
+    }
+
     private var isActive: Bool {
         state == .active && currentTime >= unit.startTime && currentTime < unit.endTime
     }
@@ -959,19 +1016,35 @@ private struct JapaneseLyricUnitView: View {
         return 0.18
     }
 
+    private var activeOffset: CGFloat {
+        switch animationStyle {
+        case .dynamic: return -4 * CGFloat(sin(.pi * progress))
+        case .classic: return -1.5 * CGFloat(sin(.pi * progress))
+        case .minimal: return 0
+        }
+    }
+
+    private var activeScale: CGFloat {
+        switch animationStyle {
+        case .dynamic: return CGFloat(progress) * 0.006
+        case .classic: return CGFloat(progress) * 0.003
+        case .minimal: return 0
+        }
+    }
+
     var body: some View {
         VStack(spacing: 1) {
             Text(unit.text)
                 .font(japaneseFont)
                 .foregroundStyle(.white.opacity(glyphOpacity))
-                .offset(y: -4 * CGFloat(sin(.pi * progress)))
-                .scaleEffect(1 + CGFloat(progress) * 0.006)
+                .offset(y: activeOffset)
+                .scaleEffect(1 + activeScale)
                 .shadow(
-                    color: .white.opacity(progress * 0.16),
-                    radius: progress > 0 ? 2.5 : 0
+                    color: .white.opacity(karaokeGlow ? progress * (animationStyle == .minimal ? 0.05 : 0.16) : 0),
+                    radius: karaokeGlow && progress > 0 ? (animationStyle == .dynamic ? 2.5 : 1.5) : 0
                 )
 
-            if let romanized = unit.romanized,
+            if showRomanization, let romanized = unit.romanized,
                !romanized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                containsJapaneseCharacters(unit.text) {
                 Text(romanized)
@@ -1015,6 +1088,13 @@ private struct WordRiseReveal: View {
     let baseOpacity: Double
     let riseAmplitude: CGFloat
 
+    @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
+    @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
+
+    private var animationStyle: LyricsAnimationStyle {
+        LyricsAnimationStyle(rawValue: lyricsAnimationStyle) ?? .dynamic
+    }
+
     private var activeProgress: Double {
         guard currentTime >= word.startTime && currentTime < word.endTime else { return 0 }
         let x = min(1, max(0, (currentTime - word.startTime) / max(0.001, word.endTime - word.startTime)))
@@ -1035,11 +1115,11 @@ private struct WordRiseReveal: View {
         Text(word.text)
             .font(font)
             .foregroundStyle(.white.opacity(opacity))
-            .offset(y: -riseAmplitude * CGFloat(activeProgress))
-            .scaleEffect(1 + CGFloat(activeProgress) * 0.006, anchor: .center)
+            .offset(y: animationStyle == .dynamic ? -riseAmplitude * CGFloat(activeProgress) : (animationStyle == .classic ? -1.5 * CGFloat(activeProgress) : 0))
+            .scaleEffect(animationStyle == .minimal ? 1 : 1 + CGFloat(activeProgress) * (animationStyle == .dynamic ? 0.006 : 0.003), anchor: .center)
             .shadow(
-                color: .white.opacity(activeProgress * 0.13),
-                radius: activeProgress > 0 ? 2.2 : 0
+                color: .white.opacity(karaokeGlow ? activeProgress * (animationStyle == .dynamic ? 0.13 : 0.06) : 0),
+                radius: karaokeGlow && activeProgress > 0 ? 2.2 : 0
             )
             .fixedSize(horizontal: true, vertical: false)
     }
@@ -1486,6 +1566,7 @@ struct AppleMusicScrubberBar: View {
 
 struct AppleMusicMovingBleedBackground: View {
     let artworkData: Data?
+    let accentColor: Color
 
     var body: some View {
         GeometryReader { geometry in
@@ -1624,6 +1705,7 @@ struct AppleMusicMovingBleedBackground: View {
                         // -------------------------------------------------
 
                         Color.black.opacity(0.14)
+                        accentColor.opacity(0.08).blendMode(.screen)
 
                     } else {
 

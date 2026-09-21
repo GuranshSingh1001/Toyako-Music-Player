@@ -34,6 +34,7 @@ class LocalLibrary:
     private var cachedFingerprints: [String: FileFingerprint] = [:]
     private var cachedParserVersion: Int = 0
     private var albumArtworkSources: [String: URL] = [:]
+    private var scanTask: Task<Void, Never>?
 
     private var legacyPlaylistsCacheURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -72,9 +73,15 @@ class LocalLibrary:
         }
     }
 
+    deinit {
+        scanTask?.cancel()
+    }
+
     // MARK: - Scanning
 
     func reloadFiles() {
+        scanTask?.cancel()
+
         let cachedTracks = tracks
         let fingerprints = cachedFingerprints
         let parserVersion = cachedParserVersion
@@ -83,7 +90,7 @@ class LocalLibrary:
             statusMessage = "Scanning..."
         }
 
-        Task(priority: .utility) { [weak self] in
+        scanTask = Task(priority: .utility) { [weak self] in
             // Let the cached library render first. The filesystem scan never
             // blocks the first SwiftUI frame.
             await Task.yield()
@@ -95,6 +102,8 @@ class LocalLibrary:
             )
 
             guard let self else { return }
+
+            guard !Task.isCancelled else { return }
 
             await MainActor.run {
                 guard !scan.tracks.isEmpty || !cachedTracks.isEmpty else { return }

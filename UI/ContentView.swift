@@ -13,6 +13,7 @@ enum LibraryCategory: Hashable {
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var audioManager: AudioEngineManager
 
     @StateObject private var library =
         LocalLibrary()
@@ -46,6 +47,9 @@ struct ContentView: View {
 
     @State private var
         renameText = ""
+
+    @State private var
+        showSettings = false
 
     var body: some View {
         TabView(
@@ -274,6 +278,10 @@ struct ContentView: View {
                     nil
             }
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environmentObject(audioManager)
+        }
         .overlay {
             AudioLifecycleObserver(library: library, scenePhase: scenePhase)
                 .frame(width: 0, height: 0)
@@ -396,6 +404,15 @@ struct ContentView: View {
                     }
                 }
 
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
+
                 ToolbarItem(
                     placement:
                         .navigationBarLeading
@@ -458,6 +475,15 @@ struct ContentView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh library")
+                }
+
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
                 }
             }
         }
@@ -574,6 +600,11 @@ struct ContentView: View {
                 .localizedCaseInsensitiveContains(
                     searchText
                 )
+            ||
+            $0.genre
+                .localizedCaseInsensitiveContains(
+                    searchText
+                )
         }
     }
 
@@ -639,6 +670,7 @@ private struct HomeAudioContainer: View {
             albums: albums,
             artists: artists,
             playlists: playlists,
+            recentlyPlayed: audioManager.recentlyPlayed,
             library: library,
             onImport: onImport,
             onNewPlaylist: onNewPlaylist,
