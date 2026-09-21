@@ -35,9 +35,10 @@ struct SongListView: View {
                     .padding(.vertical, 10)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if let queueIndex = allTracks.firstIndex(where: { $0.id == track.id }) {
-                            audioManager.startQueue(tracks: allTracks, startIndex: queueIndex)
-                        }
+                        // Playing a track directly from the Tracks tab must not
+                        // rebuild or replace the user's existing queue.
+                        // The current queue remains exactly as it was.
+                        audioManager.play(track: track)
                     }
                     .contextMenu {
                         if let pID = playlistID {
