@@ -785,20 +785,6 @@ private struct SmoothLyricsView: View {
     private func lineContainsJapanese(_ line: LyricLine) -> Bool {
         containsJapaneseCharacters(line.text)
     }
-
-    private func containsJapaneseCharacters(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            switch scalar.value {
-            case 0x3040...0x309F, // Hiragana
-                 0x30A0...0x30FF, // Katakana
-                 0x31F0...0x31FF, // Katakana extensions
-                 0x3400...0x4DBF, // CJK extension A
-                 0x4E00...0x9FFF, // CJK unified ideographs
-                 0xF900...0xFAFF: // CJK compatibility ideographs
-                return true
-            default:
-                return false
-            }
         }
     }
 
@@ -850,21 +836,12 @@ private struct TimedLyricPair: View {
     let state: LyricLineState
     let currentTime: TimeInterval
     let isPlaying: Bool
-    let showRomanized: Bool
 
     @State private var anchorTime: TimeInterval = 0
     @State private var anchorDate = Date()
 
     private let japaneseFont = Font.system(size: 50, weight: .bold, design: .rounded)
     private let romanizedFont = Font.system(size: 22, weight: .medium, design: .rounded)
-
-    private var romanizedWords: [LyricWord] {
-        guard showRomanized else { return [] }
-        return line.words.compactMap { word in
-            let text = word.text.toJapaneseRomaji() ?? ""
-            guard !text.isEmpty else { return nil }
-            return LyricWord(text: text, startTime: word.startTime, endTime: word.endTime)
-        }
     }
 
     var body: some View {
@@ -900,10 +877,12 @@ private struct TimedLyricPair: View {
         VStack(alignment: .leading, spacing: showRomanized ? 7 : 0) {
             if showRomanized && state == .active {
                 // Japanese is the only language that gets character-level timing.
-                JapaneseCharacterFlow(
+                WordFlow(
                     words: line.words,
                     currentTime: currentTime,
-                    font: japaneseFont
+                    font: japaneseFont,
+                    baseOpacity: state == .active ? 0.30 : 0.18,
+                    riseAmplitude: 4.0
                 )
             } else {
                 // English/non-Japanese stays word-by-word. No character effects.
@@ -918,18 +897,6 @@ private struct TimedLyricPair: View {
                 .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
                 .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
                 .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
-            }
-
-            if showRomanized {
-                // The romanized word rises on the EXACT same word interval as
-                // its Japanese source word. It does not slide/reveal left-to-right.
-                JapaneseKaraokeRomanizationFlow(
-                    words: line.words,
-                    currentTime: currentTime
-                )
-                .opacity(state == .active ? 1 : (state == .future ? 0.18 : 0.08))
-                .blur(radius: state == .active ? 0 : 1.4)
-                .offset(y: state == .past ? -7 : 0)
             }
         }
     }
@@ -951,304 +918,10 @@ private struct WordTimedLyricLine: View {
             line: line,
             state: state,
             currentTime: currentTime,
-            isPlaying: isPlaying,
-            showRomanized: containsJapaneseCharacters(line.text)
+            isPlaying: isPlaying
         )
     }
-
-    private func containsJapaneseCharacters(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            switch scalar.value {
-            case 0x3040...0x309F, 0x30A0...0x30FF, 0x31F0...0x31FF,
-                 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
-                return true
-            default:
-                return false
-            }
         }
-    }
-}
-
-// MARK: - Japanese character karaoke
-
-// Japanese lyrics are rendered character-by-character. Each character receives
-// an evenly distributed interval from the original TTML word/span timing.
-// The Japanese character and its matching romanization use the exact same
-// interval, so they highlight and rise together.
-//
-// English lyrics do not use any of this code. They continue to use WordFlow
-// and WordRiseReveal below, preserving the existing English word-by-word design.
-
-private struct TimedLyricToken: Identifiable, Hashable {
-    let id = UUID()
-    let text: String
-    let romanization: String
-    let start: TimeInterval
-    let end: TimeInterval
-
-    func progress(at time: TimeInterval) -> Double {
-        guard end > start else {
-            return time >= start ? 1.0 : 0.0
-        }
-
-        return min(
-            1.0,
-            max(0.0, (time - start) / (end - start))
-        )
-    }
-
-    func isActive(at time: TimeInterval) -> Bool {
-        time >= start && time < end
-    }
-}
-
-private struct JapaneseKaraokeLine: Identifiable, Hashable {
-    let id = UUID()
-    let tokens: [TimedLyricToken]
-
-    var start: TimeInterval {
-        tokens.first?.start ?? 0
-    }
-
-    var end: TimeInterval {
-        tokens.last?.end ?? start
-    }
-}
-
-private struct JapaneseCharacterFlow: View {
-    let words: [LyricWord]
-    let currentTime: TimeInterval
-    let font: Font
-
-    private var line: JapaneseKaraokeLine {
-        var tokens: [TimedLyricToken] = []
-
-        for word in words {
-            let characters = Array(word.text).map(String.init)
-            guard !characters.isEmpty else { continue }
-
-            let duration = max(
-                0.001,
-                word.endTime - word.startTime
-            )
-            let characterDuration =
-                duration / Double(characters.count)
-
-            for (index, character) in characters.enumerated() {
-                let start =
-                    word.startTime +
-                    characterDuration * Double(index)
-
-                let end =
-                    index == characters.count - 1
-                    ? word.endTime
-                    : start + characterDuration
-
-                let romanization =
-                    character.toJapaneseRomaji() ?? ""
-
-                tokens.append(
-                    TimedLyricToken(
-                        text: character,
-                        romanization: romanization,
-                        start: start,
-                        end: end
-                    )
-                )
-            }
-        }
-
-        return JapaneseKaraokeLine(tokens: tokens)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            FlowLayout(
-                horizontalSpacing: 0,
-                verticalSpacing: 4
-            ) {
-                ForEach(line.tokens) { token in
-                    JapaneseKaraokeTokenView(
-                        token: token,
-                        currentTime: currentTime,
-                        font: font
-                    )
-                }
-            }
-
-            FlowLayout(
-                horizontalSpacing: 0,
-                verticalSpacing: 2
-            ) {
-                ForEach(line.tokens) { token in
-                    JapaneseKaraokeRomanizationTokenView(
-                        token: token,
-                        currentTime: currentTime
-                    )
-                }
-            }
-        }
-    }
-}
-
-private struct JapaneseKaraokeRomanizationFlow: View {
-    let words: [LyricWord]
-    let currentTime: TimeInterval
-
-    var body: some View {
-        FlowLayout(
-            horizontalSpacing: 0,
-            verticalSpacing: 2
-        ) {
-            ForEach(tokens) { token in
-                JapaneseKaraokeRomanizationTokenView(
-                    token: token,
-                    currentTime: currentTime
-                )
-            }
-        }
-    }
-
-    private var tokens: [TimedLyricToken] {
-        var result: [TimedLyricToken] = []
-
-        for word in words {
-            let characters = Array(word.text).map(String.init)
-            guard !characters.isEmpty else { continue }
-
-            let duration = max(0.001, word.endTime - word.startTime)
-            let characterDuration = duration / Double(characters.count)
-
-            for (index, character) in characters.enumerated() {
-                let start = word.startTime + characterDuration * Double(index)
-                let end = index == characters.count - 1
-                    ? word.endTime
-                    : start + characterDuration
-
-                result.append(
-                    TimedLyricToken(
-                        text: character,
-                        romanization: character.toJapaneseRomaji() ?? "",
-                        start: start,
-                        end: end
-                    )
-                )
-            }
-        }
-
-        return result
-    }
-}
-
-private struct JapaneseKaraokeTokenView: View {
-    let token: TimedLyricToken
-    let currentTime: TimeInterval
-    let font: Font
-
-    private var progress: Double {
-        token.progress(at: currentTime)
-    }
-
-    private var isActive: Bool {
-        token.isActive(at: currentTime)
-    }
-
-    private var activeProgress: CGFloat {
-        guard isActive else { return 0 }
-
-        // Smooth rise/focus curve while the character is active.
-        return CGFloat(
-            sin(.pi * min(1.0, max(0.0, progress)))
-        )
-    }
-
-    private var opacity: Double {
-        if isActive { return 1.0 }
-        if currentTime >= token.end { return 0.92 }
-        return 0.30
-    }
-
-    var body: some View {
-        Text(token.text)
-            .font(font)
-            .foregroundStyle(.white.opacity(opacity))
-            .offset(y: -4.0 * activeProgress)
-            .scaleEffect(
-                1.0 + activeProgress * 0.012,
-                anchor: .center
-            )
-            .shadow(
-                color: .white.opacity(
-                    activeProgress * 0.16
-                ),
-                radius: activeProgress > 0 ? 2.2 : 0
-            )
-            .fixedSize(
-                horizontal: true,
-                vertical: false
-            )
-            .transaction { transaction in
-                // The audio clock supplies the motion directly. This avoids
-                // hundreds of independent SwiftUI animations per lyric line.
-                transaction.animation = nil
-            }
-    }
-}
-
-private struct JapaneseKaraokeRomanizationTokenView: View {
-    let token: TimedLyricToken
-    let currentTime: TimeInterval
-
-    private var progress: Double {
-        token.progress(at: currentTime)
-    }
-
-    private var isActive: Bool {
-        token.isActive(at: currentTime)
-    }
-
-    private var activeProgress: CGFloat {
-        guard isActive else { return 0 }
-
-        return CGFloat(
-            sin(.pi * min(1.0, max(0.0, progress)))
-        )
-    }
-
-    private var opacity: Double {
-        if isActive { return 1.0 }
-        if currentTime >= token.end { return 0.72 }
-        return 0.28
-    }
-
-    var body: some View {
-        Text(token.romanization.isEmpty ? " " : token.romanization)
-            .font(
-                .system(
-                    size: 13,
-                    weight: .medium,
-                    design: .rounded
-                )
-            )
-            .foregroundStyle(.white.opacity(opacity))
-            .offset(y: -2.7 * activeProgress)
-            .scaleEffect(
-                1.0 + activeProgress * 0.006,
-                anchor: .center
-            )
-            .shadow(
-                color: .white.opacity(
-                    activeProgress * 0.12
-                ),
-                radius: activeProgress > 0 ? 2.0 : 0
-            )
-            .fixedSize(
-                horizontal: true,
-                vertical: false
-            )
-            .transaction { transaction in
-                transaction.animation = nil
-            }
     }
 }
 
