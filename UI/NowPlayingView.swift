@@ -613,7 +613,7 @@ private func activeLyricID(lyrics: [LyricLine], currentTime: TimeInterval) -> UU
 
 // MARK: - Smooth Lyrics View
 
-fileprivate enum LyricLineState: Equatable {
+private enum LyricLineState: Equatable {
     case past
     case active
     case future
@@ -750,8 +750,7 @@ private struct SmoothLyricsView: View {
                     line: line,
                     state: state,
                     currentTime: currentTime,
-                    isPlaying: isPlaying,
-                    showRomanized: lineContainsJapanese(line)
+                    isPlaying: isPlaying
                 )
             } else {
                 Text(line.text)
@@ -784,8 +783,6 @@ private struct SmoothLyricsView: View {
 
     private func lineContainsJapanese(_ line: LyricLine) -> Bool {
         containsJapaneseCharacters(line.text)
-    }
-        }
     }
 
     private func lineOpacity(_ state: LyricLineState) -> Double {
