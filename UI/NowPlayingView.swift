@@ -892,7 +892,6 @@ private struct SmoothLyricsView: View {
                     Text(translated)
                         .font(.system(size: (compact ? 15 : 18) * lyricsFontScale, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(state == .active ? 0.72 : 0.22))
-                        .blur(radius: state == .active ? 0 : (state == .future ? 2.4 : 5.0))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -915,7 +914,7 @@ private struct SmoothLyricsView: View {
         switch state {
         case .active: return 1.0
         case .future: return 0.27
-        case .past: return 0.19
+        case .past: return 0.12
         }
     }
 
@@ -930,8 +929,8 @@ private struct SmoothLyricsView: View {
     private func lineBlur(_ state: LyricLineState) -> CGFloat {
         switch state {
         case .active: return 0
-        case .future: return 2.0
-        case .past: return 2.4
+        case .future: return 1.6
+        case .past: return 3.8
         }
     }
 
@@ -1016,7 +1015,7 @@ private struct TimedLyricPair: View {
             )
             .scaleEffect(lyricsFontScale * (compact ? 0.86 : 1.0), anchor: .leading)
             .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
-            .blur(radius: state == .active ? 0 : (state == .future ? 2.4 : 5.0))
+            .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
             .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
             .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
         }
@@ -1062,12 +1061,11 @@ private struct JapaneseTimedLine: View {
                 Text(translatedText)
                     .font(.system(size: 18, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(state == .active ? 0.72 : 0.22))
-                    .blur(radius: state == .active ? 0 : (state == .future ? 2.4 : 5.0))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
-        .blur(radius: state == .active ? 0 : (state == .future ? 2.4 : 5.0))
+        .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
         .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
         .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
     }
