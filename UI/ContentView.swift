@@ -576,36 +576,9 @@ struct ContentView: View {
     // MARK: - Search
 
     private func filterTracks(
-        _ source:
-            [LocalTrack]
+        _ source: [LocalTrack]
     ) -> [LocalTrack] {
-
-        guard !searchText.isEmpty
-        else {
-            return source
-        }
-
-        return source.filter {
-            $0.title
-                .localizedCaseInsensitiveContains(
-                    searchText
-                )
-            ||
-            $0.artist
-                .localizedCaseInsensitiveContains(
-                    searchText
-                )
-            ||
-            $0.album
-                .localizedCaseInsensitiveContains(
-                    searchText
-                )
-            ||
-            $0.genre
-                .localizedCaseInsensitiveContains(
-                    searchText
-                )
-        }
+        SmartLibrarySearch.rank(source, query: searchText)
     }
 
     private var filteredTracks:
@@ -623,17 +596,15 @@ struct ContentView: View {
             return library.albums
         }
 
-        return library.albums.filter {
-            $0.name
-                .localizedCaseInsensitiveContains(
-                    searchText
-                )
-            ||
-            $0.artist
-                .localizedCaseInsensitiveContains(
-                    searchText
-                )
-        }
+        return library.albums
+            .filter {
+                SmartLibrarySearch.rank($0.tracks, query: searchText).isEmpty == false
+                    || $0.name.localizedCaseInsensitiveContains(searchText)
+                    || $0.artist.localizedCaseInsensitiveContains(searchText)
+            }
+            .sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
     }
 
     private var filteredArtists:

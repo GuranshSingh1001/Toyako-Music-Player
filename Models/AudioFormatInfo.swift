@@ -11,18 +11,22 @@ struct AudioFormatInfo: Equatable {
     var displayString: String {
         var parts: [String] = []
 
-        if let sampleRate, sampleRate > 0 {
-            let kHz = sampleRate / 1000.0
-            let formatted = kHz.rounded() == kHz
-                ? String(format: "%.0f kHz", kHz)
-                : String(format: "%.1f kHz", kHz)
-            parts.append(formatted)
+        if !container.isEmpty {
+            parts.append(container)
         }
 
         if let bitDepth, bitDepth > 0, bitDepth <= 64 {
             parts.append("\(bitDepth)-bit")
         } else if let bitRate, bitRate > 0, bitRate.isFinite {
             parts.append(String(format: "%.0f kbps", bitRate / 1000.0))
+        }
+
+        if let sampleRate, sampleRate > 0 {
+            let kHz = sampleRate / 1000.0
+            let formatted = kHz.rounded() == kHz
+                ? String(format: "%.0f kHz", kHz)
+                : String(format: "%.1f kHz", kHz)
+            parts.append(formatted)
         }
 
         if let channelCount, channelCount > 0 {

@@ -136,6 +136,9 @@ class AudioEngineManager: ObservableObject {
     @Published var crossfadeDuration:
         TimeInterval = 0.45
 
+    @Published var gaplessEnabled:
+        Bool = true
+
     /// Small local history used by the Home screen. Artwork is intentionally
     /// not persisted, so loading it adds essentially no startup cost.
     @Published private(set) var recentlyPlayed:
@@ -148,6 +151,7 @@ class AudioEngineManager: ObservableObject {
         ToyakoPreferences.registerDefaults()
         crossfadeEnabled = UserDefaults.standard.bool(forKey: ToyakoPreferences.crossfadeKey)
         crossfadeDuration = UserDefaults.standard.double(forKey: ToyakoPreferences.crossfadeDurationKey)
+        gaplessEnabled = UserDefaults.standard.bool(forKey: ToyakoPreferences.gaplessKey)
         if crossfadeDuration <= 0 {
             crossfadeDuration = 0.45
         }
@@ -1063,7 +1067,8 @@ class AudioEngineManager: ObservableObject {
 
 
         if crossfadeEnabled &&
-            isPlaying {
+            isPlaying &&
+            !gaplessEnabled {
 
             fadeOutAndSwitch(
                 to:
@@ -1275,6 +1280,11 @@ class AudioEngineManager: ObservableObject {
     func setCrossfadeEnabled(_ enabled: Bool) {
         crossfadeEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: ToyakoPreferences.crossfadeKey)
+    }
+
+    func setGaplessEnabled(_ enabled: Bool) {
+        gaplessEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: ToyakoPreferences.gaplessKey)
     }
 
     func toggleShuffle() {

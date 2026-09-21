@@ -663,6 +663,7 @@ private struct SmoothLyricsView: View {
 
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
     @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
+    @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
 
     private var animationStyle: LyricsAnimationStyle {
@@ -672,7 +673,7 @@ private struct SmoothLyricsView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 30) {
+                VStack(alignment: .leading, spacing: CGFloat(lyricsLineSpacing)) {
                     ForEach(lyrics) { line in
                         lyricLine(
                             line: line,
@@ -821,7 +822,11 @@ private struct SmoothLyricsView: View {
         .animation(
             animationStyle == .minimal
                 ? .easeInOut(duration: 0.22)
-                : .timingCurve(0.22, 0.72, 0.25, 1.0, duration: animationStyle == .classic ? 0.42 : 0.58),
+                : animationStyle == .classic
+                    ? .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.42)
+                    : animationStyle == .smooth
+                        ? .smooth(duration: 0.58)
+                        : .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.62),
             value: state
         )
     }
@@ -1019,6 +1024,7 @@ private struct JapaneseLyricUnitView: View {
     private var activeOffset: CGFloat {
         switch animationStyle {
         case .dynamic: return -4 * CGFloat(sin(.pi * progress))
+        case .smooth: return -3 * CGFloat(sin(.pi * progress))
         case .classic: return -1.5 * CGFloat(sin(.pi * progress))
         case .minimal: return 0
         }
@@ -1027,6 +1033,7 @@ private struct JapaneseLyricUnitView: View {
     private var activeScale: CGFloat {
         switch animationStyle {
         case .dynamic: return CGFloat(progress) * 0.006
+        case .smooth: return CGFloat(progress) * 0.0045
         case .classic: return CGFloat(progress) * 0.003
         case .minimal: return 0
         }
@@ -1041,7 +1048,7 @@ private struct JapaneseLyricUnitView: View {
                 .scaleEffect(1 + activeScale)
                 .shadow(
                     color: .white.opacity(karaokeGlow ? progress * (animationStyle == .minimal ? 0.05 : 0.16) : 0),
-                    radius: karaokeGlow && progress > 0 ? (animationStyle == .dynamic ? 2.5 : 1.5) : 0
+                    radius: karaokeGlow && progress > 0 ? (animationStyle == .dynamic ? 2.5 : (animationStyle == .smooth ? 2.0 : 1.5)) : 0
                 )
 
             if showRomanization, let romanized = unit.romanized,
@@ -1115,8 +1122,8 @@ private struct WordRiseReveal: View {
         Text(word.text)
             .font(font)
             .foregroundStyle(.white.opacity(opacity))
-            .offset(y: animationStyle == .dynamic ? -riseAmplitude * CGFloat(activeProgress) : (animationStyle == .classic ? -1.5 * CGFloat(activeProgress) : 0))
-            .scaleEffect(animationStyle == .minimal ? 1 : 1 + CGFloat(activeProgress) * (animationStyle == .dynamic ? 0.006 : 0.003), anchor: .center)
+            .offset(y: animationStyle == .dynamic || animationStyle == .smooth ? -riseAmplitude * CGFloat(activeProgress) : (animationStyle == .classic ? -1.5 * CGFloat(activeProgress) : 0))
+            .scaleEffect(animationStyle == .minimal ? 1 : 1 + CGFloat(activeProgress) * (animationStyle == .dynamic ? 0.006 : (animationStyle == .smooth ? 0.004 : 0.003)), anchor: .center)
             .shadow(
                 color: .white.opacity(karaokeGlow ? activeProgress * (animationStyle == .dynamic ? 0.13 : 0.06) : 0),
                 radius: karaokeGlow && activeProgress > 0 ? 2.2 : 0

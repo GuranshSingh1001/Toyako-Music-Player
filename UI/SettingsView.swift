@@ -7,10 +7,12 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
     @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
     @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
+    @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
     @AppStorage(ToyakoPreferences.crossfadeKey) private var crossfadeEnabled = true
     @AppStorage(ToyakoPreferences.crossfadeDurationKey) private var crossfadeDuration = 0.45
+    @AppStorage(ToyakoPreferences.gaplessKey) private var gaplessEnabled = true
 
     var body: some View {
         NavigationStack {
@@ -36,6 +38,17 @@ struct SettingsView: View {
 
                         Slider(value: $lyricsFontScale, in: 0.82...1.18, step: 0.01)
                     }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Line Spacing")
+                            Spacer()
+                            Text("\(Int(lyricsLineSpacing)) pt")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $lyricsLineSpacing, in: 8...60, step: 1)
+                    }
                 }
 
                 Section("Now Playing") {
@@ -47,6 +60,13 @@ struct SettingsView: View {
                         .onChange(of: crossfadeEnabled) { _, newValue in
                             audioManager.setCrossfadeEnabled(newValue)
                         }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Gapless Playback", isOn: $gaplessEnabled)
+                            .onChange(of: gaplessEnabled) { _, newValue in
+                                audioManager.setGaplessEnabled(newValue)
+                            }
+                    }
 
                     if crossfadeEnabled {
                         VStack(alignment: .leading, spacing: 8) {
@@ -85,6 +105,7 @@ struct SettingsView: View {
             ToyakoPreferences.registerDefaults()
             audioManager.crossfadeEnabled = crossfadeEnabled
             audioManager.crossfadeDuration = crossfadeDuration
+            audioManager.gaplessEnabled = gaplessEnabled
         }
     }
 }

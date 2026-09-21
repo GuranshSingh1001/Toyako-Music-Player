@@ -15,20 +15,30 @@ struct HomeView: View {
     let onTogglePlayPause: () -> Void
     let onShuffleAll: () -> Void
 
+    @State private var recommendationSeed = UUID()
+
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
     ]
 
-    private var featuredAlbums: [AlbumGroup] {
-        Array(albums.prefix(8))
+    private var recommendedAlbums: [AlbumGroup] {
+        var rng = SeededGenerator(seed: recommendationSeed)
+        return Array(albums.shuffled(using: &rng).prefix(8))
     }
 
-    private var featuredArtists: [ArtistGroup] {
-        Array(artists.prefix(8))
+    private var recommendedArtists: [ArtistGroup] {
+        var rng = SeededGenerator(seed: recommendationSeed.hashValue &+ 17)
+        return Array(artists.shuffled(using: &rng).prefix(8))
     }
 
-    private var featuredPlaylists: [Playlist] {
-        Array(playlists.prefix(8))
+    private var recommendedPlaylists: [Playlist] {
+        var rng = SeededGenerator(seed: recommendationSeed.hashValue &+ 31)
+        return Array(playlists.shuffled(using: &rng).prefix(8))
+    }
+
+    private var recommendedTracks: [LocalTrack] {
+        var rng = SeededGenerator(seed: recommendationSeed.hashValue &+ 53)
+        return Array(tracks.filter { $0.id != currentTrack?.id }.shuffled(using: &rng).prefix(12))
     }
 
     var body: some View {
@@ -49,26 +59,26 @@ struct HomeView: View {
                 }
 
                 if !featuredAlbums.isEmpty {
-                    section("Albums") {
-                        horizontalAlbums(featuredAlbums)
+                    section("Recommended Albums") {
+                        horizontalAlbums(recommendedAlbums)
                     }
                 }
 
                 if !featuredArtists.isEmpty {
-                    section("Artists") {
-                        horizontalArtists(featuredArtists)
+                    section("Recommended Artists") {
+                        horizontalArtists(recommendedArtists)
                     }
                 }
 
                 if !featuredPlaylists.isEmpty {
-                    section("Playlists") {
-                        horizontalPlaylists(featuredPlaylists)
+                    section("For You") {
+                        horizontalPlaylists(recommendedPlaylists)
                     }
                 }
 
-                if !tracks.isEmpty {
-                    section("Your Tracks") {
-                        horizontalTracks(Array(tracks.prefix(12)))
+                if !recommendedTracks.isEmpty {
+                    section("Recommended for You") {
+                        horizontalTracks(recommendedTracks)
                     }
                 }
 
@@ -81,6 +91,9 @@ struct HomeView: View {
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
+        .task {
+            recommendationSeed = UUID()
+        }
     }
 
     private var header: some View {
@@ -366,5 +379,18 @@ private struct HomeStatCard: View {
         }
         .padding(13)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+    init(seed: UUID) { self.init(seed: seed.uuidString.hashValue) }
+    init(seed: Int) { state = UInt64(bitPattern: Int64(seed)) ^ 0x9E3779B97F4A7C15 }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
     }
 }
