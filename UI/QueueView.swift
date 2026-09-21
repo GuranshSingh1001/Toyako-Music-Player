@@ -38,6 +38,8 @@ private struct QueueContent: View {
 
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    let start = min(queueIndex + 1, queue.count)
+
                     if let currentTrack {
                         sectionTitle("Playing")
                         QueueRow(
@@ -52,7 +54,6 @@ private struct QueueContent: View {
                         )
                     }
 
-                    let start = min(queueIndex + 1, queue.count)
                     if start < queue.count {
                         sectionTitle("Up Next")
                             .padding(.top, 22)

@@ -58,19 +58,19 @@ struct HomeView: View {
                     }
                 }
 
-                if !featuredAlbums.isEmpty {
+                if !recommendedAlbums.isEmpty {
                     section("Recommended Albums") {
                         horizontalAlbums(recommendedAlbums)
                     }
                 }
 
-                if !featuredArtists.isEmpty {
+                if !recommendedArtists.isEmpty {
                     section("Recommended Artists") {
                         horizontalArtists(recommendedArtists)
                     }
                 }
 
-                if !featuredPlaylists.isEmpty {
+                if !recommendedPlaylists.isEmpty {
                     section("For You") {
                         horizontalPlaylists(recommendedPlaylists)
                     }
