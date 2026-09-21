@@ -970,157 +970,237 @@ private struct WordTimedLyricLine: View {
     }
 }
 
-// MARK: - Japanese character timing
+// MARK: - Japanese character karaoke
 
-// Japanese uses character-level motion only for the active Japanese line.
-// Romanized text remains word-level, but each romanized word is driven by the
-// exact same source-word interval as its Japanese counterpart.
+// Japanese lyrics are rendered character-by-character. Each character receives
+// an evenly distributed interval from the original TTML word/span timing.
+// The Japanese character and its matching romanization use the exact same
+// interval, so they highlight and rise together.
+//
+// English lyrics do not use any of this code. They continue to use WordFlow
+// and WordRiseReveal below, preserving the existing English word-by-word design.
+
+private struct TimedLyricToken: Identifiable, Hashable {
+    let id = UUID()
+    let text: String
+    let romanization: String
+    let start: TimeInterval
+    let end: TimeInterval
+
+    func progress(at time: TimeInterval) -> Double {
+        guard end > start else {
+            return time >= start ? 1.0 : 0.0
+        }
+
+        return min(
+            1.0,
+            max(0.0, (time - start) / (end - start))
+        )
+    }
+
+    func isActive(at time: TimeInterval) -> Bool {
+        time >= start && time < end
+    }
+}
+
+private struct JapaneseKaraokeLine: Identifiable, Hashable {
+    let id = UUID()
+    let tokens: [TimedLyricToken]
+
+    var start: TimeInterval {
+        tokens.first?.start ?? 0
+    }
+
+    var end: TimeInterval {
+        tokens.last?.end ?? start
+    }
+}
+
 private struct JapaneseCharacterFlow: View {
     let words: [LyricWord]
     let currentTime: TimeInterval
     let font: Font
 
-    var body: some View {
-        FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
-            ForEach(words) { word in
-                JapaneseCharacterWord(
-                    word: word,
-                    currentTime: currentTime,
-                    font: font
-                )
-            }
-        }
-    }
-}
+    private var line: JapaneseKaraokeLine {
+        var tokens: [TimedLyricToken] = []
 
-private struct JapaneseCharacterWord: View {
-    let word: LyricWord
-    let currentTime: TimeInterval
-    let font: Font
+        for word in words {
+            let characters = Array(word.text).map(String.init)
+            guard !characters.isEmpty else { continue }
 
-    private var characters: [String] {
-        Array(word.text).map(String.init)
-    }
+            let duration = max(
+                0.001,
+                word.endTime - word.startTime
+            )
+            let characterDuration =
+                duration / Double(characters.count)
 
-    // TTML gives us word timing, not character timing. We derive a lightweight
-    // character position inside that word purely for the Japanese visual effect.
-    private var characterDuration: TimeInterval {
-        max(0.001, word.endTime - word.startTime) / TimeInterval(max(1, characters.count))
-    }
+            for (index, character) in characters.enumerated() {
+                let start =
+                    word.startTime +
+                    characterDuration * Double(index)
 
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(characters.enumerated()), id: \.offset) { index, character in
-                let start = word.startTime + characterDuration * TimeInterval(index)
-                let end = index == characters.count - 1
+                let end =
+                    index == characters.count - 1
                     ? word.endTime
                     : start + characterDuration
 
-                JapaneseCharacterReveal(
-                    character: character,
-                    startTime: start,
-                    endTime: end,
-                    currentTime: currentTime,
-                    font: font
+                let romanization =
+                    character.toJapaneseRomaji() ?? ""
+
+                tokens.append(
+                    TimedLyricToken(
+                        text: character,
+                        romanization: romanization,
+                        start: start,
+                        end: end
+                    )
                 )
             }
         }
-        .fixedSize(horizontal: true, vertical: false)
+
+        return JapaneseKaraokeLine(tokens: tokens)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            FlowLayout(
+                horizontalSpacing: 0,
+                verticalSpacing: 4
+            ) {
+                ForEach(line.tokens) { token in
+                    JapaneseKaraokeTokenView(
+                        token: token,
+                        currentTime: currentTime,
+                        font: font
+                    )
+                }
+            }
+
+            FlowLayout(
+                horizontalSpacing: 0,
+                verticalSpacing: 2
+            ) {
+                ForEach(line.tokens) { token in
+                    JapaneseKaraokeRomanizationTokenView(
+                        token: token,
+                        currentTime: currentTime
+                    )
+                }
+            }
+        }
     }
 }
 
-private struct JapaneseCharacterReveal: View {
-    let character: String
-    let startTime: TimeInterval
-    let endTime: TimeInterval
+private struct JapaneseKaraokeTokenView: View {
+    let token: TimedLyricToken
     let currentTime: TimeInterval
     let font: Font
 
-    private var progress: CGFloat {
-        guard currentTime >= startTime else { return 0 }
-        guard currentTime < endTime else { return 1 }
-        return CGFloat(min(1, max(0, (currentTime - startTime) / max(0.001, endTime - startTime))))
+    private var progress: Double {
+        token.progress(at: currentTime)
     }
 
-    private var activeFocus: CGFloat {
-        guard currentTime >= startTime && currentTime < endTime else { return 0 }
-        // Ease in and out, rather than sliding continuously in one direction.
-        let x = min(1, max(0, (currentTime - startTime) / max(0.001, endTime - startTime)))
-        return CGFloat(sin(.pi * x))
+    private var isActive: Bool {
+        token.isActive(at: currentTime)
     }
 
-    private var isFuture: Bool { currentTime < startTime }
+    private var activeProgress: CGFloat {
+        guard isActive else { return 0 }
+
+        // Smooth rise/focus curve while the character is active.
+        return CGFloat(
+            sin(.pi * min(1.0, max(0.0, progress)))
+        )
+    }
+
+    private var opacity: Double {
+        if isActive { return 1.0 }
+        if currentTime >= token.end { return 0.92 }
+        return 0.30
+    }
 
     var body: some View {
-        Text(character)
+        Text(token.text)
             .font(font)
-            .foregroundStyle(.white.opacity(isFuture ? 0.30 : 1.0))
-            // The glyph rises into focus and then settles back to its exact
-            // baseline. There is no horizontal translation.
-            .offset(y: -3.8 * activeFocus)
-            .scaleEffect(1 + activeFocus * 0.012, anchor: .center)
+            .foregroundStyle(.white.opacity(opacity))
+            .offset(y: -4.0 * activeProgress)
+            .scaleEffect(
+                1.0 + activeProgress * 0.012,
+                anchor: .center
+            )
             .shadow(
-                color: .white.opacity(activeFocus * 0.16),
-                radius: activeFocus > 0 ? 2.2 : 0
+                color: .white.opacity(
+                    activeProgress * 0.16
+                ),
+                radius: activeProgress > 0 ? 2.2 : 0
+            )
+            .fixedSize(
+                horizontal: true,
+                vertical: false
             )
             .transaction { transaction in
-                // Never let SwiftUI interpolate this view's position between
-                // audio-clock updates. The audio clock itself supplies motion.
+                // The audio clock supplies the motion directly. This avoids
+                // hundreds of independent SwiftUI animations per lyric line.
                 transaction.animation = nil
             }
     }
 }
 
-// A romanized word must be visually paired with the exact Japanese TTML word
-// that produced it. The shared interval is what keeps the two rises locked.
-private struct JapaneseRomanizedWord: View {
-    let sourceWord: LyricWord
-    let romanized: String
+private struct JapaneseKaraokeRomanizationTokenView: View {
+    let token: TimedLyricToken
     let currentTime: TimeInterval
-    let font: Font
 
-    private var focus: CGFloat {
-        guard currentTime >= sourceWord.startTime && currentTime < sourceWord.endTime else { return 0 }
-        let x = min(1, max(0, (currentTime - sourceWord.startTime) / max(0.001, sourceWord.endTime - sourceWord.startTime)))
-        return CGFloat(sin(.pi * x))
+    private var progress: Double {
+        token.progress(at: currentTime)
     }
 
-    private var future: Bool { currentTime < sourceWord.startTime }
+    private var isActive: Bool {
+        token.isActive(at: currentTime)
+    }
+
+    private var activeProgress: CGFloat {
+        guard isActive else { return 0 }
+
+        return CGFloat(
+            sin(.pi * min(1.0, max(0.0, progress)))
+        )
+    }
+
+    private var opacity: Double {
+        if isActive { return 1.0 }
+        if currentTime >= token.end { return 0.72 }
+        return 0.28
+    }
 
     var body: some View {
-        Text(romanized)
-            .font(font)
-            .foregroundStyle(.white.opacity(future ? 0.18 : 0.72))
-            .offset(y: -2.7 * focus)
-            .scaleEffect(1 + focus * 0.006, anchor: .center)
-            .shadow(
-                color: .white.opacity(focus * 0.12),
-                radius: focus > 0 ? 2 : 0
+        Text(token.romanization.isEmpty ? " " : token.romanization)
+            .font(
+                .system(
+                    size: 13,
+                    weight: .medium,
+                    design: .rounded
+                )
             )
-            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(.white.opacity(opacity))
+            .offset(y: -2.7 * activeProgress)
+            .scaleEffect(
+                1.0 + activeProgress * 0.006,
+                anchor: .center
+            )
+            .shadow(
+                color: .white.opacity(
+                    activeProgress * 0.12
+                ),
+                radius: activeProgress > 0 ? 2.0 : 0
+            )
+            .fixedSize(
+                horizontal: true,
+                vertical: false
+            )
             .transaction { transaction in
                 transaction.animation = nil
             }
-    }
-}
-
-private struct JapaneseRomanizedFlow: View {
-    let words: [LyricWord]
-    let currentTime: TimeInterval
-    let font: Font
-
-    var body: some View {
-        FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
-            ForEach(words) { word in
-                let romanized = word.text.toJapaneseRomaji() ?? word.text
-                JapaneseRomanizedWord(
-                    sourceWord: word,
-                    romanized: romanized,
-                    currentTime: currentTime,
-                    font: font
-                )
-            }
-        }
     }
 }
 
