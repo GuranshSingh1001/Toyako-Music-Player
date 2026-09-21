@@ -52,6 +52,9 @@ class AudioEngineManager: ObservableObject {
     private var endObserverToken:
         Any?
 
+    private var interruptionObserverToken: NSObjectProtocol?
+    private var remoteCommandTargets: [(command: MPRemoteCommand, token: Any)] = []
+
     private var lastPersistedTime:
         TimeInterval = -100
 
@@ -1854,100 +1857,47 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Remote Controls
 
     private func setupRemoteControls() {
+        let commandCenter = MPRemoteCommandCenter.shared()
 
-        let commandCenter =
-            MPRemoteCommandCenter.shared()
-
-
-        commandCenter.playCommand.isEnabled =
-            true
-
-        commandCenter.playCommand.addTarget {
-            [weak self] _ in
-
-            guard
-                let self,
-                !self.isPlaying
-            else {
-                return .commandFailed
-            }
-
+        let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
+            guard let self, !self.isPlaying else { return .commandFailed }
             self.togglePlayPause()
-
             return .success
         }
+        remoteCommandTargets.append((commandCenter.playCommand, playTarget))
+        commandCenter.playCommand.isEnabled = true
 
-
-        commandCenter.pauseCommand.isEnabled =
-            true
-
-        commandCenter.pauseCommand.addTarget {
-            [weak self] _ in
-
-            guard
-                let self,
-                self.isPlaying
-            else {
-                return .commandFailed
-            }
-
+        let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
+            guard let self, self.isPlaying else { return .commandFailed }
             self.togglePlayPause()
-
             return .success
         }
+        remoteCommandTargets.append((commandCenter.pauseCommand, pauseTarget))
+        commandCenter.pauseCommand.isEnabled = true
 
-
-        commandCenter.nextTrackCommand.isEnabled =
-            true
-
-        commandCenter.nextTrackCommand.addTarget {
-            [weak self] _ in
-
+        let nextTarget = commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             self?.forward()
-
             return .success
         }
+        remoteCommandTargets.append((commandCenter.nextTrackCommand, nextTarget))
+        commandCenter.nextTrackCommand.isEnabled = true
 
-
-        commandCenter.previousTrackCommand.isEnabled =
-            true
-
-        commandCenter.previousTrackCommand.addTarget {
-            [weak self] _ in
-
+        let previousTarget = commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             self?.backward()
-
             return .success
         }
+        remoteCommandTargets.append((commandCenter.previousTrackCommand, previousTarget))
+        commandCenter.previousTrackCommand.isEnabled = true
 
-
-        commandCenter
-            .changePlaybackPositionCommand
-            .isEnabled =
-            true
-
-
-        commandCenter
-            .changePlaybackPositionCommand
-            .addTarget {
-                [weak self] event in
-
-                guard
-                    let positionEvent =
-                        event
-                        as?
-                        MPChangePlaybackPositionCommandEvent
-                else {
-                    return .commandFailed
-                }
-
-                self?.seek(
-                    to:
-                        positionEvent.positionTime
-                )
-
-                return .success
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        let positionTarget = commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
             }
+            self?.seek(to: positionEvent.positionTime)
+            return .success
+        }
+        remoteCommandTargets.append((commandCenter.changePlaybackPositionCommand, positionTarget))
     }
 
 
@@ -1955,7 +1905,7 @@ class AudioEngineManager: ObservableObject {
 
     private func setupInterruptionHandling() {
 
-        NotificationCenter.default.addObserver(
+        interruptionObserverToken = NotificationCenter.default.addObserver(
             forName:
                 AVAudioSession.interruptionNotification,
 
@@ -2171,5 +2121,14 @@ class AudioEngineManager: ObservableObject {
 
         detachTimeObserver()
         detachEndObserver()
+
+        if let interruptionObserverToken {
+            NotificationCenter.default.removeObserver(interruptionObserverToken)
+        }
+
+        for target in remoteCommandTargets {
+            target.command.removeTarget(target.token)
+        }
+        remoteCommandTargets.removeAll()
     }
 }
