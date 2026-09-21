@@ -10,11 +10,18 @@ actor ArtworkStore {
     static let shared = ArtworkStore()
 
     private var memory: [URL: Data] = [:]
+    private var accessOrder: [URL: UInt64] = [:]
+    private var accessCounter: UInt64 = 0
+    private var memoryBytes = 0
+    private let memoryLimitBytes = 64 * 1024 * 1024
     private var inFlight: [URL: Task<Data?, Never>] = [:]
 
     func data(for url: URL) async -> Data? {
         let key = url.standardizedFileURL
-        if let cached = memory[key] { return cached }
+        if let cached = memory[key] {
+            touch(key)
+            return cached
+        }
         if let task = inFlight[key] { return await task.value }
 
         let task = Task.detached(priority: .utility) {
@@ -24,8 +31,31 @@ actor ArtworkStore {
 
         let result = await task.value
         inFlight[key] = nil
-        if let result { memory[key] = result }
+        if let result { insert(result, for: key) }
         return result
+    }
+
+    private func touch(_ key: URL) {
+        accessCounter &+= 1
+        accessOrder[key] = accessCounter
+    }
+
+    private func insert(_ data: Data, for key: URL) {
+        if let old = memory.removeValue(forKey: key) {
+            memoryBytes -= old.count
+        }
+
+        memory[key] = data
+        memoryBytes += data.count
+        touch(key)
+
+        while memoryBytes > memoryLimitBytes,
+              let victim = accessOrder.min(by: { $0.value < $1.value })?.key {
+            accessOrder[victim] = nil
+            if let old = memory.removeValue(forKey: victim) {
+                memoryBytes -= old.count
+            }
+        }
     }
 
     nonisolated private static func loadData(for url: URL) async -> Data? {
