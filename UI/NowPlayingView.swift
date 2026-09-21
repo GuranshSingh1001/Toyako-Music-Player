@@ -915,7 +915,7 @@ private struct SmoothLyricsView: View {
         switch state {
         case .active: return 1.0
         case .future: return 0.27
-        case .past: return 0.12
+        case .past: return 0.19
         }
     }
 
@@ -930,8 +930,8 @@ private struct SmoothLyricsView: View {
     private func lineBlur(_ state: LyricLineState) -> CGFloat {
         switch state {
         case .active: return 0
-        case .future: return 2.4
-        case .past: return 5.0
+        case .future: return 2.0
+        case .past: return 2.4
         }
     }
 
