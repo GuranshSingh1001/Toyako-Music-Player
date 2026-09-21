@@ -611,6 +611,7 @@ private func activeLyricID(lyrics: [LyricLine], currentTime: TimeInterval) -> UU
     return lyrics.last { $0.time <= currentTime }?.id
 }
 
+}
 // MARK: - Smooth Lyrics View
 
 private enum LyricLineState: Equatable {
@@ -825,6 +826,7 @@ private struct SmoothLyricsView: View {
         }
     }
 
+}
 // MARK: - Word-Timed Lyrics
 
 private struct TimedLyricPair: View {
