@@ -665,6 +665,7 @@ private struct SmoothLyricsView: View {
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
     @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
     @State private var translations: [UUID: String] = [:]
+    @State private var translationConfiguration: TranslationSession.Configuration?
     @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
     @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
@@ -696,23 +697,34 @@ private struct SmoothLyricsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .id("\(trackID?.uuidString ?? "none")-\(lyrics.count)-\(lyrics.first?.id.uuidString ?? "")-\(lyrics.last?.id.uuidString ?? "")")
-            .translationTask(
-                source: Locale.Language(identifier: "ja"),
-                target: Locale.Language(identifier: "en"),
-                preferredStrategy: .highFidelity
-            ) { session in
+            .translationTask(translationConfiguration) { session in
                 guard showTranslation else { return }
-                let japaneseLines = lyrics.filter { $0.containsJapanese && !$0.text.isEmpty }
-                for line in japaneseLines {
-                    do {
-                        let response = try await session.translate(line.text)
-                        guard !Task.isCancelled else { return }
-                        await MainActor.run {
-                            translations[line.id] = response.targetText
-                        }
-                    } catch {
-                        // Keep the original Japanese lyric visible if translation is unavailable.
+
+                let japaneseLines = lyrics.filter {
+                    $0.containsJapanese && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+
+                guard !japaneseLines.isEmpty else { return }
+
+                let requests = japaneseLines.map {
+                    TranslationSession.Request(sourceText: $0.text)
+                }
+
+                do {
+                    let responses = try await session.translations(from: requests)
+                    guard !Task.isCancelled else { return }
+
+                    var result: [UUID: String] = [:]
+                    for (line, response) in zip(japaneseLines, responses) {
+                        result[line.id] = response.targetText
                     }
+
+                    await MainActor.run {
+                        translations = result
+                    }
+                } catch {
+                    // Translation may be unavailable until Apple's Japanese and
+                    // English language models are installed. Keep the lyrics visible.
                 }
             }
             .mask {
@@ -729,12 +741,15 @@ private struct SmoothLyricsView: View {
             }
             .onAppear {
                 scrollToCurrentLyric(proxy: proxy, animated: false)
+                updateTranslationConfiguration()
             }
             // Lyrics are loaded asynchronously after NowPlayingView can already
             // be on screen. In that case the original onAppear fires too early,
             // before LazyVStack has the current lyric to scroll to. Re-anchor when
             // the lyric collection arrives.
             .onChange(of: lyrics.map(\.id)) { _, _ in
+                translations.removeAll()
+                updateTranslationConfiguration(invalidate: true)
                 DispatchQueue.main.async {
                     scrollToCurrentLyric(proxy: proxy, animated: false)
                     DispatchQueue.main.async {
@@ -744,6 +759,7 @@ private struct SmoothLyricsView: View {
             }
             .onChange(of: trackID) { _, newTrackID in
                 translations.removeAll()
+                updateTranslationConfiguration(invalidate: true)
                 guard newTrackID != nil else { return }
                 // Give the new lyric collection one layout pass before scrolling.
                 DispatchQueue.main.async {
@@ -752,6 +768,11 @@ private struct SmoothLyricsView: View {
             }
             .onChange(of: showTranslation) { _, enabled in
                 translations.removeAll()
+                if enabled {
+                    updateTranslationConfiguration(invalidate: true)
+                } else {
+                    translationConfiguration = nil
+                }
             }
             .onChange(of: activeID) { _, newID in
                 guard let newID else { return }
@@ -761,6 +782,22 @@ private struct SmoothLyricsView: View {
                     proxy.scrollTo(newID, anchor: .center)
                 }
             }
+        }
+    }
+
+    private func updateTranslationConfiguration(invalidate: Bool = false) {
+        guard showTranslation else {
+            translationConfiguration = nil
+            return
+        }
+
+        if let configuration = translationConfiguration, invalidate {
+            configuration.invalidate()
+        } else if translationConfiguration == nil {
+            translationConfiguration = TranslationSession.Configuration(
+                source: Locale.Language(identifier: "ja"),
+                target: Locale.Language(identifier: "en")
+            )
         }
     }
 
