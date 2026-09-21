@@ -86,11 +86,51 @@ struct Playlist: Identifiable, Codable {
     }
 }
 
+struct LyricUnit: Identifiable, Equatable {
+    let id = UUID()
+    let text: String
+    let romanized: String?
+    let startTime: TimeInterval
+    let endTime: TimeInterval
+    let isAtomicWord: Bool
+
+    init(
+        text: String,
+        romanized: String? = nil,
+        startTime: TimeInterval,
+        endTime: TimeInterval,
+        isAtomicWord: Bool = false
+    ) {
+        self.text = text
+        self.romanized = romanized
+        self.startTime = startTime
+        self.endTime = max(startTime, endTime)
+        self.isAtomicWord = isAtomicWord
+    }
+}
+
 struct LyricWord: Identifiable, Equatable {
     let id = UUID()
     let text: String
     let startTime: TimeInterval
     let endTime: TimeInterval
+    let units: [LyricUnit]
+
+    init(
+        text: String,
+        startTime: TimeInterval,
+        endTime: TimeInterval,
+        units: [LyricUnit]? = nil
+    ) {
+        self.text = text
+        self.startTime = startTime
+        self.endTime = max(startTime, endTime)
+        self.units = units ?? JapaneseLyricMapper.units(
+            for: text,
+            startTime: startTime,
+            endTime: endTime
+        )
+    }
 }
 
 struct LyricLine: Identifiable, Equatable {
@@ -119,6 +159,27 @@ struct LyricLine: Identifiable, Equatable {
 
     var hasWordTiming: Bool {
         !words.isEmpty
+    }
+
+    var containsJapanese: Bool {
+        containsJapaneseCharacters(text)
+    }
+}
+
+func containsJapaneseCharacters(_ text: String) -> Bool {
+    text.unicodeScalars.contains { scalar in
+        switch scalar.value {
+        case 0x3040...0x309F, // Hiragana
+             0x30A0...0x30FF, // Katakana
+             0x31F0...0x31FF, // Katakana extensions
+             0x3400...0x4DBF, // CJK extension A
+             0x4E00...0x9FFF, // CJK Unified Ideographs
+             0xF900...0xFAFF, // CJK compatibility ideographs
+             0xFF66...0xFF9D: // Half-width Katakana
+            return true
+        default:
+            return false
+        }
     }
 }
 
