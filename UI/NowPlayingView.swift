@@ -613,7 +613,7 @@ private func activeLyricID(lyrics: [LyricLine], currentTime: TimeInterval) -> UU
 
 // MARK: - Smooth Lyrics View
 
-private enum LyricLineState: Equatable {
+fileprivate enum LyricLineState: Equatable {
     case past
     case active
     case future
