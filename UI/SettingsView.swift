@@ -56,7 +56,7 @@ struct SettingsView: View {
 
                 Section("About") {
                     LabeledContent("App", value: "Toyako")
-                    LabeledContent("Version", value: "1.3.2")
+                    LabeledContent("Version", value: "1.3.3")
                 }
             }
             .navigationTitle("Settings")
