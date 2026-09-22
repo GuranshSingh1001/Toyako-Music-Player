@@ -753,7 +753,7 @@ private struct SmoothLyricsView: View {
             // be on screen. In that case the original onAppear fires too early,
             // before LazyVStack has the current lyric to scroll to. Re-anchor when
             // the lyric collection arrives.
-            .onChange(of: lyrics.map(\\.id)) { _, _ in
+            .onChange(of: lyrics.map(\.id)) { _, _ in
                 translations.removeAll()
                 restartTranslationSession()
                 DispatchQueue.main.async {
