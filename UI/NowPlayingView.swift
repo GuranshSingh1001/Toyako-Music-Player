@@ -1806,11 +1806,11 @@ struct AppleMusicMovingBleedBackground: View {
                                     location: 0.35
                                 ),
                                 .init(
-                                    color: .black.opacity(0.22),
+                                    color: .black.opacity(0.14),
                                     location: 0.68
                                 ),
                                 .init(
-                                    color: .black.opacity(0.52),
+                                    color: .black.opacity(0.30),
                                     location: 1.00
                                 )
                             ],
@@ -1823,8 +1823,8 @@ struct AppleMusicMovingBleedBackground: View {
                         // VERY SUBTLE OVERALL DARKENING
                         // -------------------------------------------------
 
-                        Color.black.opacity(0.14)
-                        accentColor.opacity(0.08).blendMode(.screen)
+                        Color.black.opacity(0.06)
+                        accentColor.opacity(0.10).blendMode(.screen)
 
                     } else {
 
@@ -1922,7 +1922,9 @@ struct AppleMusicMovingBleedBackground: View {
                 y: CGFloat(y)
             )
             .blur(radius: blur, opaque: true)
-            .saturation(1.12)
+            .saturation(1.65)
+            .contrast(1.10)
+            .brightness(-0.02)
             .opacity(opacity)
 
         return AnyView(renderedArtwork)
@@ -1980,8 +1982,9 @@ struct AppleMusicMovingBleedBackground: View {
                 radius: blur,
                 opaque: true
             )
-            .saturation(1.20)
-            .brightness(-0.16)
+            .saturation(1.55)
+            .contrast(1.08)
+            .brightness(-0.04)
             .opacity(opacity)
     }
 
@@ -2036,8 +2039,9 @@ struct AppleMusicMovingBleedBackground: View {
                 radius: blur,
                 opaque: true
             )
-            .saturation(1.25)
-            .brightness(-0.18)
+            .saturation(1.60)
+            .contrast(1.10)
+            .brightness(-0.04)
             .opacity(opacity)
     }
 }
