@@ -630,6 +630,12 @@ private func lyricsPane(compact: Bool = false) -> some View {
             ) { time in
                 audioManager.seek(to: time)
             }
+            // Give each track/lyric set its own SmoothLyricsView identity.
+            // TranslationSession is stateful, so merely changing the lyrics
+            // inside the existing view can leave the translation task attached
+            // to the previous song. Recreating this view guarantees that the
+            // translation configuration and task belong to the new lyrics.
+            .id("smooth-lyrics-\(trackID?.uuidString ?? "none")-\(lyrics.count)-\(lyrics.first?.id.uuidString ?? "")-\(lyrics.last?.id.uuidString ?? "")")
         }
     }
 }
@@ -747,9 +753,9 @@ private struct SmoothLyricsView: View {
             // be on screen. In that case the original onAppear fires too early,
             // before LazyVStack has the current lyric to scroll to. Re-anchor when
             // the lyric collection arrives.
-            .onChange(of: lyrics.map(\.id)) { _, _ in
+            .onChange(of: lyrics.map(\\.id)) { _, _ in
                 translations.removeAll()
-                updateTranslationConfiguration(invalidate: true)
+                restartTranslationSession()
                 DispatchQueue.main.async {
                     scrollToCurrentLyric(proxy: proxy, animated: false)
                     DispatchQueue.main.async {
@@ -759,7 +765,7 @@ private struct SmoothLyricsView: View {
             }
             .onChange(of: trackID) { _, newTrackID in
                 translations.removeAll()
-                updateTranslationConfiguration(invalidate: true)
+                restartTranslationSession()
                 guard newTrackID != nil else { return }
                 // Give the new lyric collection one layout pass before scrolling.
                 DispatchQueue.main.async {
@@ -769,7 +775,7 @@ private struct SmoothLyricsView: View {
             .onChange(of: showTranslation) { _, enabled in
                 translations.removeAll()
                 if enabled {
-                    updateTranslationConfiguration(invalidate: true)
+                    restartTranslationSession()
                 } else {
                     translationConfiguration = nil
                 }
@@ -792,10 +798,28 @@ private struct SmoothLyricsView: View {
         }
 
         if invalidate || translationConfiguration == nil {
-            // TranslationSession.Configuration is a value type and `invalidate()`
-            // is mutating. Recreate the configuration instead of mutating a
-            // temporary `let` binding, which also cleanly restarts translation
-            // when the lyric set changes.
+            translationConfiguration = TranslationSession.Configuration(
+                source: Locale.Language(identifier: "ja"),
+                target: Locale.Language(identifier: "en")
+            )
+        }
+    }
+
+    /// Force SwiftUI to tear down the previous TranslationSession before
+    /// starting a session for the newly loaded track. Reusing an equivalent
+    /// Configuration can otherwise leave the translation task attached to the
+    /// previous song, so the new translation does not appear until the view is
+    /// recreated.
+    private func restartTranslationSession() {
+        guard showTranslation else {
+            translationConfiguration = nil
+            return
+        }
+
+        translationConfiguration = nil
+
+        DispatchQueue.main.async {
+            guard showTranslation else { return }
             translationConfiguration = TranslationSession.Configuration(
                 source: Locale.Language(identifier: "ja"),
                 target: Locale.Language(identifier: "en")
@@ -892,6 +916,10 @@ private struct SmoothLyricsView: View {
                     Text(translated)
                         .font(.system(size: (compact ? 15 : 18) * lyricsFontScale, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(state == .active ? 0.72 : 0.22))
+                        // Translation follows the exact same blur curve as
+                        // the Japanese lyric and romanization. This keeps the
+                        // past/future layers visually consistent.
+                        .blur(radius: lineBlur(state))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
