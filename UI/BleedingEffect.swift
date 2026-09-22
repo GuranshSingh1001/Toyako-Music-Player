@@ -3,117 +3,105 @@ import UIKit
 
 // MARK: - Artwork Bleeding Background
 //
-// This version does not use black as the base background.
-// Instead, it builds the whole background from a small palette extracted
-// from the artwork. The palette itself crossfades when the track changes.
-//
-// The blurred artwork is only a subtle texture layer. This prevents bright
-// white areas in album art from turning the entire screen white.
+// Full-screen artwork-colour background with:
+// • No pure-black base layer
+// • No additive crossfade (prevents flash-bang transitions)
+// • Controlled luminance so white artwork cannot wash out the UI
+// • Controlled saturation so red artwork cannot become neon red
+// • Smooth 1.15s palette transition between tracks
+// • Subtle moving colour pools
+// • Very subtle artwork texture
 
 struct ColorfulArtworkBleedBackground: View {
     let artworkData: Data?
     let accentColor: Color
 
-    @State private var displayedArtworkData: Data?
-    @State private var outgoingArtworkData: Data?
+    @State private var currentPalette = ArtworkBleedPalette.fallback
+    @State private var targetPalette = ArtworkBleedPalette.fallback
 
-    @State private var displayedPalette = ArtworkBleedPalette.fallback
-    @State private var outgoingPalette = ArtworkBleedPalette.fallback
+    @State private var currentArtworkData: Data?
+    @State private var targetArtworkData: Data?
 
-    @State private var artworkTransition: Double = 1.0
+    @State private var transitionProgress: CGFloat = 1.0
     @State private var transitionGeneration = 0
 
     var body: some View {
         GeometryReader { geometry in
             TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                let width = geometry.size.width
-                let height = geometry.size.height
+
+                // Interpolate ONE background instead of stacking two
+                // backgrounds. This is the important fix for the flash-bang.
+                let palette = ArtworkBleedPalette.interpolate(
+                    from: currentPalette,
+                    to: targetPalette,
+                    progress: transitionProgress
+                )
 
                 ZStack {
-                    // MARK: Palette base
-                    //
-                    // There is intentionally NO Color.black underneath.
-                    // The background is always derived from the artwork palette.
-
                     paletteBackground(
-                        palette: outgoingPalette,
+                        palette: palette,
                         time: time,
-                        width: width,
-                        height: height
+                        size: geometry.size
                     )
-                    .opacity(1.0 - artworkTransition)
 
-                    paletteBackground(
-                        palette: displayedPalette,
-                        time: time,
-                        width: width,
-                        height: height
-                    )
-                    .opacity(artworkTransition)
-
-                    // MARK: Subtle artwork texture
-                    //
-                    // Keep this very restrained. The palette is responsible
-                    // for the colour; the artwork only supplies texture.
-
-                    if let outgoingArtworkData,
-                       let image = UIImage(data: outgoingArtworkData) {
+                    // Artwork texture is also crossfaded, but kept extremely
+                    // subtle so bright artwork cannot dominate the background.
+                    if let image = UIImage(data: currentArtworkData ?? Data()) {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
                             .frame(
-                                width: width * 1.18,
-                                height: height * 1.18
+                                width: geometry.size.width * 1.18,
+                                height: geometry.size.height * 1.18
                             )
-                            .blur(radius: 95)
-                            .saturation(1.15)
-                            .brightness(-0.08)
-                            .opacity((1.0 - artworkTransition) * 0.10)
+                            .blur(radius: 105)
+                            .saturation(1.08)
+                            .brightness(-0.20)
+                            .opacity(0.055 * (1.0 - transitionProgress))
                     }
 
-                    if let displayedArtworkData,
-                       let image = UIImage(data: displayedArtworkData) {
+                    if let image = UIImage(data: targetArtworkData ?? Data()) {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
                             .frame(
-                                width: width * 1.18,
-                                height: height * 1.18
+                                width: geometry.size.width * 1.18,
+                                height: geometry.size.height * 1.18
                             )
-                            .blur(radius: 95)
-                            .saturation(1.15)
-                            .brightness(-0.08)
-                            .opacity(artworkTransition * 0.10)
+                            .blur(radius: 105)
+                            .saturation(1.08)
+                            .brightness(-0.20)
+                            .opacity(0.055 * transitionProgress)
                     }
 
-                    // A very subtle centre wash improves lyric separation
-                    // without bringing back the previous white/black fog.
+                    // Keep the centre readable without introducing a white
+                    // overlay. This is neutral and extremely subtle.
                     RadialGradient(
                         colors: [
-                            .white.opacity(0.045),
+                            .white.opacity(0.025),
                             .clear,
                             .black.opacity(0.10)
                         ],
                         center: .center,
-                        startRadius: min(width, height) * 0.05,
-                        endRadius: max(width, height) * 0.78
+                        startRadius: min(geometry.size.width, geometry.size.height) * 0.05,
+                        endRadius: max(geometry.size.width, geometry.size.height) * 0.82
                     )
                     .blendMode(.softLight)
 
-                    // Gentle edge vignette. This is intentionally weak.
+                    // Soft edge falloff.
                     RadialGradient(
                         colors: [
                             .clear,
                             .clear,
-                            .black.opacity(0.13)
+                            .black.opacity(0.12)
                         ],
                         center: .center,
-                        startRadius: min(width, height) * 0.38,
-                        endRadius: max(width, height) * 0.88
+                        startRadius: min(geometry.size.width, geometry.size.height) * 0.40,
+                        endRadius: max(geometry.size.width, geometry.size.height) * 0.90
                     )
                 }
-                .frame(width: width, height: height)
+                .frame(width: geometry.size.width, height: geometry.size.height)
                 .clipped()
                 .drawingGroup()
             }
@@ -122,60 +110,64 @@ struct ColorfulArtworkBleedBackground: View {
         .allowsHitTesting(false)
         .onAppear {
             let palette = ArtworkBleedPalette.extract(from: artworkData)
-            displayedArtworkData = artworkData
-            displayedPalette = palette
-            outgoingPalette = palette
+
+            currentPalette = palette
+            targetPalette = palette
+
+            currentArtworkData = artworkData
+            targetArtworkData = artworkData
+
+            transitionProgress = 1.0
         }
         .onChange(of: artworkData?.hashValue, initial: false) { _, _ in
             changeArtwork(to: artworkData)
         }
     }
 
-    // MARK: - Palette Background
+    // MARK: - Background
 
     @ViewBuilder
     private func paletteBackground(
         palette: ArtworkBleedPalette,
         time: TimeInterval,
-        width: CGFloat,
-        height: CGFloat
+        size: CGSize
     ) -> some View {
-        let t = time
+        let width = size.width
+        let height = size.height
 
         let driftX =
-            sin(t * 0.00019) * width * 0.11
-            + cos(t * 0.00011) * width * 0.06
+            sin(time * 0.00019) * width * 0.10 +
+            cos(time * 0.00011) * width * 0.055
 
         let driftY =
-            cos(t * 0.00016) * height * 0.10
-            + sin(t * 0.00009) * height * 0.05
+            cos(time * 0.00016) * height * 0.09 +
+            sin(time * 0.00009) * height * 0.045
 
         ZStack {
-            // Main full-screen colour field.
+            // The base itself is an artwork-derived colour.
             LinearGradient(
-                stops: [
-                    .init(color: palette.dark, location: 0.00),
-                    .init(color: palette.primary, location: 0.28),
-                    .init(color: palette.secondary, location: 0.57),
-                    .init(color: palette.deep, location: 1.00)
+                colors: [
+                    palette.dark,
+                    palette.deep,
+                    palette.dark
                 ],
                 startPoint: UnitPoint(
-                    x: 0.05 + sin(t * 0.00007) * 0.10,
-                    y: 0.05
+                    x: 0.02 + sin(time * 0.00007) * 0.08,
+                    y: 0.02
                 ),
                 endPoint: UnitPoint(
-                    x: 0.95,
-                    y: 0.95 + cos(t * 0.00006) * 0.08
+                    x: 0.98,
+                    y: 0.98 + cos(time * 0.00006) * 0.06
                 )
             )
 
-            // Large moving colour pools.
+            // Primary colour pool.
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            palette.primary.opacity(0.95),
-                            palette.primary.opacity(0.42),
+                            palette.primary.opacity(0.82),
+                            palette.primary.opacity(0.38),
                             .clear
                         ],
                         center: .center,
@@ -191,37 +183,39 @@ struct ColorfulArtworkBleedBackground: View {
                     x: -width * 0.20 + driftX,
                     y: -height * 0.10 + driftY
                 )
-                .blur(radius: 28)
+                .blur(radius: 32)
 
+            // Secondary colour pool.
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            palette.secondary.opacity(0.82),
+                            palette.secondary.opacity(0.70),
                             palette.secondary.opacity(0.30),
                             .clear
                         ],
                         center: .center,
                         startRadius: 0,
-                        endRadius: max(width, height) * 0.52
+                        endRadius: max(width, height) * 0.50
                     )
                 )
                 .frame(
-                    width: max(width, height) * 0.95,
-                    height: max(width, height) * 0.95
+                    width: max(width, height) * 0.92,
+                    height: max(width, height) * 0.92
                 )
                 .offset(
-                    x: width * 0.28 - driftX * 0.72,
-                    y: height * 0.13 - driftY * 0.60
+                    x: width * 0.28 - driftX * 0.70,
+                    y: height * 0.12 - driftY * 0.60
                 )
-                .blur(radius: 34)
+                .blur(radius: 38)
 
+            // Deep colour pool.
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            palette.deep.opacity(0.75),
-                            palette.deep.opacity(0.24),
+                            palette.deep.opacity(0.70),
+                            palette.deep.opacity(0.25),
                             .clear
                         ],
                         center: .center,
@@ -230,54 +224,57 @@ struct ColorfulArtworkBleedBackground: View {
                     )
                 )
                 .frame(
-                    width: max(width, height) * 0.85,
-                    height: max(width, height) * 0.85
+                    width: max(width, height) * 0.84,
+                    height: max(width, height) * 0.84
                 )
                 .offset(
-                    x: width * 0.02 + driftX * 0.55,
-                    y: height * 0.35 + driftY * 0.80
+                    x: width * 0.02 + driftX * 0.50,
+                    y: height * 0.34 + driftY * 0.75
                 )
-                .blur(radius: 42)
+                .blur(radius: 44)
         }
     }
 
-    // MARK: - Artwork Transition
+    // MARK: - Track Change
 
     private func changeArtwork(to newArtworkData: Data?) {
-        let oldHash = displayedArtworkData?.hashValue
-        let newHash = newArtworkData?.hashValue
-
-        guard oldHash != newHash else { return }
+        guard newArtworkData?.hashValue != targetArtworkData?.hashValue else {
+            return
+        }
 
         transitionGeneration += 1
         let generation = transitionGeneration
 
-        // Preserve both the old artwork and its colours while the new
-        // palette enters. This makes the entire background transition,
-        // rather than only the texture layer.
-        outgoingArtworkData = displayedArtworkData
-        outgoingPalette = displayedPalette
+        // Freeze the currently displayed/interpolated palette as the new
+        // starting point. This makes rapid track changes smooth too.
+        let startingPalette = ArtworkBleedPalette.interpolate(
+            from: currentPalette,
+            to: targetPalette,
+            progress: transitionProgress
+        )
 
-        displayedArtworkData = newArtworkData
-        displayedPalette = ArtworkBleedPalette.extract(from: newArtworkData)
+        currentPalette = startingPalette
+        targetPalette = ArtworkBleedPalette.extract(from: newArtworkData)
 
-        artworkTransition = 0
+        currentArtworkData = targetArtworkData
+        targetArtworkData = newArtworkData
 
-        withAnimation(
-            .easeInOut(duration: 1.15)
-        ) {
-            artworkTransition = 1.0
+        transitionProgress = 0
+
+        withAnimation(.easeInOut(duration: 1.15)) {
+            transitionProgress = 1.0
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.22) {
             guard generation == transitionGeneration else { return }
-            outgoingArtworkData = nil
-            outgoingPalette = displayedPalette
+
+            currentPalette = targetPalette
+            currentArtworkData = targetArtworkData
         }
     }
 }
 
-// MARK: - Artwork Palette
+// MARK: - Palette
 
 private struct ArtworkBleedPalette {
     let primary: Color
@@ -286,11 +283,57 @@ private struct ArtworkBleedPalette {
     let dark: Color
 
     static let fallback = ArtworkBleedPalette(
-        primary: Color(red: 0.28, green: 0.34, blue: 0.45),
-        secondary: Color(red: 0.20, green: 0.25, blue: 0.34),
-        deep: Color(red: 0.10, green: 0.13, blue: 0.19),
-        dark: Color(red: 0.07, green: 0.09, blue: 0.13)
+        primary: Color(red: 0.20, green: 0.27, blue: 0.38),
+        secondary: Color(red: 0.15, green: 0.21, blue: 0.30),
+        deep: Color(red: 0.10, green: 0.14, blue: 0.21),
+        dark: Color(red: 0.075, green: 0.10, blue: 0.15)
     )
+
+    static func interpolate(
+        from a: ArtworkBleedPalette,
+        to b: ArtworkBleedPalette,
+        progress: CGFloat
+    ) -> ArtworkBleedPalette {
+        let p = min(max(Double(progress), 0), 1)
+
+        return ArtworkBleedPalette(
+            primary: blend(a.primary, b.primary, p),
+            secondary: blend(a.secondary, b.secondary, p),
+            deep: blend(a.deep, b.deep, p),
+            dark: blend(a.dark, b.dark, p)
+        )
+    }
+
+    private static func blend(
+        _ a: Color,
+        _ b: Color,
+        _ progress: Double
+    ) -> Color {
+        let ca = UIColor(a)
+        let cb = UIColor(b)
+
+        var ar: CGFloat = 0
+        var ag: CGFloat = 0
+        var ab: CGFloat = 0
+        var aa: CGFloat = 0
+
+        var br: CGFloat = 0
+        var bg: CGFloat = 0
+        var bb: CGFloat = 0
+        var ba: CGFloat = 0
+
+        ca.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+        cb.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+
+        return Color(
+            red: Double(ar + (br - ar) * CGFloat(progress)),
+            green: Double(ag + (bg - ag) * CGFloat(progress)),
+            blue: Double(ab + (bb - ab) * CGFloat(progress)),
+            opacity: Double(aa + (ba - aa) * CGFloat(progress))
+        )
+    }
+
+    // MARK: Extraction
 
     static func extract(from data: Data?) -> ArtworkBleedPalette {
         guard
@@ -302,10 +345,9 @@ private struct ArtworkBleedPalette {
         }
 
         let sampleSize = 32
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bytesPerPixel = 4
         let bytesPerRow = sampleSize * bytesPerPixel
-        let bitsPerComponent = 8
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
 
         var pixels = [UInt8](
             repeating: 0,
@@ -316,7 +358,7 @@ private struct ArtworkBleedPalette {
             data: &pixels,
             width: sampleSize,
             height: sampleSize,
-            bitsPerComponent: bitsPerComponent,
+            bitsPerComponent: 8,
             bytesPerRow: bytesPerRow,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
@@ -348,11 +390,11 @@ private struct ArtworkBleedPalette {
 
         for y in 0..<sampleSize {
             for x in 0..<sampleSize {
-                let index = (y * sampleSize + x) * 4
+                let i = (y * sampleSize + x) * 4
 
-                let r = Double(pixels[index]) / 255.0
-                let g = Double(pixels[index + 1]) / 255.0
-                let b = Double(pixels[index + 2]) / 255.0
+                let r = Double(pixels[i]) / 255.0
+                let g = Double(pixels[i + 1]) / 255.0
+                let b = Double(pixels[i + 2]) / 255.0
 
                 let maxValue = max(r, g, b)
                 let minValue = min(r, g, b)
@@ -368,12 +410,18 @@ private struct ArtworkBleedPalette {
                     ? chroma / maxValue
                     : 0
 
-                // Very white and very black pixels are poor bleed colours.
-                // They are still allowed at low saturation so monochrome
-                // artwork does not collapse into a single colour.
+                // Critical fix:
+                // Ignore very bright low-saturation pixels.
+                //
+                // This prevents white album artwork from producing a
+                // white background during the transition.
                 let usable =
-                    (luminance < 0.94 && luminance > 0.035)
-                    || saturation > 0.48
+                    luminance >= 0.045 &&
+                    luminance <= 0.76 &&
+                    (
+                        saturation >= 0.12 ||
+                        luminance <= 0.48
+                    )
 
                 if usable {
                     samples.append(
@@ -393,37 +441,36 @@ private struct ArtworkBleedPalette {
             return fallback
         }
 
-        // Prefer colours that are visibly chromatic without completely
-        // ignoring the overall artwork brightness.
-        let sorted = samples.sorted { a, b in
+        // Strongly favour colour while avoiding neon extremes.
+        let ranked = samples.sorted { a, b in
             let scoreA =
-                a.saturation * 0.78 +
-                min(a.luminance, 0.72) * 0.22
+                a.saturation * 0.72 +
+                min(a.luminance, 0.62) * 0.28
 
             let scoreB =
-                b.saturation * 0.78 +
-                min(b.luminance, 0.72) * 0.22
+                b.saturation * 0.72 +
+                min(b.luminance, 0.62) * 0.28
 
             return scoreA > scoreB
         }
 
         var selected: [Sample] = []
 
-        for candidate in sorted {
-            let isDifferent = selected.allSatisfy { existing in
+        for candidate in ranked {
+            let sufficientlyDifferent = selected.allSatisfy { existing in
                 let distance =
                     abs(candidate.r - existing.r) +
                     abs(candidate.g - existing.g) +
                     abs(candidate.b - existing.b)
 
-                return distance > 0.32
+                return distance > 0.26
             }
 
-            if isDifferent {
+            if sufficientlyDifferent {
                 selected.append(candidate)
             }
 
-            if selected.count == 5 {
+            if selected.count >= 5 {
                 break
             }
         }
@@ -434,56 +481,56 @@ private struct ArtworkBleedPalette {
 
         let average = selected.reduce(
             (r: 0.0, g: 0.0, b: 0.0)
-        ) { partial, sample in
+        ) { result, sample in
             (
-                partial.r + sample.r,
-                partial.g + sample.g,
-                partial.b + sample.b
+                result.r + sample.r,
+                result.g + sample.g,
+                result.b + sample.b
             )
         }
 
         let count = Double(selected.count)
 
-        let averageColor = RGBColor(
+        let averageRGB = RGBColor(
             r: average.r / count,
             g: average.g / count,
             b: average.b / count
         )
 
-        let primary = selected[0]
-        let secondary =
+        let primarySample = selected[0]
+        let secondarySample =
             selected.count > 1
             ? selected[1]
             : selected[0]
 
-        let primaryColor = RGBColor(
-            r: primary.r,
-            g: primary.g,
-            b: primary.b
+        let primaryRGB = RGBColor(
+            r: primarySample.r,
+            g: primarySample.g,
+            b: primarySample.b
         )
 
-        let secondaryColor = RGBColor(
-            r: secondary.r,
-            g: secondary.g,
-            b: secondary.b
+        let secondaryRGB = RGBColor(
+            r: secondarySample.r,
+            g: secondarySample.g,
+            b: secondarySample.b
         )
 
         return ArtworkBleedPalette(
-            primary: primaryColor.boostedColor(
-                saturation: 1.12,
-                brightness: 0.98
+            primary: primaryRGB.backgroundColor(
+                saturationMultiplier: 0.88,
+                brightness: 0.48
             ),
-            secondary: secondaryColor.boostedColor(
-                saturation: 1.08,
-                brightness: 0.94
+            secondary: secondaryRGB.backgroundColor(
+                saturationMultiplier: 0.84,
+                brightness: 0.40
             ),
-            deep: averageColor.boostedColor(
-                saturation: 1.00,
-                brightness: 0.56
+            deep: averageRGB.backgroundColor(
+                saturationMultiplier: 0.82,
+                brightness: 0.27
             ),
-            dark: averageColor.boostedColor(
-                saturation: 0.92,
-                brightness: 0.34
+            dark: averageRGB.backgroundColor(
+                saturationMultiplier: 0.72,
+                brightness: 0.16
             )
         )
     }
@@ -496,49 +543,43 @@ private struct RGBColor {
     let g: Double
     let b: Double
 
-    func boostedColor(
-        saturation saturationMultiplier: Double,
-        brightness brightnessMultiplier: Double
+    func backgroundColor(
+        saturationMultiplier: Double,
+        brightness targetBrightness: Double
     ) -> Color {
         let maxValue = max(r, g, b)
         let minValue = min(r, g, b)
 
         guard maxValue > 0.0001 else {
             return Color(
-                red: 0.05,
-                green: 0.05,
-                blue: 0.05
+                red: targetBrightness,
+                green: targetBrightness,
+                blue: targetBrightness
             )
         }
 
         let originalSaturation =
             (maxValue - minValue) / maxValue
 
-        let targetSaturation = min(
-            originalSaturation * saturationMultiplier,
-            1.0
-        )
-
-        let luminance =
-            0.2126 * r +
-            0.7152 * g +
-            0.0722 * b
-
-        let targetBrightness = min(
-            max(luminance * brightnessMultiplier, 0.035),
+        let saturation = min(
+            max(originalSaturation * saturationMultiplier, 0.05),
             0.82
         )
 
-        let hue = RGBColor.hue(
-            r: r,
-            g: g,
-            b: b
+        let hue = Self.hue(r: r, g: g, b: b)
+
+        // The background is deliberately capped.
+        // This is what prevents the KICK BACK screenshot from becoming
+        // an almost pure #FF0000 screen.
+        let brightness = min(
+            max(targetBrightness, 0.045),
+            0.50
         )
 
         return Color(
             hue: hue,
-            saturation: targetSaturation,
-            brightness: targetBrightness
+            saturation: saturation,
+            brightness: brightness
         )
     }
 
@@ -555,22 +596,22 @@ private struct RGBColor {
             return 0
         }
 
-        var hue: Double
+        var h: Double
 
         if maxValue == r {
-            hue = (g - b) / delta
+            h = (g - b) / delta
         } else if maxValue == g {
-            hue = 2.0 + (b - r) / delta
+            h = 2.0 + (b - r) / delta
         } else {
-            hue = 4.0 + (r - g) / delta
+            h = 4.0 + (r - g) / delta
         }
 
-        hue /= 6.0
+        h /= 6.0
 
-        if hue < 0 {
-            hue += 1.0
+        if h < 0 {
+            h += 1
         }
 
-        return hue
+        return h
     }
 }
