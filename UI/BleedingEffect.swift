@@ -1,11 +1,13 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Artwork Bleeding Effect
+// MARK: - Artwork Bleeding Background
 //
-// The complete album-artwork bleed effect lives in this file so NowPlayingView
-// only has to compose the view. The artwork itself is never shown sharply;
-// only heavily blurred colour information is used for the background.
+// A soft, layered "liquid glass" bleed inspired by modern music players.
+// The album artwork is never displayed as a recognizable background image.
+// Instead, several oversized, highly blurred copies of the artwork slowly
+// drift independently. A dark color wash prevents bright artwork (especially
+// white covers) from turning the whole screen into a white haze.
 
 struct ColorfulArtworkBleedBackground: View {
     let artworkData: Data?
@@ -13,140 +15,151 @@ struct ColorfulArtworkBleedBackground: View {
 
     var body: some View {
         GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                let width = geometry.size.width
-                let height = geometry.size.height
+            ZStack {
+                Color.black
 
-                ZStack {
-                    Color.black
+                if let artworkData,
+                   let image = UIImage(data: artworkData) {
 
-                    if let artworkData,
-                       let image = UIImage(data: artworkData) {
+                    AnimatedArtworkLayer(
+                        image: image,
+                        size: geometry.size,
+                        phase: 0.0,
+                        speed: 0.030,
+                        scale: 1.55,
+                        blur: 95,
+                        opacity: 0.82,
+                        movement: 42
+                    )
 
-                        // Primary artwork field. This carries most of the
-                        // visible colour and keeps the artwork's palette
-                        // recognizable while remaining heavily blurred.
-                        artworkColorField(
-                            image: image,
-                            time: time,
-                            width: width,
-                            height: height,
-                            phase: 0,
-                            speed: 0.055,
-                            scale: 1.30,
-                            blur: 72,
-                            opacity: 0.88,
-                            movement: 52
-                        )
+                    AnimatedArtworkLayer(
+                        image: image,
+                        size: geometry.size,
+                        phase: 2.15,
+                        speed: 0.021,
+                        scale: 1.85,
+                        blur: 135,
+                        opacity: 0.54,
+                        movement: 92
+                    )
+                    .blendMode(.screen)
 
-                        // Secondary field adds depth and slow colour movement
-                        // without turning the background into a flat gradient.
-                        artworkColorField(
-                            image: image,
-                            time: time,
-                            width: width,
-                            height: height,
-                            phase: 2.7,
-                            speed: 0.032,
-                            scale: 1.55,
-                            blur: 115,
-                            opacity: 0.42,
-                            movement: 105
-                        )
+                    AnimatedArtworkLayer(
+                        image: image,
+                        size: geometry.size,
+                        phase: 4.45,
+                        speed: 0.016,
+                        scale: 2.15,
+                        blur: 175,
+                        opacity: 0.38,
+                        movement: 145
+                    )
+                    .blendMode(.plusLighter)
 
-                        // Keep the existing artwork tint as a subtle supporting
-                        // colour instead of allowing it to wash over the image.
-                        accentColor
-                            .opacity(0.07)
-                            .blendMode(.screen)
+                    // A broad tint keeps the artwork palette present even when
+                    // the source cover contains large neutral/white regions.
+                    RadialGradient(
+                        colors: [
+                            accentColor.opacity(0.34),
+                            accentColor.opacity(0.12),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: max(geometry.size.width, geometry.size.height) * 0.78
+                    )
+                    .blendMode(.screen)
 
-                        // A restrained vignette keeps the lyric area readable
-                        // without destroying the artwork's saturation.
-                        RadialGradient(
-                            colors: [
-                                .clear,
-                                .black.opacity(0.06),
-                                .black.opacity(0.18)
-                            ],
-                            center: .center,
-                            startRadius: min(width, height) * 0.18,
-                            endRadius: max(width, height) * 0.82
-                        )
-                    } else {
-                        LinearGradient(
-                            colors: [
-                                .black,
-                                Color(white: 0.055),
-                                .black
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    }
+                    // Darken the centre and edges slightly. This is important
+                    // for covers with white backgrounds or white clothing.
+                    LinearGradient(
+                        colors: [
+                            .black.opacity(0.18),
+                            .clear,
+                            .black.opacity(0.30)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+
+                    RadialGradient(
+                        colors: [
+                            .clear,
+                            .black.opacity(0.16)
+                        ],
+                        center: .center,
+                        startRadius: min(geometry.size.width, geometry.size.height) * 0.18,
+                        endRadius: max(geometry.size.width, geometry.size.height) * 0.78
+                    )
+                } else {
+                    LinearGradient(
+                        colors: [
+                            .black,
+                            Color(white: 0.045),
+                            .black
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
-                .frame(width: width, height: height)
-                .clipped()
-                .drawingGroup()
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .animation(
-            .easeInOut(duration: 0.8),
-            value: artworkData?.hashValue
-        )
+        .animation(.easeInOut(duration: 0.7), value: artworkData?.hashValue)
     }
+}
 
-    @ViewBuilder
-    private func artworkColorField(
-        image: UIImage,
-        time: TimeInterval,
-        width: CGFloat,
-        height: CGFloat,
-        phase: Double,
-        speed: Double,
-        scale: CGFloat,
-        blur: CGFloat,
-        opacity: Double,
-        movement: CGFloat
-    ) -> some View {
-        let t = time * speed + phase
+// MARK: - Animated Artwork Layer
 
-        let x =
-            sin(t * 0.72) * movement
-            + cos(t * 0.41 + 1.7) * movement * 0.42
-            + sin(t * 0.19 + 3.0) * movement * 0.22
+private struct AnimatedArtworkLayer: View {
+    let image: UIImage
+    let size: CGSize
+    let phase: Double
+    let speed: Double
+    let scale: CGFloat
+    let blur: CGFloat
+    let opacity: Double
+    let movement: CGFloat
 
-        let y =
-            cos(t * 0.61 + 0.8) * movement * 0.72
-            + sin(t * 0.37 + 2.2) * movement * 0.44
-            + cos(t * 0.17 + 4.4) * movement * 0.20
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let t = time * speed + phase
 
-        let breathing =
-            1.0
-            + sin(t * 0.21 + phase) * 0.035
-            + cos(t * 0.13 + 1.4) * 0.018
+            let x =
+                sin(t * 0.73) * movement +
+                sin(t * 0.31 + 1.2) * movement * 0.35 +
+                cos(t * 0.17 + 2.6) * movement * 0.18
 
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFill()
-            .frame(
-                width: width * 1.55,
-                height: height * 1.55
-            )
-            .scaleEffect(
-                scale * breathing,
-                anchor: .center
-            )
-            .offset(
-                x: CGFloat(x),
-                y: CGFloat(y)
-            )
-            .blur(radius: blur, opaque: true)
-            .saturation(2.0)
-            .contrast(1.16)
-            .brightness(-0.015)
-            .opacity(opacity)
+            let y =
+                cos(t * 0.59 + 0.7) * movement * 0.72 +
+                sin(t * 0.27 + 2.4) * movement * 0.38 +
+                cos(t * 0.13 + 4.0) * movement * 0.20
+
+            let breathing =
+                1.0 +
+                sin(t * 0.22 + phase) * 0.045 +
+                cos(t * 0.11 + phase * 0.7) * 0.018
+
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(
+                    width: size.width * 1.72,
+                    height: size.height * 1.72
+                )
+                .scaleEffect(scale * breathing)
+                .offset(x: x, y: y)
+                .saturation(2.25)
+                .contrast(1.22)
+                .brightness(-0.07)
+                .blur(radius: blur, opaque: true)
+                .opacity(opacity)
+                .frame(width: size.width, height: size.height)
+                .clipped()
+        }
     }
 }
