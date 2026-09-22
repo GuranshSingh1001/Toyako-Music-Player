@@ -44,7 +44,7 @@ struct NowPlayingView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                AppleMusicMovingBleedBackground(
+                ColorfulArtworkBleedBackground(
                     artworkData: nowPlayingArtworkData,
                     accentColor: artworkTint
                 )
@@ -1672,25 +1672,21 @@ struct AppleMusicScrubberBar: View {
     }
 } 
 
-// MARK: - Moving Artwork Background
-// MARK: - Apple Music Style Artwork Bleed
+// MARK: - Colorful Artwork Bleed Background
 //
-// Replace the ENTIRE existing `AppleMusicMovingBleedBackground`
-// with this implementation.
-//
-// It intentionally does NOT use random().
-// Random values inside SwiftUI's body can cause visible jitter.
-// Instead, several independent low-frequency curves create
-// continuously changing, organic movement.
+// This replaces the previous multi-layer bleed implementation.
+// The background is built directly from the album artwork so the dominant
+// colours remain recognizable instead of being averaged into a grey/tan wash.
+// The artwork itself is never shown sharply; only heavily blurred colour
+// information is used.
 
-struct AppleMusicMovingBleedBackground: View {
+struct ColorfulArtworkBleedBackground: View {
     let artworkData: Data?
     let accentColor: Color
 
     var body: some View {
         GeometryReader { geometry in
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 let width = geometry.size.width
                 let height = geometry.size.height
@@ -1701,134 +1697,55 @@ struct AppleMusicMovingBleedBackground: View {
                     if let artworkData,
                        let image = UIImage(data: artworkData) {
 
-                        // -------------------------------------------------
-                        // MAIN COLOR FIELD
-                        // -------------------------------------------------
-
-                        bleedLayer(
+                        // Main colour source. A relatively small scale keeps
+                        // recognizable artwork colours instead of averaging the
+                        // entire cover into one muddy colour.
+                        artworkColorField(
                             image: image,
                             time: time,
                             width: width,
                             height: height,
-                            phase: 0.0,
-                            speed: 0.075,
-                            scale: 1.75,
-                            blur: 105,
-                            opacity: 0.72,
-                            movement: 95,
-                            rotation: 2.0
+                            phase: 0,
+                            speed: 0.055,
+                            scale: 1.30,
+                            blur: 72,
+                            opacity: 0.88,
+                            movement: 52
                         )
 
-                        // -------------------------------------------------
-                        // SECOND COLOR FIELD
-                        // -------------------------------------------------
-
-                        bleedLayer(
+                        // A second, softer field gives the background depth
+                        // without washing out the colours from the main field.
+                        artworkColorField(
                             image: image,
                             time: time,
                             width: width,
                             height: height,
-                            phase: 2.4,
-                            speed: 0.052,
-                            scale: 2.05,
-                            blur: 125,
-                            opacity: 0.48,
-                            movement: 125,
-                            rotation: -3.0
+                            phase: 2.7,
+                            speed: 0.032,
+                            scale: 1.55,
+                            blur: 115,
+                            opacity: 0.42,
+                            movement: 105
                         )
 
-                        // -------------------------------------------------
-                        // LARGE SOFT COLOR FIELD
-                        // -------------------------------------------------
+                        // Pull the artwork's overall tint back into the scene.
+                        accentColor
+                            .opacity(0.07)
+                            .blendMode(.screen)
 
-                        bleedLayer(
-                            image: image,
-                            time: time,
-                            width: width,
-                            height: height,
-                            phase: 4.8,
-                            speed: 0.037,
-                            scale: 2.35,
-                            blur: 150,
-                            opacity: 0.34,
-                            movement: 155,
-                            rotation: 2.5
-                        )
-
-                        // -------------------------------------------------
-                        // VERY SLOW AMBIENT COLOR
-                        // -------------------------------------------------
-
-                        ambientLayer(
-                            image: image,
-                            time: time,
-                            width: width,
-                            height: height,
-                            phase: 1.2,
-                            speed: 0.021,
-                            scale: 2.70,
-                            blur: 175,
-                            opacity: 0.24,
-                            movement: 190
-                        )
-
-                        // -------------------------------------------------
-                        // SOFT COLOR POOL
-                        // -------------------------------------------------
-
-                        colorPool(
-                            image: image,
-                            time: time,
-                            width: width,
-                            height: height,
-                            phase: 3.1,
-                            speed: 0.028,
-                            scale: 2.90,
-                            blur: 190,
-                            opacity: 0.20
-                        )
-
-                        // -------------------------------------------------
-                        // CENTER DARKENING
-                        //
-                        // Keeps the lyrics and controls readable while
-                        // allowing the artwork colors to remain visible.
-                        // -------------------------------------------------
-
+                        // Only a subtle vignette. The previous implementation
+                        // darkened the background enough to destroy saturation.
                         RadialGradient(
-                            stops: [
-                                .init(
-                                    color: .black.opacity(0.03),
-                                    location: 0.00
-                                ),
-                                .init(
-                                    color: .black.opacity(0.08),
-                                    location: 0.35
-                                ),
-                                .init(
-                                    color: .black.opacity(0.14),
-                                    location: 0.68
-                                ),
-                                .init(
-                                    color: .black.opacity(0.30),
-                                    location: 1.00
-                                )
+                            colors: [
+                                .clear,
+                                .black.opacity(0.06),
+                                .black.opacity(0.18)
                             ],
                             center: .center,
-                            startRadius: min(width, height) * 0.10,
+                            startRadius: min(width, height) * 0.18,
                             endRadius: max(width, height) * 0.82
                         )
-
-                        // -------------------------------------------------
-                        // VERY SUBTLE OVERALL DARKENING
-                        // -------------------------------------------------
-
-                        Color.black.opacity(0.06)
-                        accentColor.opacity(0.10).blendMode(.screen)
-
                     } else {
-
-                        // Fallback before artwork is loaded.
                         LinearGradient(
                             colors: [
                                 .black,
@@ -1840,10 +1757,7 @@ struct AppleMusicMovingBleedBackground: View {
                         )
                     }
                 }
-                .frame(
-                    width: width,
-                    height: height
-                )
+                .frame(width: width, height: height)
                 .clipped()
                 .drawingGroup()
             }
@@ -1856,84 +1770,8 @@ struct AppleMusicMovingBleedBackground: View {
         )
     }
 
-    // MARK: - Main Bleed Layer
-
-    private func bleedLayer(
-        image: UIImage,
-        time: TimeInterval,
-        width: CGFloat,
-        height: CGFloat,
-        phase: Double,
-        speed: Double,
-        scale: CGFloat,
-        blur: CGFloat,
-        opacity: Double,
-        movement: CGFloat,
-        rotation: Double
-    ) -> some View {
-
-        let t = time * speed + phase
-
-        // Several unrelated waves are combined.
-        // This produces fluid movement rather than a circular orbit.
-
-        let x =
-            sin(t * 0.71) * movement
-            + cos(t * 0.43 + 1.7) * movement * 0.52
-            + sin(t * 0.23 + 3.2) * movement * 0.30
-            + cos(t * 0.11 + 5.0) * movement * 0.18
-
-        let y =
-            cos(t * 0.63 + 0.8) * movement * 0.78
-            + sin(t * 0.39 + 2.1) * movement * 0.55
-            + cos(t * 0.19 + 4.5) * movement * 0.32
-            + sin(t * 0.09 + 1.2) * movement * 0.20
-
-        // Slow breathing makes the colour field continuously expand
-        // and contract instead of looking like a static blurred image.
-
-        let breathing =
-            sin(t * 0.27 + phase) * 0.055
-            + cos(t * 0.17 + 1.8) * 0.035
-            + sin(t * 0.08 + 4.2) * 0.022
-
-        // Extremely subtle rotation.
-        // The rotation is deliberately small so it doesn't look like
-        // the whole album cover is spinning.
-
-        let angle =
-            sin(t * 0.21 + phase) * rotation
-            + cos(t * 0.13 + 2.4) * rotation * 0.45
-
-        let renderedArtwork = Image(uiImage: image)
-            .resizable()
-            .scaledToFill()
-            .frame(
-                width: width * 1.65,
-                height: height * 1.65
-            )
-            .scaleEffect(
-                scale + breathing,
-                anchor: .center
-            )
-            .rotationEffect(.degrees(angle))
-            .offset(
-                x: CGFloat(x),
-                y: CGFloat(y)
-            )
-            .blur(radius: blur, opaque: true)
-            .saturation(1.65)
-            .contrast(1.10)
-            .brightness(-0.02)
-            .opacity(opacity)
-
-        return AnyView(renderedArtwork)
-    }
-
-    // MARK: - Ambient Layer
-
     @ViewBuilder
-    private func ambientLayer(
+    private func artworkColorField(
         image: UIImage,
         time: TimeInterval,
         width: CGFloat,
@@ -1945,30 +1783,29 @@ struct AppleMusicMovingBleedBackground: View {
         opacity: Double,
         movement: CGFloat
     ) -> some View {
-
         let t = time * speed + phase
 
         let x =
-            sin(t * 0.57 + 1.4) * movement
-            + cos(t * 0.31 + 3.1) * movement * 0.55
-            + sin(t * 0.13 + 4.8) * movement * 0.25
+            sin(t * 0.72) * movement
+            + cos(t * 0.41 + 1.7) * movement * 0.42
+            + sin(t * 0.19 + 3.0) * movement * 0.22
 
         let y =
-            cos(t * 0.49 + 2.2) * movement * 0.72
-            + sin(t * 0.27 + 0.7) * movement * 0.48
-            + cos(t * 0.11 + 5.4) * movement * 0.25
+            cos(t * 0.61 + 0.8) * movement * 0.72
+            + sin(t * 0.37 + 2.2) * movement * 0.44
+            + cos(t * 0.17 + 4.4) * movement * 0.20
 
         let breathing =
             1.0
-            + sin(t * 0.19 + phase) * 0.07
-            + cos(t * 0.11 + 2.0) * 0.035
+            + sin(t * 0.21 + phase) * 0.035
+            + cos(t * 0.13 + 1.4) * 0.018
 
         Image(uiImage: image)
             .resizable()
             .scaledToFill()
             .frame(
-                width: width * 1.8,
-                height: height * 1.8
+                width: width * 1.55,
+                height: height * 1.55
             )
             .scaleEffect(
                 scale * breathing,
@@ -1978,70 +1815,11 @@ struct AppleMusicMovingBleedBackground: View {
                 x: CGFloat(x),
                 y: CGFloat(y)
             )
-            .blur(
-                radius: blur,
-                opaque: true
-            )
-            .saturation(1.55)
-            .contrast(1.08)
-            .brightness(-0.04)
-            .opacity(opacity)
-    }
-
-    // MARK: - Large Color Pool
-
-    @ViewBuilder
-    private func colorPool(
-        image: UIImage,
-        time: TimeInterval,
-        width: CGFloat,
-        height: CGFloat,
-        phase: Double,
-        speed: Double,
-        scale: CGFloat,
-        blur: CGFloat,
-        opacity: Double
-    ) -> some View {
-
-        let t = time * speed + phase
-
-        let x =
-            sin(t * 0.43) * 145
-            + cos(t * 0.21 + 1.8) * 85
-            + sin(t * 0.09 + 4.0) * 45
-
-        let y =
-            cos(t * 0.37 + 0.9) * 125
-            + sin(t * 0.19 + 2.7) * 75
-            + cos(t * 0.07 + 5.1) * 40
-
-        let scaleChange =
-            1.0
-            + sin(t * 0.17) * 0.065
-            + cos(t * 0.08 + 2.0) * 0.035
-
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFill()
-            .frame(
-                width: width * 1.9,
-                height: height * 1.9
-            )
-            .scaleEffect(
-                scale * scaleChange,
-                anchor: .center
-            )
-            .offset(
-                x: CGFloat(x),
-                y: CGFloat(y)
-            )
-            .blur(
-                radius: blur,
-                opaque: true
-            )
-            .saturation(1.60)
-            .contrast(1.10)
-            .brightness(-0.04)
+            .blur(radius: blur, opaque: true)
+            .saturation(2.0)
+            .contrast(1.16)
+            .brightness(-0.015)
             .opacity(opacity)
     }
 }
+
