@@ -880,7 +880,7 @@ private struct SmoothLyricsView: View {
                         .font(.system(size: (compact ? 18 : 22) * lyricsFontScale, weight: .medium, design: .rounded))
                         .foregroundStyle(.white)
                         .opacity(romanizedOpacity(state))
-                        .blur(radius: state == .active ? 0 : 1.4)
+                        .blur(radius: lineBlur(state))
                         .offset(y: state == .past ? -7 : 0)
                         .fixedSize(horizontal: false, vertical: true)
                 }
