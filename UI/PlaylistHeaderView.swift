@@ -30,8 +30,8 @@ struct PlaylistHeaderView: View {
             let width = proxy.size.width
             let wide = width >= 820
             let height: CGFloat = wide
-                ? min(410, max(360, width * 0.31))
-                : min(360, max(310, width * 0.82))
+                ? min(460, max(430, width * 0.33))
+                : min(390, max(350, width * 0.82))
 
             ZStack(alignment: .bottomLeading) {
                 marqueeArtwork(width: width, height: height)
@@ -97,7 +97,11 @@ struct PlaylistHeaderView: View {
             // The navigation zoom handles the page entrance. Avoid another
             // large hero animation competing with the scroll view on return.
         }
-        .frame(height: 410)
+        .frame(height: wideFrameHeight)
+    }
+
+    private var wideFrameHeight: CGFloat {
+        476
     }
 
     @ViewBuilder
@@ -106,11 +110,14 @@ struct PlaylistHeaderView: View {
         // row/column grid. The collage is deliberately larger than the header and
         // the parent clips it, matching the dense Apple-Music-style treatment in
         // the reference design.
-        let tile = min(148, max(118, height * 0.37))
-        let horizontalStep = tile + 16
-        let verticalStep = tile + 12
-        let segmentWidth = max(width * 1.55, 1180)
-        let duration = 46.0 + Double(stableSeed % 7)
+        // Large covers and irregular spacing are intentional: the reference is a
+        // poster-like collage, not a regular album grid. Three staggered rows fill
+        // the header while the parent clips the oversized edges.
+        let tile = min(190, max(168, height * 0.42))
+        let horizontalStep = tile + 22
+        let verticalStep = tile + 18
+        let segmentWidth = max(width * 1.45, 1280)
+        let duration = 48.0 + Double(stableSeed % 8)
 
         if artworkURLs.isEmpty {
             Color.black
@@ -175,31 +182,33 @@ struct PlaylistHeaderView: View {
         verticalStep: CGFloat,
         seedOffset: Int
     ) -> some View {
-        let columns = Int(ceil(width / horizontalStep)) + 4
+        let columns = Int(ceil(width / horizontalStep)) + 5
         let rowStart = -1
-        let rowEnd = 3
+        let rowEnd = 2
         var generator = PlaylistHeaderRandom(seed: stableSeed &+ seedOffset)
 
         var tiles: [(url: URL, x: CGFloat, y: CGFloat, rotation: Double, scale: CGFloat)] = []
         tiles.reserveCapacity(columns * (rowEnd - rowStart + 1))
 
-        let baseX = -tile * 0.45
-        let baseY = -tile * 0.55
+        let baseX = -tile * 0.52
+        let baseY = -tile * 0.58
 
         for row in rowStart...rowEnd {
-            let stagger = row.isMultiple(of: 2) ? 0.0 : horizontalStep * 0.48
+            // Every row has a different phase and vertical drift. This prevents the
+            // eye from reading the collage as a conventional grid.
+            let stagger = row.isMultiple(of: 2) ? horizontalStep * -0.18 : horizontalStep * 0.38
             let y = baseY + CGFloat(row + 1) * verticalStep
-                + CGFloat(generator.nextDouble(in: -8...8))
+                + CGFloat(generator.nextDouble(in: -22...22))
 
             for column in 0..<columns {
                 let x = baseX
                     + stagger
                     + CGFloat(column) * horizontalStep
-                    + CGFloat(generator.nextDouble(in: -10...10))
+                    + CGFloat(generator.nextDouble(in: -16...16))
 
                 let index = tiles.count % artworkURLs.count
-                let rotation = generator.nextDouble(in: -8.0...8.0)
-                let scale = generator.nextDouble(in: 0.94...1.05)
+                let rotation = generator.nextDouble(in: -9.0...9.0)
+                let scale = generator.nextDouble(in: 0.94...1.06)
 
                 tiles.append((
                     url: artworkURLs[index],

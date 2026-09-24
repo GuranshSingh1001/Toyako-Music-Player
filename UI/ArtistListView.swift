@@ -23,13 +23,7 @@ struct ArtistListView: View {
                             ArtistDetailView(artist: artist, library: library, transitionNamespace: artistTransitionNamespace)
                                 .navigationTransition(.zoom(sourceID: artist.id, in: artistTransitionNamespace))
                         } label: {
-                            artistGridCard(artist)
-                                .background {
-                                    Circle()
-                                        .fill(.black.opacity(0.001))
-                                        .frame(width: 1, height: 1)
-                                        .matchedTransitionSource(id: artist.id, in: artistTransitionNamespace)
-                                }
+                            artistGridCard(artist, transitionNamespace: artistTransitionNamespace)
                         }
                         .buttonStyle(.plain)
                     }
@@ -50,12 +44,13 @@ struct ArtistListView: View {
         }
     }
 
-    private func artistGridCard(_ artist: ArtistGroup) -> some View {
+    private func artistGridCard(_ artist: ArtistGroup, transitionNamespace: Namespace.ID) -> some View {
         VStack(spacing: 10) {
             ArtistArtworkView(artistName: artist.name, size: 150)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(Circle())
+                .matchedTransitionSource(id: artist.id, in: transitionNamespace)
                 .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
 
             Text(artist.name)
@@ -347,6 +342,7 @@ struct ArtistDetailView: View {
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .matchedTransitionSource(id: album.id, in: transitionNamespace)
                     .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
 
                 Text(album.name)
@@ -357,14 +353,7 @@ struct ArtistDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .background {
-                // Keep the real album card visible throughout the pop animation.
-                // The phantom source exists only for the zoom transition.
-                Circle()
-                    .fill(.black.opacity(0.001))
-                    .frame(width: 1, height: 1)
-                    .matchedTransitionSource(id: album.id, in: transitionNamespace)
-            }
+
         }
         .buttonStyle(.plain)
     }

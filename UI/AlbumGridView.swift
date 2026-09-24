@@ -18,16 +18,7 @@ struct AlbumGridView: View {
                         AlbumDetailView(album: album, library: library, transitionNamespace: albumTransitionNamespace)
                             .navigationTransition(.zoom(sourceID: album.id, in: albumTransitionNamespace))
                     } label: {
-                        AlbumCard(album: album)
-                            .background {
-                                // A separate, tiny source keeps the zoom transition
-                                // from taking the real card out of the render tree.
-                                // The visible card must remain present during dismissal.
-                                Circle()
-                                    .fill(.black.opacity(0.001))
-                                    .frame(width: 1, height: 1)
-                                    .matchedTransitionSource(id: album.id, in: albumTransitionNamespace)
-                            }
+                        AlbumCard(album: album, transitionNamespace: albumTransitionNamespace)
                     }
                     .buttonStyle(.plain)
                 }
@@ -43,12 +34,14 @@ struct AlbumGridView: View {
 
 private struct AlbumCard: View {
     let album: AlbumGroup
+    let transitionNamespace: Namespace.ID
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             LazyAlbumArtwork(url: album.artworkURL)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .matchedTransitionSource(id: album.id, in: transitionNamespace)
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
 
             Text(album.name)

@@ -46,6 +46,7 @@ struct AllPlaylistsGridView: View {
                             )
                             .aspectRatio(1, contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
                             .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
 
                             Text(playlist.name)
@@ -56,12 +57,6 @@ struct AllPlaylistsGridView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                    }
-                    .background {
-                        Circle()
-                            .fill(.black.opacity(0.001))
-                            .frame(width: 1, height: 1)
-                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
