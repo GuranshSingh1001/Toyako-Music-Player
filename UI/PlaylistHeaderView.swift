@@ -10,11 +10,24 @@ struct PlaylistHeaderView: View {
 
     private var artworkURLs: [URL] {
         guard !tracks.isEmpty else { return [] }
-        // Use a long repeating stream so the marquee always feels full,
-        // including for playlists with only a few tracks.
-        return (0..<72).map { index in
-            tracks[(index * 5 + stableSeed) % tracks.count].url
+
+        // Use each track artwork once before repeating anything. This keeps the
+        // visible collage varied instead of producing obvious repeated patterns.
+        var urls = tracks.map(\.url)
+        var generator = PlaylistHeaderRandom(seed: stableSeed)
+        generator.shuffle(&urls)
+
+        let minimumCount = 72
+        if urls.count < minimumCount {
+            let original = urls
+            var index = 0
+            while urls.count < minimumCount {
+                urls.append(original[index % original.count])
+                index += 1
+            }
         }
+
+        return urls
     }
 
     private var stableSeed: Int {
@@ -106,137 +119,103 @@ struct PlaylistHeaderView: View {
 
     @ViewBuilder
     private func marqueeArtwork(width: CGFloat, height: CGFloat) -> some View {
-        // Build the artwork as one large, staggered collage rather than a normal
-        // row/column grid. The collage is deliberately larger than the header and
-        // the parent clips it, matching the dense Apple-Music-style treatment in
-        // the reference design.
-        // Large covers and irregular spacing are intentional: the reference is a
-        // poster-like collage, not a regular album grid. Three staggered rows fill
-        // the header while the parent clips the oversized edges.
-        let tile = min(190, max(168, height * 0.42))
-        let horizontalStep = tile + 22
-        let verticalStep = tile + 18
-        let segmentWidth = max(width * 1.45, 1280)
-        let duration = 48.0 + Double(stableSeed % 8)
+        let tile = min(188, max(156, height * 0.39))
+        let gap: CGFloat = min(24, max(16, tile * 0.10))
+        let step = tile + gap
+        let rowGap: CGFloat = min(24, max(14, tile * 0.09))
+        let segmentWidth = max(width * 1.30, step * 9.0)
+        let duration = 44.0 + Double(stableSeed % 7)
 
         if artworkURLs.isEmpty {
             Color.black
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ZStack {
-            Color.black
+                Color.black
 
-            HStack(spacing: 0) {
-                collageSegment(
-                    width: segmentWidth,
-                    height: height,
-                    tile: tile,
-                    horizontalStep: horizontalStep,
-                    verticalStep: verticalStep,
-                    seedOffset: 0
-                )
+                // One oversized canvas contains every cover. Moving this single
+                // canvas means every cover travels left at exactly the same speed.
+                HStack(spacing: 0) {
+                    playlistCollageSegment(
+                        width: segmentWidth,
+                        height: height,
+                        tile: tile,
+                        step: step,
+                        rowGap: rowGap
+                    )
 
-                // Exact duplicate of the first segment. Repeating the same
-                // geometry makes the leftward marquee loop seamless instead of
-                // snapping to a different collage at the reset point.
-                collageSegment(
-                    width: segmentWidth,
-                    height: height,
-                    tile: tile,
-                    horizontalStep: horizontalStep,
-                    verticalStep: verticalStep,
-                    seedOffset: 0
+                    // An exact copy makes the marquee loop without a visual jump.
+                    playlistCollageSegment(
+                        width: segmentWidth,
+                        height: height,
+                        tile: tile,
+                        step: step,
+                        rowGap: rowGap
+                    )
+                }
+                .frame(width: segmentWidth * 2, height: height)
+                .modifier(
+                    CollageMarqueeMotion(
+                        distance: segmentWidth,
+                        duration: duration
+                    )
                 )
             }
-            .frame(width: segmentWidth * 2, height: height)
-            .modifier(
-                CollageMarqueeMotion(
-                    distance: segmentWidth,
-                    duration: duration
-                )
-            )
-        }
-        .scaleEffect(1.08)
-        .clipped()
-            .overlay {
-                // Very light edge shading keeps the artwork rich while leaving the
-                // covers themselves clearly visible.
-                LinearGradient(
-                    colors: [
-                        .black.opacity(0.03),
-                        .clear,
-                        .black.opacity(0.05)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
+            .scaleEffect(1.08)
+            .clipped()
         }
     }
 
-    private func collageSegment(
+    private func playlistCollageSegment(
         width: CGFloat,
         height: CGFloat,
         tile: CGFloat,
-        horizontalStep: CGFloat,
-        verticalStep: CGFloat,
-        seedOffset: Int
+        step: CGFloat,
+        rowGap: CGFloat
     ) -> some View {
-        let columns = Int(ceil(width / horizontalStep)) + 5
-        let rowStart = -1
-        let rowEnd = 2
-        var generator = PlaylistHeaderRandom(seed: stableSeed &+ seedOffset)
+        let columns = Int(ceil(width / step)) + 3
+        let rowHeight = tile + rowGap
+        let top = -tile * 0.48
+        let middle = top + rowHeight
+        let bottom = middle + rowHeight
+        let rowCenters = [top, middle, bottom]
 
-        var tiles: [(url: URL, x: CGFloat, y: CGFloat, rotation: Double, scale: CGFloat)] = []
-        tiles.reserveCapacity(columns * (rowEnd - rowStart + 1))
+        var generator = PlaylistHeaderRandom(seed: stableSeed &* 31 &+ 17)
+        var items: [(url: URL, x: CGFloat, y: CGFloat, rotation: Double)] = []
+        items.reserveCapacity(columns * rowCenters.count)
 
-        let baseX = -tile * 0.52
-        let baseY = -tile * 0.58
-
-        for row in rowStart...rowEnd {
-            // Every row has a different phase and vertical drift. This prevents the
-            // eye from reading the collage as a conventional grid.
-            let stagger = row.isMultiple(of: 2) ? horizontalStep * -0.18 : horizontalStep * 0.38
-            let y = baseY + CGFloat(row + 1) * verticalStep
-                + CGFloat(generator.nextDouble(in: -22...22))
+        for row in 0..<rowCenters.count {
+            // Stagger the rows like the sketch, but keep their vertical spacing
+            // stable so the result reads as a collage rather than a grid.
+            let rowOffset = row == 1 ? step * 0.42 : (row == 2 ? step * -0.20 : 0)
 
             for column in 0..<columns {
-                let x = baseX
-                    + stagger
-                    + CGFloat(column) * horizontalStep
-                    + CGFloat(generator.nextDouble(in: -16...16))
+                let index = items.count % artworkURLs.count
+                let x = -tile * 0.52 + rowOffset + CGFloat(column) * step
+                let y = rowCenters[row] + CGFloat(generator.nextDouble(in: -8...8))
+                let rotation = generator.nextDouble(in: -8.0...8.0)
 
-                let index = tiles.count % artworkURLs.count
-                let rotation = generator.nextDouble(in: -9.0...9.0)
-                let scale = generator.nextDouble(in: 0.94...1.06)
-
-                tiles.append((
+                items.append((
                     url: artworkURLs[index],
                     x: x,
                     y: y,
-                    rotation: rotation,
-                    scale: scale
+                    rotation: rotation
                 ))
             }
         }
 
         return ZStack {
-            ForEach(Array(tiles.indices), id: \.self) { index in
-                let tileData = tiles[index]
+            ForEach(Array(items.indices), id: \.self) { index in
+                let item = items[index]
 
                 LazyArtwork(
-                    url: tileData.url,
+                    url: item.url,
                     size: tile,
                     cornerRadius: tile * 0.085
                 )
-                .scaleEffect(tileData.scale)
-                .rotationEffect(.degrees(tileData.rotation))
-                .position(
-                    x: tileData.x,
-                    y: tileData.y
-                )
-                .shadow(color: .black.opacity(0.30), radius: 8, y: 5)
-                .zIndex(Double(index))
+                .rotationEffect(.degrees(item.rotation))
+                .position(x: item.x, y: item.y)
+                .shadow(color: .black.opacity(0.32), radius: 7, y: 4)
             }
         }
         .frame(width: width, height: height)
