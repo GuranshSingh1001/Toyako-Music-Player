@@ -1,0 +1,45 @@
+name: Toyako
+
+options:
+  bundleIdPrefix: com.local
+  deploymentTarget:
+    iOS: "26.0"
+
+settings:
+  TARGETED_DEVICE_FAMILY: "2"
+
+targets:
+  Toyako:
+    type: application
+    platform: iOS
+
+    sources:
+      - path: App
+      - path: Audio
+      - path: Models
+      - path: UI
+
+    resources:
+      - path: App/Assets.xcassets
+
+    settings:
+      GENERATE_INFOPLIST_FILE: "YES"
+
+      PRODUCT_BUNDLE_IDENTIFIER: com.local.Toyako
+
+      MARKETING_VERSION: "1.3.5"
+
+      INFOPLIST_KEY_CFBundleDisplayName: "Toyako"
+
+      INFOPLIST_KEY_UIBackgroundModes:
+        - audio
+
+      INFOPLIST_KEY_UIFileSharingEnabled: "YES"
+
+      INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: "YES"
+
+      INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+
+      ASSETCATALOG_COMPILER_APPICON_NAME: "AppIcon"
+
+      ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: "YES"

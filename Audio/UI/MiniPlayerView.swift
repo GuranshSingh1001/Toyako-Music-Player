@@ -1,0 +1,120 @@
+import SwiftUI
+import UIKit
+
+struct MiniPlayerView: View {
+    @EnvironmentObject var audioManager: AudioEngineManager
+    let isNowPlayingPresented: Bool
+    let onOpenNowPlaying: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onOpenNowPlaying) {
+                HStack(spacing: 12) {
+                    artwork
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(audioManager.currentTrack?.title ?? "Not Playing")
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+
+                        Text(audioManager.currentTrack?.artist ?? "Unknown Artist")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        MiniPlayerProgressBar()
+                            .frame(height: 3)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .foregroundStyle(.primary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 0) {
+                Button {
+                    audioManager.backward()
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 32, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    audioManager.togglePlayPause()
+                } label: {
+                    Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 38, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    audioManager.forward()
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 32, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .foregroundStyle(.primary)
+            .disabled(audioManager.currentTrack == nil)
+            .opacity(audioManager.currentTrack == nil ? 0.45 : 1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        // Keep the mini-player fully rendered while Now Playing is open.
+        // The Now Playing layer is above it, so there is no reason to fade the
+        // mini-player out. Keeping its content alive prevents the title, artist,
+        // artwork and progress bar from going blank when Now Playing closes.
+        .allowsHitTesting(!isNowPlayingPresented)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let track = audioManager.currentTrack {
+            // The mini-player artwork remains independent from Now Playing.
+            // Opening Now Playing uses one consistent bottom-to-top presentation
+            // rather than a shared hero/matched-geometry transition.
+            LazyArtwork(url: track.url, size: 44, cornerRadius: 9)
+        } else {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(.secondary.opacity(0.16))
+                .frame(width: 44, height: 44)
+                .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
+        }
+    }
+}
+
+/// Isolated on purpose: this is the only part of the mini-player that
+/// needs to redraw ~4x/sec while a track plays. Pulling it out of
+/// MiniPlayerView means the title/artist/buttons (and anything else that
+/// holds a reference to MiniPlayerView) don't get rebuilt on every tick.
+private struct MiniPlayerProgressBar: View {
+    @EnvironmentObject var clock: PlaybackClock
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.primary.opacity(0.11))
+
+                Capsule()
+                    .fill(.primary.opacity(0.52))
+                    .frame(
+                        width: proxy.size.width * min(
+                            max(clock.playbackProgress, 0),
+                            1
+                        )
+                    )
+            }
+        }
+    }
+}
+
