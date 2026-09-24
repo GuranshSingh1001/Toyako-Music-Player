@@ -73,3 +73,9 @@ Toyako includes dedicated experiences for:
 - **Now Playing** — artwork, track information, progress, lyrics, and playback controls
 
 The interface is built specifically for iPad and supports portrait and landscape orientations.
+
+## Automatic Artist Artwork
+
+Toyako can optionally download artist artwork from the internet and cache it locally. This feature is **off by default** because artist names are sent to online metadata services when artwork is requested. When enabled, Toyako tries **Deezer**, then **iTunes**, then **Wikidata / Wikimedia Commons** as fallbacks. Artist names are normalized to improve matching, and common multi-artist metadata such as `Aki Toyosaki, Yoko Hikasa, Satomi Sato` is split into individual artist entries. Downloaded images are reused from the local cache, and Toyako never downloads songs through this feature.
+
+You can enable or disable automatic downloads in **Settings → Artist Artwork**. The same section includes **Remove All Downloaded Artist Artwork**. Artwork is stored in the app sandbox at `Library/Caches/ArtistArtwork`, so it does not appear in the Files app. iOS treats the Caches directory as app-managed, discardable data rather than user documents.
