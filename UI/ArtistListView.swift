@@ -354,7 +354,7 @@ struct ArtistDetailView: View {
     private func albumCard(_ album: AlbumGroup) -> some View {
         let isActive = activeAlbumTransitionID == album.id
 
-        NavigationLink {
+        return NavigationLink {
             AlbumDetailView(album: album, library: library, transitionNamespace: transitionNamespace)
         } label: {
             VStack(alignment: .leading, spacing: 7) {
