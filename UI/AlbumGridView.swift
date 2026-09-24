@@ -73,7 +73,6 @@ struct AlbumDetailView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var artworkVisible = true
-    @AppStorage(ToyakoPreferences.preventAccidentalAlbumArtistPlaybackKey) private var preventAccidentalAlbumArtistPlayback = true
 
     private var sortedTracks: [LocalTrack] {
         album.tracks.sorted {
@@ -295,7 +294,6 @@ struct AlbumDetailView: View {
 
             ForEach(Array(sortedTracks.enumerated()), id: \.element.id) { index, track in
                 AlbumTrackRow(track: track, number: index + 1) {
-                    guard !preventAccidentalAlbumArtistPlayback else { return }
                     audioManager.startQueue(
                         tracks: sortedTracks,
                         startIndex: index,

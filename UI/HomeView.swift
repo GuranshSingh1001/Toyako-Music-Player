@@ -28,19 +28,23 @@ struct HomeView: View {
     ]
 
     private var recommendedAlbums: [AlbumGroup] {
-        deterministicSample(albums, count: 8, seed: recommendationSeed)
+        var rng = SeededGenerator(seed: recommendationSeed)
+        return Array(albums.shuffled(using: &rng).prefix(8))
     }
 
     private var recommendedArtists: [ArtistGroup] {
-        deterministicSample(artists, count: 8, seed: recommendationSeed &+ 17)
+        var rng = SeededGenerator(seed: recommendationSeed &+ 17)
+        return Array(artists.shuffled(using: &rng).prefix(8))
     }
 
     private var recommendedPlaylists: [Playlist] {
-        deterministicSample(playlists, count: 8, seed: recommendationSeed &+ 31)
+        var rng = SeededGenerator(seed: recommendationSeed &+ 31)
+        return Array(playlists.shuffled(using: &rng).prefix(8))
     }
 
     private var recommendedTracks: [LocalTrack] {
-        deterministicSample(tracks, count: 12, seed: recommendationSeed &+ 53)
+        var rng = SeededGenerator(seed: recommendationSeed &+ 53)
+        return Array(tracks.shuffled(using: &rng).prefix(12))
     }
 
     var body: some View {
@@ -404,22 +408,6 @@ private struct HomeStatCard: View {
         .padding(13)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
-}
-
-private func deterministicSample<T>(_ items: [T], count: Int, seed: UInt64) -> [T] {
-    guard !items.isEmpty, count > 0 else { return [] }
-    let target = min(count, items.count)
-    var rng = SeededGenerator(seed: seed)
-    var selected = Set<Int>()
-    selected.reserveCapacity(target)
-
-    // Sampling indices avoids shuffling/copying the entire library just to
-    // display a handful of recommendation cards.
-    while selected.count < target {
-        selected.insert(Int(rng.next() % UInt64(items.count)))
-    }
-
-    return selected.sorted().map { items[$0] }
 }
 
 private struct SeededGenerator: RandomNumberGenerator {

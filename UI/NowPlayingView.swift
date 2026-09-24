@@ -647,19 +647,7 @@ private func activeLyricID(lyrics: [LyricLine], currentTime: TimeInterval) -> UU
     // SmoothLyricsView. Using AudioEngineManager.currentTime here could be one
     // update behind when Now Playing is first presented, causing the current
     // lyric to be temporarily missing until the next line change.
-    // Lyrics are time-sorted. Binary search avoids scanning the entire lyric
-    // array four times per second while playback is running.
-    var low = 0
-    var high = lyrics.count
-    while low < high {
-        let mid = (low + high) >> 1
-        if lyrics[mid].time <= currentTime {
-            low = mid + 1
-        } else {
-            high = mid
-        }
-    }
-    return low > 0 ? lyrics[low - 1].id : nil
+    return lyrics.last { $0.time <= currentTime }?.id
 }
 
 }
@@ -770,6 +758,9 @@ private struct SmoothLyricsView: View {
                 restartTranslationSession()
                 DispatchQueue.main.async {
                     scrollToCurrentLyric(proxy: proxy, animated: false)
+                    DispatchQueue.main.async {
+                        scrollToCurrentLyric(proxy: proxy, animated: false)
+                    }
                 }
             }
             .onChange(of: trackID) { _, newTrackID in
@@ -966,11 +957,8 @@ private struct SmoothLyricsView: View {
     private func lineBlur(_ state: LyricLineState) -> CGFloat {
         switch state {
         case .active: return 0
-        // Keep the depth cue, but avoid large blur radii across many lyric
-        // rows. SwiftUI blur is an offscreen rendering pass and gets expensive
-        // when dozens of rows are visible.
-        case .future: return 0.8
-        case .past: return 1.8
+        case .future: return 1.6
+        case .past: return 3.8
         }
     }
 
@@ -1055,7 +1043,7 @@ private struct TimedLyricPair: View {
             )
             .scaleEffect(lyricsFontScale * (compact ? 0.86 : 1.0), anchor: .leading)
             .opacity(state == .active ? 1 : (state == .future ? 0.27 : 0.12))
-            .blur(radius: state == .active ? 0 : (state == .future ? 0.8 : 1.8))
+            .blur(radius: state == .active ? 0 : (state == .future ? 1.6 : 3.8))
             .scaleEffect(state == .active ? 1 : (state == .future ? 0.985 : 0.972), anchor: .leading)
             .offset(y: state == .past ? -14 : (state == .future ? 3 : 0))
         }

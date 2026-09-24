@@ -79,7 +79,6 @@ struct ArtistDetailView: View {
 
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var heroVisible = true
-    @AppStorage(ToyakoPreferences.preventAccidentalAlbumArtistPlaybackKey) private var preventAccidentalAlbumArtistPlayback = true
 
     private var albums: [AlbumGroup] {
         Dictionary(grouping: artist.tracks) { track in
@@ -374,7 +373,6 @@ struct ArtistDetailView: View {
 
             ForEach(sortedTracks) { track in
                 Button {
-                    guard !preventAccidentalAlbumArtistPlayback else { return }
                     audioManager.play(track: track)
                 } label: {
                     HStack(spacing: 12) {

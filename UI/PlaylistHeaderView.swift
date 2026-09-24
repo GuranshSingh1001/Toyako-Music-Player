@@ -8,6 +8,28 @@ struct PlaylistHeaderView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var heroVisible = true
 
+    private var artworkURLs: [URL] {
+        guard !tracks.isEmpty else { return [] }
+
+        // Use each track artwork once before repeating anything. This keeps the
+        // visible collage varied instead of producing obvious repeated patterns.
+        var urls = tracks.map(\.url)
+        var generator = PlaylistHeaderRandom(seed: stableSeed)
+        generator.shuffle(&urls)
+
+        let minimumCount = 72
+        if urls.count < minimumCount {
+            let original = urls
+            var index = 0
+            while urls.count < minimumCount {
+                urls.append(original[index % original.count])
+                index += 1
+            }
+        }
+
+        return urls
+    }
+
     private var stableSeed: Int {
         var value = 0
         for byte in playlist.id.uuidString.utf8 {
@@ -98,11 +120,11 @@ struct PlaylistHeaderView: View {
     @ViewBuilder
     private func marqueeArtwork(width: CGFloat, height: CGFloat) -> some View {
         PlaylistArtworkMarquee(
-            tracks: tracks,
-            width: width,
-            height: height,
+            artworkURLs: artworkURLs,
             seed: stableSeed
         )
+        .frame(width: width, height: height)
+        .clipped()
     }
 
     private var playButton: some View {
