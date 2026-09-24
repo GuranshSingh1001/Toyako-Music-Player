@@ -13,10 +13,7 @@ struct ArtistListView: View {
                         .navigationTitle(artist.name)
                 } label: {
                     HStack {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 48, height: 48)
-                            .overlay(Image(systemName: "person.fill").foregroundColor(.secondary))
+                        AppleMusicArtistArtworkView(artistName: artist.name, size: 48)
                         VStack(alignment: .leading) {
                             Text(artist.name).font(.headline)
                             Text("\(artist.tracks.count) Tracks").font(.caption).foregroundColor(.secondary)
