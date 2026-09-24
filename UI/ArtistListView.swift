@@ -6,38 +6,60 @@ struct ArtistListView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
 
     var body: some View {
-        List {
-            Section {
-                ForEach(artists) { artist in
-                    NavigationLink {
-                        ArtistDetailView(artist: artist, library: library)
-                    } label: {
-                        HStack(spacing: 14) {
-                            ArtistArtworkView(artistName: artist.name, size: 54)
+        GeometryReader { proxy in
+            let horizontalPadding: CGFloat = proxy.size.width < 600 ? 16 : 24
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(artist.name)
-                                    .font(.headline)
-                                    .lineLimit(1)
-
-                                Text(artist.tracks.count == 1 ? "1 Track" : "\(artist.tracks.count) Tracks")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer(minLength: 8)
+            ScrollView {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.adaptive(minimum: 155, maximum: 220), spacing: 20)
+                    ],
+                    spacing: 26
+                ) {
+                    ForEach(artists) { artist in
+                        NavigationLink {
+                            ArtistDetailView(artist: artist, library: library)
+                        } label: {
+                            artistGridCard(artist)
                         }
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
                     }
                 }
-            } header: {
-                Text("\(artists.count) Artists")
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, 18)
+                .padding(.bottom, audioManager.currentTrack != nil ? 100 : 30)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
-        .listStyle(.insetGrouped)
-        .safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: audioManager.currentTrack != nil ? 80 : 0)
+        .overlay(alignment: .topLeading) {
+            Text("\(artists.count) Artists")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 24)
+                .padding(.top, 8)
         }
+    }
+
+    private func artistGridCard(_ artist: ArtistGroup) -> some View {
+        VStack(spacing: 10) {
+            ArtistArtworkView(artistName: artist.name, size: 150)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+
+            Text(artist.name)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+
+            Text(artist.tracks.count == 1 ? "1 Track" : "\(artist.tracks.count) Tracks")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 }
 
