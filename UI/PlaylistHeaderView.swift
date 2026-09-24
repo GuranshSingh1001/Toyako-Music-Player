@@ -31,7 +31,7 @@ struct PlaylistHeaderView: View {
             let wide = width >= 820
             let height: CGFloat = wide
                 ? min(410, max(360, width * 0.31))
-                : min(400, max(340, width * 0.50))
+                : min(360, max(310, width * 0.82))
 
             ZStack(alignment: .bottomLeading) {
                 marqueeArtwork(width: width, height: height)
@@ -97,119 +97,140 @@ struct PlaylistHeaderView: View {
             // The navigation zoom handles the page entrance. Avoid another
             // large hero animation competing with the scroll view on return.
         }
-        .frame(height: 400)
+        .frame(height: 410)
     }
 
     private func marqueeArtwork(width: CGFloat, height: CGFloat) -> some View {
-        // The artwork is intentionally built as one oversized rectangular sheet:
-        // several rows of individually tilted square covers with real gaps between
-        // them. The sheet is larger than the header and the header clips its edges.
-        let tile = min(168, max(126, height * 0.42))
-        let horizontalSpacing = min(18, max(11, tile * 0.085))
-        let verticalSpacing = min(20, max(12, tile * 0.10))
-        let rowHeight = tile + verticalSpacing
-        let rowCount = 4
+        // Build the artwork as one large, staggered collage rather than a normal
+        // row/column grid. The collage is deliberately larger than the header and
+        // the parent clips it, matching the dense Apple-Music-style treatment in
+        // the reference design.
+        let tile = min(148, max(118, height * 0.37))
+        let horizontalStep = tile + 16
+        let verticalStep = tile + 12
+        let segmentWidth = max(width * 1.55, 1180)
+        let duration = 46.0 + Double(stableSeed % 7)
+
+        guard !artworkURLs.isEmpty else {
+            return Color.black
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
 
         return ZStack {
             Color.black
 
-            VStack(spacing: verticalSpacing) {
-                ForEach(0..<rowCount, id: \.self) { row in
-                    marqueeRow(
-                        tile: tile,
-                        row: row,
-                        width: width,
-                        spacing: horizontalSpacing
-                    )
-                    .frame(height: tile)
-                }
+            HStack(spacing: 0) {
+                collageSegment(
+                    width: segmentWidth,
+                    height: height,
+                    tile: tile,
+                    horizontalStep: horizontalStep,
+                    verticalStep: verticalStep,
+                    seedOffset: 0
+                )
+
+                // Exact duplicate of the first segment. Repeating the same
+                // geometry makes the leftward marquee loop seamless instead of
+                // snapping to a different collage at the reset point.
+                collageSegment(
+                    width: segmentWidth,
+                    height: height,
+                    tile: tile,
+                    horizontalStep: horizontalStep,
+                    verticalStep: verticalStep,
+                    seedOffset: 0
+                )
             }
-            .frame(
-                width: width + tile * 2,
-                height: rowHeight * CGFloat(rowCount),
-                alignment: .leading
+            .frame(width: segmentWidth * 2, height: height)
+            .modifier(
+                CollageMarqueeMotion(
+                    distance: segmentWidth,
+                    duration: duration
+                )
             )
-            .offset(y: -tile * 0.62)
-            .rotationEffect(.degrees(-1.15))
-            .scaleEffect(1.06)
         }
+        .scaleEffect(1.08)
+        .clipped()
         .overlay {
+            // Very light edge shading keeps the artwork rich while leaving the
+            // covers themselves clearly visible.
             LinearGradient(
                 colors: [
-                    .black.opacity(0.02),
+                    .black.opacity(0.03),
                     .clear,
-                    .black.opacity(0.10)
+                    .black.opacity(0.05)
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                startPoint: .top,
+                endPoint: .bottom
             )
         }
     }
 
-    private func marqueeRow(
-        tile: CGFloat,
-        row: Int,
+    private func collageSegment(
         width: CGFloat,
-        spacing: CGFloat
+        height: CGFloat,
+        tile: CGFloat,
+        horizontalStep: CGFloat,
+        verticalStep: CGFloat,
+        seedOffset: Int
     ) -> some View {
-        var generator = PlaylistHeaderRandom(seed: stableSeed &+ row * 7919)
+        let columns = Int(ceil(width / horizontalStep)) + 4
+        let rowStart = -1
+        let rowEnd = 3
+        var generator = PlaylistHeaderRandom(seed: stableSeed &+ seedOffset)
 
-        // A segment contains enough covers to extend well beyond both edges.
-        // Two extra copies make the leftward animation wrap without a blank edge.
-        let baseCount = max(7, Int(ceil((width + tile * 2) / (tile + spacing))) + 1)
-        let segmentWidth = tile * CGFloat(baseCount) + spacing * CGFloat(baseCount - 1)
+        var tiles: [(url: URL, x: CGFloat, y: CGFloat, rotation: Double, scale: CGFloat)] = []
+        tiles.reserveCapacity(columns * (rowEnd - rowStart + 1))
 
-        var shuffled = artworkURLs
-        generator.shuffle(&shuffled)
+        let baseX = -tile * 0.45
+        let baseY = -tile * 0.55
 
-        var rotations: [Double] = []
-        var verticalOffsets: [CGFloat] = []
-        rotations.reserveCapacity(baseCount)
-        verticalOffsets.reserveCapacity(baseCount)
+        for row in rowStart...rowEnd {
+            let stagger = row.isMultiple(of: 2) ? 0.0 : horizontalStep * 0.48
+            let y = baseY + CGFloat(row + 1) * verticalStep
+                + CGFloat(generator.nextDouble(in: -8...8))
 
-        for index in 0..<baseCount {
-            // Strong enough to be visibly tilted, but not so strong that the
-            // covers look chaotic.
-            let baseRotation = generator.nextDouble(in: -7.0...7.0)
-            let alternatingBias = row.isMultiple(of: 2) ? 0.8 : -0.8
-            rotations.append(baseRotation + alternatingBias)
-            verticalOffsets.append(
-                CGFloat(generator.nextDouble(in: -0.045...0.045)) * tile
-            )
-            _ = index
-        }
+            for column in 0..<columns {
+                let x = baseX
+                    + stagger
+                    + CGFloat(column) * horizontalStep
+                    + CGFloat(generator.nextDouble(in: -10...10))
 
-        let startOffset = CGFloat(generator.nextDouble(in: -0.45...0.05)) * tile
-        let verticalJitter = CGFloat(generator.nextDouble(in: -0.025...0.025)) * tile
-        let duration = 41.0 + Double((stableSeed + row * 13) % 8)
+                let index = tiles.count % artworkURLs.count
+                let rotation = generator.nextDouble(in: -8.0...8.0)
+                let scale = generator.nextDouble(in: 0.94...1.05)
 
-        return HStack(spacing: spacing) {
-            // Three identical segments are rendered, but only one segment is
-            // travelled per animation cycle. This gives a continuous marquee.
-            ForEach(0..<(baseCount * 3), id: \.self) { index in
-                let baseIndex = index % baseCount
-                let url = shuffled[baseIndex % shuffled.count]
-
-                LazyArtwork(
-                    url: url,
-                    size: tile,
-                    cornerRadius: tile * 0.095
-                )
-                .rotationEffect(.degrees(rotations[baseIndex]))
-                .offset(y: verticalOffsets[baseIndex])
-                .shadow(color: .black.opacity(0.32), radius: 8, y: 4)
-                .zIndex(Double(baseCount * 3 - index))
+                tiles.append((
+                    url: artworkURLs[index],
+                    x: x,
+                    y: y,
+                    rotation: rotation,
+                    scale: scale
+                ))
             }
         }
-        .frame(width: segmentWidth * 3, height: tile, alignment: .leading)
-        .offset(x: startOffset)
-        .modifier(
-            MarqueeMotion(
-                distance: segmentWidth,
-                duration: duration
-            )
-        )
-        .offset(y: verticalJitter)
+
+        return ZStack {
+            ForEach(Array(tiles.indices), id: \.self) { index in
+                let tileData = tiles[index]
+
+                LazyArtwork(
+                    url: tileData.url,
+                    size: tile,
+                    cornerRadius: tile * 0.085
+                )
+                .scaleEffect(tileData.scale)
+                .rotationEffect(.degrees(tileData.rotation))
+                .position(
+                    x: tileData.x,
+                    y: tileData.y
+                )
+                .shadow(color: .black.opacity(0.30), radius: 8, y: 5)
+                .zIndex(Double(index))
+            }
+        }
+        .frame(width: width, height: height)
+        .clipped()
     }
 
     private var playButton: some View {
@@ -261,7 +282,7 @@ struct PlaylistHeaderView: View {
     }
 }
 
-private struct MarqueeMotion: ViewModifier {
+private struct CollageMarqueeMotion: ViewModifier {
     let distance: CGFloat
     let duration: Double
     @State private var moved = false
