@@ -1205,15 +1205,17 @@ class LocalLibrary:
             return []
         }
 
-        // Metadata commonly uses commas, semicolons, slashes, or explicit
-        // featuring markers for collaborations. Keep ampersands intact here
-        // because names such as "Earth, Wind & Fire" should not be split at &.
+        // Metadata commonly uses commas, semicolons, slashes, ampersands, or
+        // explicit featuring markers for collaborations. Treat these as artist
+        // separators so each collaborator gets their own artist entry and artwork.
         var value = trimmed
         value = value.replacingOccurrences(of: #"\s+(?:feat\.?|ft\.?|featuring)\s+"#, with: ",", options: .regularExpression)
         value = value.replacingOccurrences(of: "；", with: ";")
         value = value.replacingOccurrences(of: "、", with: ",")
         value = value.replacingOccurrences(of: " / ", with: ",")
         value = value.replacingOccurrences(of: ";", with: ",")
+        value = value.replacingOccurrences(of: "&", with: ",")
+        value = value.replacingOccurrences(of: "＆", with: ",")
 
         let parts = value.split(separator: ",", omittingEmptySubsequences: true)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
