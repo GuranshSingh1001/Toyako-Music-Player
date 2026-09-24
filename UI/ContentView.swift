@@ -485,6 +485,9 @@ struct ContentView: View {
                 },
                 onAddSongsToPlaylist: { playlist in
                     playlistToEdit = playlist
+                },
+                onDeletePlaylist: { playlist in
+                    playlistToDelete = playlist
                 }
             )
             .toolbar {
@@ -675,6 +678,7 @@ private struct HomeAudioContainer: View {
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
     let onAddSongsToPlaylist: (Playlist) -> Void
+    let onDeletePlaylist: (Playlist) -> Void
 
     @EnvironmentObject private var audioManager: AudioEngineManager
 
@@ -689,6 +693,7 @@ private struct HomeAudioContainer: View {
             onImport: onImport,
             onNewPlaylist: onNewPlaylist,
             onAddSongsToPlaylist: onAddSongsToPlaylist,
+            onDeletePlaylist: onDeletePlaylist,
             currentTrack: audioManager.currentTrack,
             isPlaying: audioManager.isPlaying,
             onPlayTrack: { index in

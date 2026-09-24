@@ -10,6 +10,7 @@ struct HomeView: View {
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
     let onAddSongsToPlaylist: (Playlist) -> Void
+    let onDeletePlaylist: (Playlist) -> Void
     let currentTrack: LocalTrack?
     let isPlaying: Bool
     let onPlayTrack: (Int) -> Void
@@ -245,12 +246,7 @@ struct HomeView: View {
             HStack(spacing: 16) {
                 ForEach(items) { artist in
                     NavigationLink {
-                        SongListView(
-                            tracks: artist.tracks,
-                            allTracks: artist.tracks,
-                            library: library
-                        )
-                        .navigationTitle(artist.name)
+                        ArtistDetailView(artist: artist, library: library)
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
@@ -326,6 +322,19 @@ struct HomeView: View {
                         .frame(width: 145, alignment: .leading)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            onAddSongsToPlaylist(playlist)
+                        } label: {
+                            Label("Add Songs", systemImage: "plus")
+                        }
+
+                        Button(role: .destructive) {
+                            onDeletePlaylist(playlist)
+                        } label: {
+                            Label("Delete Playlist", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }
