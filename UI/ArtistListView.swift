@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ArtistListView: View {
     @Namespace private var artistTransitionNamespace
-    @State private var activeArtistTransitionID: String?
 
     let artists: [ArtistGroup]
     let library: LocalLibrary
@@ -20,18 +19,11 @@ struct ArtistListView: View {
                     spacing: 26
                 ) {
                     ForEach(artists) { artist in
-                        let isActive = activeArtistTransitionID == artist.id
-
                         NavigationLink {
                             ArtistDetailView(artist: artist, library: library, transitionNamespace: artistTransitionNamespace)
                                 .navigationTransition(.zoom(sourceID: artist.id, in: artistTransitionNamespace))
-                                .onDisappear {
-                                    activeArtistTransitionID = nil
-                                }
                         } label: {
                             artistGridCard(artist)
-                                .opacity(isActive ? 0 : 1)
-                                .animation(.easeOut(duration: 0.16), value: isActive)
                                 .background {
                                     Circle()
                                         .fill(.black.opacity(0.001))
@@ -40,11 +32,6 @@ struct ArtistListView: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .simultaneousGesture(
-                            TapGesture().onEnded {
-                                activeArtistTransitionID = artist.id
-                            }
-                        )
                     }
                 }
                 .padding(.horizontal, horizontalPadding)
@@ -95,7 +82,6 @@ struct ArtistDetailView: View {
 
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var heroVisible = true
-    @State private var activeAlbumTransitionID: String?
 
     private var albums: [AlbumGroup] {
         Dictionary(grouping: artist.tracks) { track in
@@ -352,10 +338,9 @@ struct ArtistDetailView: View {
     }
 
     private func albumCard(_ album: AlbumGroup) -> some View {
-        let isActive = activeAlbumTransitionID == album.id
-
         NavigationLink {
             AlbumDetailView(album: album, library: library, transitionNamespace: transitionNamespace)
+                .navigationTransition(.zoom(sourceID: album.id, in: transitionNamespace))
         } label: {
             VStack(alignment: .leading, spacing: 7) {
                 LazyAlbumArtwork(url: album.artworkURL)
@@ -372,9 +357,9 @@ struct ArtistDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .opacity(isActive ? 0 : 1)
-            .animation(.easeOut(duration: 0.16), value: isActive)
             .background {
+                // Keep the real album card visible throughout the pop animation.
+                // The phantom source exists only for the zoom transition.
                 Circle()
                     .fill(.black.opacity(0.001))
                     .frame(width: 1, height: 1)
@@ -382,11 +367,6 @@ struct ArtistDetailView: View {
             }
         }
         .buttonStyle(.plain)
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                activeAlbumTransitionID = album.id
-            }
-        )
     }
 
     private var tracksSection: some View {

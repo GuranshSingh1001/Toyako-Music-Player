@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AlbumGridView: View {
     @Namespace private var albumTransitionNamespace
-    @State private var activeAlbumTransitionID: String?
 
     let albums: [AlbumGroup]
     let library: LocalLibrary
@@ -15,24 +14,15 @@ struct AlbumGridView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 26) {
                 ForEach(albums) { album in
-                    let isActive = activeAlbumTransitionID == album.id
-
                     NavigationLink {
                         AlbumDetailView(album: album, library: library, transitionNamespace: albumTransitionNamespace)
                             .navigationTransition(.zoom(sourceID: album.id, in: albumTransitionNamespace))
-                            .onDisappear {
-                                activeAlbumTransitionID = nil
-                            }
                     } label: {
                         AlbumCard(album: album)
-                            // iOS 26 can keep the live transition source attached to
-                            // the ScrollView after a zoom navigation. That makes the
-                            // scroll gesture appear locked for a short period after
-                            // returning. Keep the visible card out of the transition
-                            // renderer and use a tiny phantom source instead.
-                            .opacity(isActive ? 0 : 1)
-                            .animation(.easeOut(duration: 0.16), value: isActive)
                             .background {
+                                // A separate, tiny source keeps the zoom transition
+                                // from taking the real card out of the render tree.
+                                // The visible card must remain present during dismissal.
                                 Circle()
                                     .fill(.black.opacity(0.001))
                                     .frame(width: 1, height: 1)
@@ -40,11 +30,6 @@ struct AlbumGridView: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            activeAlbumTransitionID = album.id
-                        }
-                    )
                 }
             }
             .padding(.horizontal, 22)
