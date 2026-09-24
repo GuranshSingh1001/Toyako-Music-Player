@@ -81,8 +81,7 @@ struct AlbumDetailView: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let isPortrait = width < 760 || verticalSizeClass == .regular
-            let isWide = width >= 900 && !isPortrait
+            let isWide = width >= 560 && verticalSizeClass != .regular
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -109,121 +108,132 @@ struct AlbumDetailView: View {
         }
     }
 
-    // MARK: iPad / Landscape
+    // MARK: Album Hero — same visual language as the iPad Artist page
 
     private func wideHero(width: CGFloat) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            // Match the artist detail experience: the artwork becomes the hero
-            // rather than sitting alone in the middle of a large empty page.
-            LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 0)
-                .frame(maxWidth: .infinity)
-                .frame(height: 390)
-                .clipped()
-                .overlay {
-                    LinearGradient(
-                        colors: [
-                            .black.opacity(0.04),
-                            .black.opacity(0.28),
-                            .black.opacity(0.90)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+        let artworkSize = min(max(width * 0.38, 280), 520)
+
+        return HStack(alignment: .center, spacing: min(max(width * 0.06, 32), 88)) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("ALBUM")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.5)
+                    .foregroundStyle(.secondary)
+
+                Text(album.name)
+                    .font(.system(size: min(max(width * 0.055, 38), 58), weight: .bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+
+                Text(album.artist)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 12) {
+                    playButton
+                    shuffleButton
                 }
-
-            HStack(alignment: .bottom, spacing: 26) {
-                LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 18)
-                    .frame(width: min(230, width * 0.22), height: min(230, width * 0.22))
-                    .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
-                    .scaleEffect(artworkVisible ? 1 : 0.94)
-                    .opacity(artworkVisible ? 1 : 0)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("ALBUM")
-                        .font(.caption.weight(.bold))
-                        .tracking(1.3)
-                        .foregroundStyle(.white.opacity(0.78))
-
-                    Text(album.name)
-                        .font(.system(size: min(42, width * 0.043), weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.72)
-
-                    Text(album.artist)
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .lineLimit(2)
-
-                    Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.76))
-
-                    HStack(spacing: 12) {
-                        playButton
-                        shuffleButton
-                    }
-                    .padding(.top, 5)
-                }
-
-                Spacer(minLength: 0)
+                .padding(.top, 8)
             }
-            .frame(maxWidth: 1120)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 36)
-            .padding(.bottom, 28)
+
+            LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 24)
+                .frame(width: artworkSize, height: artworkSize)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
+                .scaleEffect(artworkVisible ? 1 : 0.92)
+                .opacity(artworkVisible ? 1 : 0)
         }
-        .frame(height: 390)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .padding(.horizontal, 24)
-        .padding(.top, 18)
+        .padding(.horizontal, min(max(width * 0.055, 32), 88))
+        .frame(maxWidth: 1280)
+        .frame(maxWidth: .infinity)
+        .frame(height: min(max(artworkSize + 30, 360), 500))
+        .padding(.top, 8)
     }
 
-    // MARK: Portrait / Narrow / Resized
-
     private func compactHero(width: CGFloat) -> some View {
-        let artworkSize = min(max(width * 0.48, 180), 250)
-        let veryNarrow = width < 520
+        if width >= 420 {
+            return AnyView(
+                HStack(spacing: 24) {
+                    LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 20)
+                        .frame(width: min(max(width * 0.40, 180), 250), height: min(max(width * 0.40, 180), 250))
+                        .shadow(color: .black.opacity(0.25), radius: 22, y: 12)
+                        .scaleEffect(artworkVisible ? 1 : 0.92)
+                        .opacity(artworkVisible ? 1 : 0)
 
-        return VStack(spacing: 12) {
-            LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 20)
-                .frame(width: artworkSize, height: artworkSize)
-                .shadow(color: .black.opacity(0.28), radius: 22, y: 12)
-                .scaleEffect(artworkVisible ? 1 : 0.94)
-                .opacity(artworkVisible ? 1 : 0)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("ALBUM")
+                            .font(.caption.weight(.bold))
+                            .tracking(1.3)
+                            .foregroundStyle(.secondary)
 
-            Text("ALBUM")
-                .font(.caption.weight(.bold))
-                .tracking(1.25)
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
+                        Text(album.name)
+                            .font(.system(size: min(max(width * 0.075, 30), 40), weight: .bold))
+                            .lineLimit(2)
 
-            Text(album.name)
-                .font(.system(size: veryNarrow ? 28 : 34, weight: .bold))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.72)
+                        Text(album.artist)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
 
-            Text(album.artist)
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
+                        Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
 
-            Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 12) {
-                playButton
-                shuffleButton
-            }
-            .padding(.top, 3)
+                        HStack(spacing: 10) {
+                            playButton
+                            shuffleButton
+                        }
+                        .padding(.top, 3)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+            )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, min(max(width * 0.07, 18), 34))
-        .padding(.top, 18)
-        .padding(.bottom, 18)
+
+        return AnyView(
+            VStack(spacing: 10) {
+                LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 20)
+                    .frame(width: min(max(width * 0.62, 170), 230), height: min(max(width * 0.62, 170), 230))
+                    .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
+                    .scaleEffect(artworkVisible ? 1 : 0.92)
+                    .opacity(artworkVisible ? 1 : 0)
+
+                Text("ALBUM")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+
+                Text(album.name)
+                    .font(.system(size: 28, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+
+                Text(album.artist)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    playButton
+                    shuffleButton
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+        )
     }
 
     private var playButton: some View {

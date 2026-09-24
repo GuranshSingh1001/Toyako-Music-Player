@@ -106,9 +106,7 @@ struct ArtistDetailView: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            // Use the same hero treatment at every window size. The compact
-            // layout is only a spatial adaptation, not the old detail-page UI.
-            let wide = width >= 700
+            let wide = width >= 560
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -140,156 +138,163 @@ struct ArtistDetailView: View {
     }
 
     private var wideHero: some View {
-        ZStack(alignment: .bottomLeading) {
-            ArtistArtworkView(artistName: artist.name, size: 420)
-                .frame(maxWidth: .infinity, maxHeight: 420, alignment: .center)
-                .blur(radius: 0.2)
-                .overlay {
-                    LinearGradient(
-                        colors: [.black.opacity(0.05), .black.opacity(0.72)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let artworkSize = min(max(width * 0.42, 300), 560)
+
+            HStack(alignment: .center, spacing: min(max(width * 0.06, 32), 90)) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("ARTIST")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.5)
+                        .foregroundStyle(.secondary)
+
+                    Text(artist.name)
+                        .font(.system(size: min(max(width * 0.055, 38), 58), weight: .bold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+
+                    Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            guard !sortedTracks.isEmpty else { return }
+                            audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
+                        } label: {
+                            Label("Play", systemImage: "play.fill")
+                                .font(.headline)
+                                .frame(minWidth: 120)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button {
+                            guard !sortedTracks.isEmpty else { return }
+                            audioManager.startQueue(
+                                tracks: sortedTracks,
+                                startIndex: Int.random(in: 0..<sortedTracks.count),
+                                shuffle: true
+                            )
+                        } label: {
+                            Label("Shuffle", systemImage: "shuffle")
+                                .font(.headline)
+                                .frame(minWidth: 120)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.top, 8)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("ARTIST")
-                    .font(.caption.weight(.bold))
-                    .tracking(1.3)
-                    .foregroundStyle(.white.opacity(0.78))
-
-                Text(artist.name)
-                    .font(.system(size: 42, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-
-                Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.78))
-
-                Button {
-                    guard !sortedTracks.isEmpty else { return }
-                    audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .font(.headline)
-                        .padding(.horizontal, 16)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.white)
-                .foregroundStyle(.black)
-                .padding(.top, 6)
+                ArtistArtworkView(artistName: artist.name, size: artworkSize)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
+                    .scaleEffect(heroVisible ? 1 : 0.92)
+                    .opacity(heroVisible ? 1 : 0)
             }
-            .padding(.horizontal, 42)
-            .padding(.bottom, 30)
+            .padding(.horizontal, min(max(width * 0.055, 32), 88))
+            .frame(maxWidth: 1280)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(height: 420)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .scaleEffect(heroVisible ? 1 : 0.985)
-        .opacity(heroVisible ? 1 : 0)
+        .frame(height: min(max(artworkHeroHeight, 360), 590))
+        .padding(.top, 8)
+    }
+
+    private var artworkHeroHeight: CGFloat {
+        470
     }
 
     private func compactHero(maxWidth: CGFloat) -> some View {
-        let isVeryNarrow = maxWidth < 520
-        let artworkSize = isVeryNarrow
-            ? min(maxWidth * 0.62, 250)
-            : min(maxWidth * 0.38, 300)
-
-        return Group {
-            if isVeryNarrow {
-                // Phone / very narrow window: retain the visual hierarchy of
-                // the large hero while keeping the content compact.
-                VStack(spacing: 14) {
-                    ArtistArtworkView(artistName: artist.name, size: artworkSize)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
-                        .scaleEffect(heroVisible ? 1 : 0.94)
-                        .opacity(heroVisible ? 1 : 0)
-
-                    heroMetadata(centered: true)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 26)
-            } else {
-                // Resized iPad / narrow desktop window: use the same horizontal
-                // composition as the landscape hero, scaled to the available width.
-                HStack(spacing: 26) {
-                    ArtistArtworkView(artistName: artist.name, size: artworkSize)
+        // Keep the same artist-page visual language in smaller windows.
+        // Only the geometry changes; the hero never falls back to the old page.
+        if maxWidth >= 420 {
+            return AnyView(
+                HStack(spacing: 24) {
+                    ArtistArtworkView(artistName: artist.name, size: min(maxWidth * 0.42, 250))
                         .clipShape(Circle())
                         .shadow(color: .black.opacity(0.25), radius: 22, y: 12)
-                        .scaleEffect(heroVisible ? 1 : 0.94)
+                        .scaleEffect(heroVisible ? 1 : 0.92)
                         .opacity(heroVisible ? 1 : 0)
 
-                    heroMetadata(centered: false)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ARTIST")
+                            .font(.caption.weight(.bold))
+                            .tracking(1.3)
+                            .foregroundStyle(.secondary)
+
+                        Text(artist.name)
+                            .font(.system(size: min(maxWidth * 0.075, 30), weight: .bold))
+                            .lineLimit(2)
+
+                        Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                guard !sortedTracks.isEmpty else { return }
+                                audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
+                            } label: {
+                                Label("Play", systemImage: "play.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button {
+                                guard !sortedTracks.isEmpty else { return }
+                                audioManager.startQueue(tracks: sortedTracks, startIndex: Int.random(in: 0..<sortedTracks.count), shuffle: true)
+                            } label: {
+                                Label("Shuffle", systemImage: "shuffle")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 22)
-                .padding(.bottom, 28)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .background {
-            LinearGradient(
-                colors: [.black.opacity(0.03), .black.opacity(0.18)],
-                startPoint: .top,
-                endPoint: .bottom
+                .padding(.horizontal, 24)
+                .padding(.vertical, 22)
+                .frame(maxWidth: .infinity)
             )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .padding(.horizontal, isVeryNarrow ? 14 : 20)
-        .padding(.top, 14)
-    }
 
-    private func heroMetadata(centered: Bool) -> some View {
-        VStack(alignment: centered ? .center : .leading, spacing: 8) {
-            Text("ARTIST")
-                .font(.caption.weight(.bold))
-                .tracking(1.3)
-                .foregroundStyle(.secondary)
+        return AnyView(
+            VStack(spacing: 12) {
+                ArtistArtworkView(artistName: artist.name, size: min(maxWidth * 0.62, 240))
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
+                    .scaleEffect(heroVisible ? 1 : 0.92)
+                    .opacity(heroVisible ? 1 : 0)
 
-            Text(artist.name)
-                .font(.system(size: 34, weight: .bold))
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
-                .multilineTextAlignment(centered ? .center : .leading)
+                Text("ARTIST")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
 
-            Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(centered ? .center : .leading)
+                Text(artist.name)
+                    .font(.system(size: 28, weight: .bold))
+                    .multilineTextAlignment(.center)
 
-            HStack(spacing: 10) {
-                Button {
-                    guard !sortedTracks.isEmpty else { return }
-                    audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .font(.headline)
-                        .frame(minWidth: 100)
+                Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    Button { audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false) } label: {
+                        Label("Play", systemImage: "play.fill")
+                    }.buttonStyle(.borderedProminent)
+                    Button {
+                        guard !sortedTracks.isEmpty else { return }
+                        audioManager.startQueue(tracks: sortedTracks, startIndex: Int.random(in: 0..<sortedTracks.count), shuffle: true)
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                    }.buttonStyle(.bordered)
                 }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    guard !sortedTracks.isEmpty else { return }
-                    audioManager.startQueue(
-                        tracks: sortedTracks,
-                        startIndex: Int.random(in: 0..<sortedTracks.count),
-                        shuffle: true
-                    )
-                } label: {
-                    Label("Shuffle", systemImage: "shuffle")
-                        .font(.headline)
-                        .frame(minWidth: 100)
-                }
-                .buttonStyle(.bordered)
             }
-            .padding(.top, 5)
-        }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 18)
+        )
     }
 
     private func albumsSection(wide: Bool) -> some View {
@@ -306,16 +311,15 @@ struct ArtistDetailView: View {
                 }
                 .padding(.horizontal, 24)
             } else {
-                let columns = max(1, Int((UIScreen.main.bounds.width - 72) / 170))
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: min(columns, 2)),
-                    spacing: 20
-                ) {
-                    ForEach(albums) { album in
-                        albumCard(album)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(albums) { album in
+                            albumCard(album)
+                                .frame(width: min(190, UIScreen.main.bounds.width * 0.42))
+                        }
                     }
+                    .padding(.horizontal, 24)
                 }
-                .padding(.horizontal, 24)
             }
         }
         .padding(.vertical, 22)
