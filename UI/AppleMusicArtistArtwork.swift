@@ -1,11 +1,12 @@
+import SwiftUI
 import Foundation
 import MusicKit
 import UIKit
 
 /// Fetches artist artwork from Apple's Apple Music catalog and caches it locally.
 ///
-/// The artist name from the user's local files is used only as the search term.
-/// The returned artwork itself comes from Apple's catalog through MusicKit.
+/// Artist names come from the user's local music metadata. The returned artwork
+/// comes from Apple's catalog through MusicKit.
 actor AppleMusicArtistArtworkService {
     static let shared = AppleMusicArtistArtworkService()
 
@@ -25,8 +26,7 @@ actor AppleMusicArtistArtworkService {
 
     func imageData(for artistName: String) async -> Data? {
         let name = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty,
-              name.lowercased() != "unknown artist" else {
+        guard !name.isEmpty, name.lowercased() != "unknown artist" else {
             return nil
         }
 
@@ -68,11 +68,9 @@ actor AppleMusicArtistArtworkService {
             )
             request.limit = 5
 
-            let response = try await request.response()
-            let artists = Array(response.artists)
+            let searchResponse = try await request.response()
+            let artists = Array(searchResponse.artists)
 
-            // Prefer an exact artist-name match. This prevents searches such as
-            // "Aimer" from accidentally selecting a similarly named artist.
             let normalizedQuery = normalize(artistName)
             let artist = artists.first(where: {
                 normalize($0.name) == normalizedQuery
@@ -87,9 +85,9 @@ actor AppleMusicArtistArtworkService {
             var urlRequest = URLRequest(url: url)
             urlRequest.cachePolicy = .returnCacheDataElseLoad
 
-            let (data, response) = try await session.data(for: urlRequest)
+            let (data, urlResponse) = try await session.data(for: urlRequest)
 
-            guard let httpResponse = response as? HTTPURLResponse,
+            guard let httpResponse = urlResponse as? HTTPURLResponse,
                   200..<300 ~= httpResponse.statusCode,
                   !data.isEmpty,
                   UIImage(data: data) != nil else {
@@ -171,35 +169,15 @@ actor AppleMusicArtistArtworkService {
     }
 }
 
-@MainActor
-final class ArtistArtworkViewModel: ObservableObject {
-    @Published private(set) var image: UIImage?
-    @Published private(set) var isLoading = false
-
-    private var loadedArtist: String?
-
-    func load(artistName: String) async {
-        guard loadedArtist != artistName else { return }
-        loadedArtist = artistName
-        isLoading = true
-
-        let data = await AppleMusicArtistArtworkService.shared.imageData(for: artistName)
-
-        guard loadedArtist == artistName else { return }
-        image = data.flatMap(UIImage.init(data:))
-        isLoading = false
-    }
-}
-
 struct AppleMusicArtistArtworkView: View {
     let artistName: String
     let size: CGFloat
 
-    @StateObject private var model = ArtistArtworkViewModel()
+    @State private var image: UIImage?
 
     var body: some View {
         Group {
-            if let image = model.image {
+            if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -216,7 +194,9 @@ struct AppleMusicArtistArtworkView: View {
         .clipShape(Circle())
         .contentShape(Circle())
         .task(id: artistName) {
-            await model.load(artistName: artistName)
+            let data = await AppleMusicArtistArtworkService.shared.imageData(for: artistName)
+            guard !Task.isCancelled else { return }
+            image = data.flatMap(UIImage.init(data:))
         }
     }
 }
