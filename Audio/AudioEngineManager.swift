@@ -60,6 +60,11 @@ class AudioEngineManager: ObservableObject {
     private var didAttemptRestore =
         false
 
+    /// True only when playback reached the end of the final queued track
+    /// with repeat disabled. This lets the Play button replay that last track
+    /// instead of calling AVPlayer.play() on an already-ended item.
+    private var didReachEndOfQueue =
+        false
 
 
     // MARK: Published State
@@ -1020,6 +1025,10 @@ class AudioEngineManager: ObservableObject {
         currentTrack =
             track
 
+        // Loading a track means playback has a valid, non-terminal state again.
+        didReachEndOfQueue =
+            false
+
         recordRecentlyPlayed(track)
 
         pendingSeekTarget = nil
@@ -1127,10 +1136,13 @@ class AudioEngineManager: ObservableObject {
             if queueIndex + 1 < queue.count {
                 forward()
             } else {
+                // The queue is exhausted. Stop here and leave the player at
+                // the actual end position. Nothing is restarted automatically.
+                // A later explicit Play action will use didReachEndOfQueue to
+                // reload the selected last track from the beginning.
                 player.pause()
                 isPlaying = false
-                currentTime = 0
-                playbackProgress = 0
+                didReachEndOfQueue = true
                 updatePlaybackState()
             }
         }
@@ -1236,6 +1248,23 @@ class AudioEngineManager: ObservableObject {
 
             isPlaying =
                 false
+
+        } else if didReachEndOfQueue {
+
+            // AVPlayer will not restart an item that has already reached its
+            // end merely because play() is called again. Re-load the selected
+            // final track so Play behaves like a normal replay button.
+            let lastTrack =
+                queue.indices.contains(queueIndex)
+                    ? queue[queueIndex]
+                    : currentTrack
+
+            if let lastTrack {
+                play(track: lastTrack)
+            } else {
+                player.play()
+                isPlaying = true
+            }
 
         } else {
 
