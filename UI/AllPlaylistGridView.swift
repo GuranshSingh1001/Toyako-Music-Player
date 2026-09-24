@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AllPlaylistsGridView: View {
+    @Namespace private var playlistTransitionNamespace
+
     let playlists: [Playlist]
     let library: LocalLibrary
 
@@ -34,6 +36,7 @@ struct AllPlaylistsGridView: View {
                         )
                         .navigationTitle(playlist.name)
                         .navigationBarTitleDisplayMode(.inline)
+                        .navigationTransition(.zoom(sourceID: playlist.id, in: playlistTransitionNamespace))
                     } label: {
                         VStack(alignment: .leading, spacing: 9) {
                             PlaylistArtwork(
@@ -41,6 +44,7 @@ struct AllPlaylistsGridView: View {
                                 playlistName: playlist.name,
                                 playlistID: playlist.id
                             )
+                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
                             .aspectRatio(1, contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .shadow(color: .black.opacity(0.18), radius: 10, y: 6)

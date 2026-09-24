@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct HomeView: View {
+    @Namespace private var homeAlbumTransitionNamespace
+    @Namespace private var homeArtistTransitionNamespace
+    @Namespace private var homePlaylistTransitionNamespace
+
     let tracks: [LocalTrack]
     let albums: [AlbumGroup]
     let artists: [ArtistGroup]
@@ -216,12 +220,13 @@ struct HomeView: View {
             HStack(spacing: 14) {
                 ForEach(items) { album in
                     NavigationLink {
-                        AlbumDetailView(album: album, library: library)
+                        AlbumDetailView(album: album, library: library, transitionNamespace: homeAlbumTransitionNamespace)
                             .navigationTitle(album.name)
                             .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyAlbumArtwork(url: album.artworkURL)
+                                .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace)
                                 .frame(width: 145, height: 145)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             Text(album.name)
@@ -246,10 +251,11 @@ struct HomeView: View {
             HStack(spacing: 16) {
                 ForEach(items) { artist in
                     NavigationLink {
-                        ArtistDetailView(artist: artist, library: library)
+                        ArtistDetailView(artist: artist, library: library, transitionNamespace: homeArtistTransitionNamespace)
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
+                                .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
 
                             Text(artist.name)
                                 .font(.subheadline.weight(.semibold))
@@ -301,6 +307,7 @@ struct HomeView: View {
                         )
                         .navigationTitle(playlist.name)
                         .navigationBarTitleDisplayMode(.inline)
+                        .navigationTransition(.zoom(sourceID: playlist.id, in: homePlaylistTransitionNamespace))
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             PlaylistArtwork(
@@ -308,6 +315,7 @@ struct HomeView: View {
                                 playlistName: playlist.name,
                                 playlistID: playlist.id
                             )
+                            .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace)
                             .frame(width: 145, height: 145)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 

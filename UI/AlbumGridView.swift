@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AlbumGridView: View {
+    @Namespace private var albumTransitionNamespace
+
     let albums: [AlbumGroup]
     let library: LocalLibrary
 
@@ -13,9 +15,10 @@ struct AlbumGridView: View {
             LazyVGrid(columns: columns, spacing: 26) {
                 ForEach(albums) { album in
                     NavigationLink {
-                        AlbumDetailView(album: album, library: library)
+                        AlbumDetailView(album: album, library: library, transitionNamespace: albumTransitionNamespace)
                     } label: {
                         AlbumCard(album: album)
+                            .matchedTransitionSource(id: album.id, in: albumTransitionNamespace)
                     }
                     .buttonStyle(.plain)
                 }
@@ -59,6 +62,7 @@ private struct AlbumCard: View {
 struct AlbumDetailView: View {
     let album: AlbumGroup
     let library: LocalLibrary
+    let transitionNamespace: Namespace.ID
 
     @EnvironmentObject var audioManager: AudioEngineManager
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -97,6 +101,7 @@ struct AlbumDetailView: View {
         }
         .navigationTitle(album.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationTransition(.zoom(sourceID: album.id, in: transitionNamespace))
         .onAppear {
             withAnimation(.spring(response: 0.52, dampingFraction: 0.84)) {
                 artworkVisible = true

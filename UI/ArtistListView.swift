@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ArtistListView: View {
+    @Namespace private var artistTransitionNamespace
+
     let artists: [ArtistGroup]
     let library: LocalLibrary
     @EnvironmentObject var audioManager: AudioEngineManager
@@ -18,9 +20,10 @@ struct ArtistListView: View {
                 ) {
                     ForEach(artists) { artist in
                         NavigationLink {
-                            ArtistDetailView(artist: artist, library: library)
+                            ArtistDetailView(artist: artist, library: library, transitionNamespace: artistTransitionNamespace)
                         } label: {
                             artistGridCard(artist)
+                                .matchedTransitionSource(id: artist.id, in: artistTransitionNamespace)
                         }
                         .buttonStyle(.plain)
                     }
@@ -68,6 +71,7 @@ struct ArtistListView: View {
 struct ArtistDetailView: View {
     let artist: ArtistGroup
     let library: LocalLibrary
+    let transitionNamespace: Namespace.ID
 
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var heroVisible = false
@@ -125,6 +129,7 @@ struct ArtistDetailView: View {
         }
         .navigationTitle(artist.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationTransition(.zoom(sourceID: artist.id, in: transitionNamespace))
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
                 heroVisible = true
@@ -270,7 +275,7 @@ struct ArtistDetailView: View {
 
     private func albumCard(_ album: AlbumGroup) -> some View {
         NavigationLink {
-            AlbumDetailView(album: album, library: library)
+            AlbumDetailView(album: album, library: library, transitionNamespace: transitionNamespace)
         } label: {
             VStack(alignment: .leading, spacing: 7) {
                 LazyAlbumArtwork(url: album.artworkURL)
@@ -287,6 +292,7 @@ struct ArtistDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .matchedTransitionSource(id: album.id, in: transitionNamespace)
         }
         .buttonStyle(.plain)
     }
