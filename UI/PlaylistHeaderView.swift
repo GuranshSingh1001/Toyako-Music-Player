@@ -30,8 +30,8 @@ struct PlaylistHeaderView: View {
             let width = proxy.size.width
             let wide = width >= 820
             let height: CGFloat = wide
-                ? min(390, max(330, width * 0.30))
-                : min(350, max(290, width * 0.76))
+                ? min(410, max(360, width * 0.31))
+                : min(400, max(340, width * 0.50))
 
             ZStack(alignment: .bottomLeading) {
                 marqueeArtwork(width: width, height: height)
@@ -97,40 +97,48 @@ struct PlaylistHeaderView: View {
             // The navigation zoom handles the page entrance. Avoid another
             // large hero animation competing with the scroll view on return.
         }
-        .frame(height: 390)
+        .frame(height: 400)
     }
 
     private func marqueeArtwork(width: CGFloat, height: CGFloat) -> some View {
-        // Build a dense rectangular collage that is deliberately larger than the
-        // header. The parent clips it to a clean rectangle, so there is never an
-        // exposed empty area while the collage slowly travels to the left.
-        let tile = min(150, max(116, height * 0.39))
-        let rowSpacing = min(18, max(10, tile * 0.10))
+        // The artwork is intentionally built as one oversized rectangular sheet:
+        // several rows of individually tilted square covers with real gaps between
+        // them. The sheet is larger than the header and the header clips its edges.
+        let tile = min(168, max(126, height * 0.42))
+        let horizontalSpacing = min(18, max(11, tile * 0.085))
+        let verticalSpacing = min(20, max(12, tile * 0.10))
+        let rowHeight = tile + verticalSpacing
+        let rowCount = 4
 
         return ZStack {
             Color.black
 
-            VStack(spacing: rowSpacing) {
-                ForEach(0..<3, id: \.self) { row in
+            VStack(spacing: verticalSpacing) {
+                ForEach(0..<rowCount, id: \.self) { row in
                     marqueeRow(
                         tile: tile,
                         row: row,
                         width: width,
-                        height: height
+                        spacing: horizontalSpacing
                     )
+                    .frame(height: tile)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .rotationEffect(.degrees(-0.55))
-            .scaleEffect(1.10)
+            .frame(
+                width: width + tile * 2,
+                height: rowHeight * CGFloat(rowCount),
+                alignment: .leading
+            )
+            .offset(y: -tile * 0.62)
+            .rotationEffect(.degrees(-1.15))
+            .scaleEffect(1.06)
         }
         .overlay {
             LinearGradient(
                 colors: [
-                    .black.opacity(0.03),
+                    .black.opacity(0.02),
                     .clear,
-                    .black.opacity(0.08)
+                    .black.opacity(0.10)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -142,34 +150,42 @@ struct PlaylistHeaderView: View {
         tile: CGFloat,
         row: Int,
         width: CGFloat,
-        height: CGFloat
+        spacing: CGFloat
     ) -> some View {
         var generator = PlaylistHeaderRandom(seed: stableSeed &+ row * 7919)
 
-        // One segment is duplicated several times. We animate by exactly one
-        // segment width, making the loop seamless instead of exposing blank space.
-        let baseCount = max(8, Int(ceil(width / tile)) + 2)
-        let spacing = min(16, max(8, tile * 0.075))
+        // A segment contains enough covers to extend well beyond both edges.
+        // Two extra copies make the leftward animation wrap without a blank edge.
+        let baseCount = max(7, Int(ceil((width + tile * 2) / (tile + spacing))) + 1)
         let segmentWidth = tile * CGFloat(baseCount) + spacing * CGFloat(baseCount - 1)
 
         var shuffled = artworkURLs
         generator.shuffle(&shuffled)
 
         var rotations: [Double] = []
-        var jitters: [CGFloat] = []
+        var verticalOffsets: [CGFloat] = []
         rotations.reserveCapacity(baseCount)
-        jitters.reserveCapacity(baseCount)
+        verticalOffsets.reserveCapacity(baseCount)
 
-        for _ in 0..<baseCount {
-            rotations.append(generator.nextDouble(in: -4.2...4.2))
-            jitters.append(CGFloat(generator.nextDouble(in: -0.035...0.035)) * tile)
+        for index in 0..<baseCount {
+            // Strong enough to be visibly tilted, but not so strong that the
+            // covers look chaotic.
+            let baseRotation = generator.nextDouble(in: -7.0...7.0)
+            let alternatingBias = row.isMultiple(of: 2) ? 0.8 : -0.8
+            rotations.append(baseRotation + alternatingBias)
+            verticalOffsets.append(
+                CGFloat(generator.nextDouble(in: -0.045...0.045)) * tile
+            )
+            _ = index
         }
 
-        let startOffset = CGFloat(generator.nextDouble(in: -0.30...0.02)) * tile
-        let verticalJitter = CGFloat(generator.nextDouble(in: -0.035...0.035)) * tile
-        let duration = 38.0 + Double((stableSeed + row * 11) % 9)
+        let startOffset = CGFloat(generator.nextDouble(in: -0.45...0.05)) * tile
+        let verticalJitter = CGFloat(generator.nextDouble(in: -0.025...0.025)) * tile
+        let duration = 41.0 + Double((stableSeed + row * 13) % 8)
 
         return HStack(spacing: spacing) {
+            // Three identical segments are rendered, but only one segment is
+            // travelled per animation cycle. This gives a continuous marquee.
             ForEach(0..<(baseCount * 3), id: \.self) { index in
                 let baseIndex = index % baseCount
                 let url = shuffled[baseIndex % shuffled.count]
@@ -177,12 +193,12 @@ struct PlaylistHeaderView: View {
                 LazyArtwork(
                     url: url,
                     size: tile,
-                    cornerRadius: tile * 0.10
+                    cornerRadius: tile * 0.095
                 )
                 .rotationEffect(.degrees(rotations[baseIndex]))
-                .offset(y: jitters[baseIndex])
-                .shadow(color: .black.opacity(0.28), radius: 7, y: 4)
-                .zIndex(Double(index))
+                .offset(y: verticalOffsets[baseIndex])
+                .shadow(color: .black.opacity(0.32), radius: 8, y: 4)
+                .zIndex(Double(baseCount * 3 - index))
             }
         }
         .frame(width: segmentWidth * 3, height: tile, alignment: .leading)
@@ -193,7 +209,6 @@ struct PlaylistHeaderView: View {
                 duration: duration
             )
         )
-        .frame(maxWidth: .infinity, alignment: .leading)
         .offset(y: verticalJitter)
     }
 
