@@ -100,6 +100,7 @@ struct PlaylistHeaderView: View {
         .frame(height: 410)
     }
 
+    @ViewBuilder
     private func marqueeArtwork(width: CGFloat, height: CGFloat) -> some View {
         // Build the artwork as one large, staggered collage rather than a normal
         // row/column grid. The collage is deliberately larger than the header and
@@ -111,12 +112,11 @@ struct PlaylistHeaderView: View {
         let segmentWidth = max(width * 1.55, 1180)
         let duration = 46.0 + Double(stableSeed % 7)
 
-        guard !artworkURLs.isEmpty else {
-            return Color.black
+        if artworkURLs.isEmpty {
+            Color.black
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-
-        return ZStack {
+        } else {
+            ZStack {
             Color.black
 
             HStack(spacing: 0) {
@@ -151,18 +151,19 @@ struct PlaylistHeaderView: View {
         }
         .scaleEffect(1.08)
         .clipped()
-        .overlay {
-            // Very light edge shading keeps the artwork rich while leaving the
-            // covers themselves clearly visible.
-            LinearGradient(
-                colors: [
-                    .black.opacity(0.03),
-                    .clear,
-                    .black.opacity(0.05)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            .overlay {
+                // Very light edge shading keeps the artwork rich while leaving the
+                // covers themselves clearly visible.
+                LinearGradient(
+                    colors: [
+                        .black.opacity(0.03),
+                        .clear,
+                        .black.opacity(0.05)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
         }
     }
 
