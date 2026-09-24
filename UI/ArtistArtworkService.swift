@@ -4,7 +4,7 @@ import UIKit
 
 // MARK: - Artist Artwork
 // Uses public metadata services instead of Apple Music / MusicKit.
-// Source order: Deezer -> iTunes Search. Results are cached on disk.
+// Source order: Deezer -> iTunes Search -> Wikidata/Wikimedia Commons. Results are cached on disk.
 
 enum ArtistArtworkSource: String {
     case deezer = "Deezer"
@@ -13,14 +13,6 @@ enum ArtistArtworkSource: String {
     case none = "None"
 }
 
-struct ArtistArtworkDebugResult: Sendable {
-    let artist: String
-    let source: ArtistArtworkSource
-    let matchedName: String?
-    let imageURL: String?
-    let bytes: Int
-    let message: String
-}
 
 actor ArtistArtworkService {
     static let shared = ArtistArtworkService()
@@ -38,72 +30,45 @@ actor ArtistArtworkService {
         session = URLSession(configuration: configuration)
     }
 
-    func imageData(for artistName: String) async -> Data? {
-        let result = await fetch(artistName: artistName, debug: false)
+    func imageData(for artistName: String, allowNetwork: Bool) async -> Data? {
+        let result = await fetch(artistName: artistName, allowNetwork: allowNetwork)
         return result.data
     }
 
-    func debugFetch(artistName: String) async -> ArtistArtworkDebugResult {
-        let name = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = cacheKey(for: name)
-
-        // Debug intentionally bypasses the cache so the result identifies the
-        // actual provider and matching path used by the current request.
-        let result = await fetchNetworkDetailed(artistName: name)
-        if let data = result.data {
-            memoryCache[key] = data
-            writeDiskCache(data, for: key)
-        }
-        return ArtistArtworkDebugResult(
-            artist: name,
-            source: result.source,
-            matchedName: result.matchedName,
-            imageURL: result.imageURL,
-            bytes: result.data?.count ?? 0,
-            message: result.message
-        )
-    }
-
-    func clearCache() {
+    func clearCache() -> Int {
+        let count = (try? fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil).count) ?? 0
         memoryCache.removeAll()
         try? fileManager.removeItem(at: cacheDirectory)
+        return count
     }
 
     private struct FetchResult {
         let data: Data?
-        let debug: ArtistArtworkDebugResult
     }
 
-    private func fetch(artistName: String, debug: Bool = false) async -> FetchResult {
+    private func fetch(artistName: String, allowNetwork: Bool) async -> FetchResult {
         let name = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.lowercased() != "unknown artist" else {
-            return FetchResult(data: nil, debug: ArtistArtworkDebugResult(
-                artist: artistName, source: .none, matchedName: nil, imageURL: nil,
-                bytes: 0, message: "Invalid or empty artist name."
-            ))
+            return FetchResult(data: nil)
         }
 
         let key = cacheKey(for: name)
         if let cached = memoryCache[key] {
-            return FetchResult(data: cached, debug: ArtistArtworkDebugResult(
-                artist: name, source: .none, matchedName: nil, imageURL: nil,
-                bytes: cached.count, message: "Loaded from memory cache."
-            ))
+            return FetchResult(data: cached)
         }
         if let cached = readDiskCache(for: key) {
             memoryCache[key] = cached
-            return FetchResult(data: cached, debug: ArtistArtworkDebugResult(
-                artist: name, source: .none, matchedName: nil, imageURL: nil,
-                bytes: cached.count, message: "Loaded from disk cache."
-            ))
+            return FetchResult(data: cached)
+        }
+
+        // Automatic network downloads are opt-in. Existing cached artwork is
+        // still returned above even when this is disabled.
+        guard allowNetwork else {
+            return FetchResult(data: nil)
         }
 
         if let existing = inFlight[key] {
-            let data = await existing.value
-            return FetchResult(data: data, debug: ArtistArtworkDebugResult(
-                artist: name, source: .none, matchedName: nil, imageURL: nil,
-                bytes: data?.count ?? 0, message: "Loaded from an existing request."
-            ))
+            return FetchResult(data: await existing.value)
         }
 
         let task = Task<Data?, Never> { [weak self] in
@@ -113,13 +78,7 @@ actor ArtistArtworkService {
         inFlight[key] = task
         let data = await task.value
         inFlight[key] = nil
-
-        // A normal UI fetch doesn't need the detailed source information.
-        return FetchResult(data: data, debug: ArtistArtworkDebugResult(
-            artist: name, source: data == nil ? .none : .deezer,
-            matchedName: nil, imageURL: nil, bytes: data?.count ?? 0,
-            message: data == nil ? "No artist artwork found." : "Artwork loaded."
-        ))
+        return FetchResult(data: data)
     }
 
     private struct NetworkArtworkResult {
@@ -461,11 +420,15 @@ final class ArtistArtworkViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     private var loadedArtist: String?
 
-    func load(artistName: String) async {
-        guard loadedArtist != artistName else { return }
+    func load(artistName: String, allowNetwork: Bool) async {
+        guard loadedArtist != artistName || image == nil else { return }
         loadedArtist = artistName
         isLoading = true
-        let data = await ArtistArtworkService.shared.imageData(for: artistName)
+
+        // The service always checks its own cache first. `allowNetwork` is
+        // represented by the shared preference, so a disabled toggle still
+        // allows already-downloaded artwork to be displayed.
+        let data = await ArtistArtworkService.shared.imageData(for: artistName, allowNetwork: allowNetwork)
         guard loadedArtist == artistName else { return }
         image = data.flatMap(UIImage.init(data:))
         isLoading = false
@@ -475,73 +438,35 @@ final class ArtistArtworkViewModel: ObservableObject {
 struct ArtistArtworkView: View {
     let artistName: String
     let size: CGFloat
+    @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticDownloads = false
     @StateObject private var model = ArtistArtworkViewModel()
 
     var body: some View {
-        Group {
+        ZStack {
             if let image = model.image {
-                Image(uiImage: image).resizable().scaledToFill()
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
             } else {
-                Circle().fill(Color.gray.opacity(0.3)).overlay {
-                    Image(systemName: "person.fill").foregroundStyle(.secondary)
-                }
+                Circle()
+                    .fill(Color.gray.opacity(0.22))
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: size * 0.34))
+                            .foregroundStyle(.secondary)
+                    }
+            }
+
+            if model.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
             }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .task(id: artistName) { await model.load(artistName: artistName) }
-    }
-}
-
-// MARK: - Debug
-
-struct ArtistArtworkDebugView: View {
-    @State private var artistName = "Aimer"
-    @State private var isTesting = false
-    @State private var result: ArtistArtworkDebugResult?
-
-    var body: some View {
-        Form {
-            Section("Test Artist") {
-                TextField("Artist name", text: $artistName)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled()
-
-                Button {
-                    Task { await runTest() }
-                } label: {
-                    HStack {
-                        Text("Test Artist Artwork")
-                        Spacer()
-                        if isTesting { ProgressView() }
-                    }
-                }
-                .disabled(isTesting || artistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-
-            if let result {
-                Section("Result") {
-                    LabeledContent("Artist", value: result.artist)
-                    LabeledContent("Source", value: result.source.rawValue)
-                    if let matchedName = result.matchedName {
-                        LabeledContent("Matched", value: matchedName)
-                    }
-                    if let imageURL = result.imageURL {
-                        Text(imageURL).font(.caption).textSelection(.enabled)
-                    }
-                    LabeledContent("Image bytes", value: "\(result.bytes)")
-                    Text(result.message)
-                        .foregroundStyle(result.bytes > 0 ? .green : .red)
-                }
-            }
+        .task(id: "\(artistName)|\(automaticDownloads)") {
+            await model.load(artistName: artistName, allowNetwork: automaticDownloads)
         }
-        .navigationTitle("Artist Artwork Debug")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func runTest() async {
-        isTesting = true
-        result = await ArtistArtworkService.shared.debugFetch(artistName: artistName)
-        isTesting = false
     }
 }

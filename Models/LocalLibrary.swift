@@ -853,51 +853,33 @@ class LocalLibrary:
                     }
             )
 
-        let artistDictionary =
-            Dictionary(
-                grouping:
-                    tracks,
-                by: {
+        // Split common multi-artist metadata so a track such as
+        // "Aki Toyosaki, Yoko Hikasa, Satomi Sato" appears under each
+        // individual artist instead of creating one combined artist.
+        var artistDictionary: [String: [LocalTrack]] = [:]
+        var artistDisplayNames: [String: String] = [:]
 
-                    $0.artist
-                        .trimmingCharacters(
-                            in:
-                                .whitespacesAndNewlines
-                        )
-                        .lowercased()
-                }
-            )
+        for track in tracks {
+            let names = Self.splitArtistNames(track.artist)
+            for name in names {
+                let displayName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let key = displayName.lowercased()
+                guard !key.isEmpty, key != "unknown artist" else { continue }
+                artistDictionary[key, default: []].append(track)
+                artistDisplayNames[key] = displayName
+            }
+        }
 
         artists =
             artistDictionary
-                .map {
-                    _,
-                    trackList in
-
-                    let name =
-                        trackList.first {
-                            $0.artist
-                                != "Unknown Artist"
-                        }?
-                        .artist
-                        ??
-                        "Unknown Artist"
-
-                    return ArtistGroup(
-                        name:
-                            name,
-                        tracks:
-                            trackList
+                .map { key, trackList in
+                    ArtistGroup(
+                        name: artistDisplayNames[key] ?? key,
+                        tracks: trackList
                     )
                 }
                 .sorted {
-
-                    $0.name
-                        .localizedCaseInsensitiveCompare(
-                            $1.name
-                        )
-                        ==
-                        .orderedAscending
+                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
                 }
     }
 
@@ -1216,6 +1198,29 @@ class LocalLibrary:
     }
 
     // MARK: - Unified Binary Cache
+
+    private static func splitArtistNames(_ raw: String) -> [String] {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.lowercased() != "unknown artist" else {
+            return []
+        }
+
+        // Metadata commonly uses commas, semicolons, slashes, or explicit
+        // featuring markers for collaborations. Keep ampersands intact here
+        // because names such as "Earth, Wind & Fire" should not be split at &.
+        var value = trimmed
+        value = value.replacingOccurrences(of: #"\s+(?:feat\.?|ft\.?|featuring)\s+"#, with: ",", options: .regularExpression)
+        value = value.replacingOccurrences(of: "；", with: ";")
+        value = value.replacingOccurrences(of: "、", with: ",")
+        value = value.replacingOccurrences(of: " / ", with: ",")
+        value = value.replacingOccurrences(of: ";", with: ",")
+
+        let parts = value.split(separator: ",", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return parts.isEmpty ? [trimmed] : parts
+    }
 
     private func saveUnifiedCache() {
 
