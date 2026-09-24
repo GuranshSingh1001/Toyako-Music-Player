@@ -249,7 +249,7 @@ struct PlaylistArtwork: View {
             [-7, 3, 6, -5, 2, -4, 7, -3, 5],
             [4, -6, 2, 7, -4, 5, -7, 3, -2]
         ]
-        return base[style]
+        return base[style].map(Double.init)
     }
 
     private var emptyArtwork: some View {
