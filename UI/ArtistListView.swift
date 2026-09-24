@@ -52,7 +52,6 @@ struct ArtistListView: View {
                 .clipShape(Circle())
                 .matchedTransitionSource(id: artist.id, in: transitionNamespace) { source in
                     source
-                        .clipShape(Circle())
                         .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
                 }
 

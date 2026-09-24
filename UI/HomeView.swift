@@ -260,9 +260,7 @@ struct HomeView: View {
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
-                                .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace) { source in
-                                    source.clipShape(Circle())
-                                }
+                                .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
 
                             Text(artist.name)
                                 .font(.subheadline.weight(.semibold))
