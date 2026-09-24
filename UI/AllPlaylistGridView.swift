@@ -102,16 +102,14 @@ struct PlaylistArtwork: View {
         stableSeed(for: playlistID ?? UUID())
     }
 
-    private var style: Int {
-        abs(seed) % 8
-    }
-
     private var artworkURLs: [URL] {
         guard !tracks.isEmpty else { return [] }
-        // Always build a dense 4x4 field. Reusing artwork is intentional for
-        // small playlists so there are no empty holes in the square.
-        return (0..<16).map { index in
-            tracks[(index * 3 + abs(seed)) % tracks.count].url
+        var generator = SeededRandom(seed: seed)
+        var indices = Array(0..<tracks.count)
+        generator.shuffle(&indices)
+
+        return (0..<9).map { index in
+            tracks[indices[index % indices.count]].url
         }
     }
 
@@ -123,14 +121,14 @@ struct PlaylistArtwork: View {
                 if artworkURLs.isEmpty {
                     emptyArtwork
                 } else {
-                    denseCollage(side: side)
+                    cleanCollage(side: side)
                 }
 
                 LinearGradient(
                     colors: [
-                        .black.opacity(0.04),
+                        .black.opacity(0.02),
                         .clear,
-                        .black.opacity(0.20)
+                        .black.opacity(0.16)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -140,13 +138,13 @@ struct PlaylistArtwork: View {
             .clipped()
             .contentShape(Rectangle())
             .onAppear {
-                withAnimation(.spring(response: 0.58, dampingFraction: 0.78)) {
+                withAnimation(.spring(response: 0.58, dampingFraction: 0.80)) {
                     revealed = true
                 }
                 withAnimation(
-                    .easeInOut(duration: 8.5 + Double(abs(seed % 5)))
+                    .easeInOut(duration: 8.0 + Double(abs(seed % 4)))
                     .repeatForever(autoreverses: true)
-                    .delay(0.45)
+                    .delay(0.35)
                 ) {
                     drifting = true
                 }
@@ -155,114 +153,78 @@ struct PlaylistArtwork: View {
     }
 
     @ViewBuilder
-    private func denseCollage(side: CGFloat) -> some View {
-        let cardSide = side * 0.285
-        let positions = densePositions(side: side)
-        let rotations = rotationPattern
+    private func cleanCollage(side: CGFloat) -> some View {
+        let cards = collageCards(side: side)
 
         ZStack {
-            ForEach(Array(artworkURLs.enumerated()), id: \.offset) { index, url in
-                let position = positions[index]
-                let rotation = rotations[index]
-                let row = index / 4
-                let phase = CGFloat((index * 11 + abs(seed)) % 7) / 7
-                let drift = drifting
-                    ? -side * (0.018 + phase * 0.026)
-                    : 0
-
+            ForEach(cards) { card in
                 LazyArtwork(
-                    url: url,
-                    size: cardSide,
-                    cornerRadius: cardSide * 0.075
+                    url: card.url,
+                    size: card.size,
+                    cornerRadius: card.size * 0.075
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: cardSide * 0.075, style: .continuous)
-                        .stroke(.white.opacity(0.28), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: card.size * 0.075, style: .continuous)
+                        .stroke(.white.opacity(0.24), lineWidth: 1)
                 }
-                .shadow(color: .black.opacity(0.30), radius: 6, y: 3)
-                .rotationEffect(.degrees(revealed ? rotation : rotation * 2.2))
-                .scaleEffect(revealed ? 1 : 0.76)
+                .shadow(color: .black.opacity(0.24), radius: 7, y: 4)
+                .rotationEffect(.degrees(revealed ? card.rotation : card.rotation * 2.0))
+                .scaleEffect(revealed ? 1 : 0.86)
                 .offset(
-                    x: revealed ? position.width + drift * CGFloat(row + 1) : position.width * 1.35,
-                    y: revealed ? position.height : position.height * 1.35
+                    x: revealed ? card.position.width + (drifting ? card.drift.width : 0) : card.position.width,
+                    y: revealed ? card.position.height + (drifting ? card.drift.height : 0) : card.position.height
                 )
                 .opacity(revealed ? 1 : 0)
                 .animation(
-                    .spring(response: 0.58, dampingFraction: 0.80)
-                        .delay(Double(index) * 0.028),
+                    .spring(response: 0.56, dampingFraction: 0.82)
+                        .delay(Double(card.index) * 0.035),
                     value: revealed
                 )
                 .animation(
-                    .easeInOut(duration: 8.5 + Double(abs(seed % 5)))
+                    .easeInOut(duration: 8.0 + Double(abs(seed % 4)))
                         .repeatForever(autoreverses: true),
                     value: drifting
                 )
-                .zIndex(Double(index))
+                .zIndex(Double(card.index))
             }
         }
     }
 
-    private func densePositions(side: CGFloat) -> [CGSize] {
-        let s = side
-        let baseX: [CGFloat] = [-0.375, -0.125, 0.125, 0.375]
-        let baseY: [CGFloat] = [-0.375, -0.125, 0.125, 0.375]
+    private func collageCards(side: CGFloat) -> [CollageCard] {
+        var generator = SeededRandom(seed: seed)
+        let cardSide = side * 0.355
+        let step = side * 0.315
+        let origin = -step
 
-        // Build the small pattern table explicitly instead of using a nested
-        // map/closure. Swift's type checker can spend an excessive amount of
-        // time inferring the nested generic types in the closure above.
-        var patterns = Array(repeating: [CGSize](), count: 8)
+        var cards: [CollageCard] = []
+        cards.reserveCapacity(9)
 
-        for pattern in 0..<8 {
-            var result: [CGSize] = []
-            result.reserveCapacity(16)
+        for row in 0..<3 {
+            for column in 0..<3 {
+                let index = row * 3 + column
+                let jitterX = CGFloat(generator.nextDouble(in: -0.032...0.032)) * side
+                let jitterY = CGFloat(generator.nextDouble(in: -0.032...0.032)) * side
+                let rotation = generator.nextDouble(in: -4.5...4.5)
+                let driftX = CGFloat(generator.nextDouble(in: -0.018...0.018)) * side
+                let driftY = CGFloat(generator.nextDouble(in: -0.010...0.010)) * side
 
-            for row in 0..<4 {
-                for col in 0..<4 {
-                    var x = baseX[col]
-                    var y = baseY[row]
-
-                    switch pattern {
-                    case 0:
-                        x += row.isMultiple(of: 2) ? -0.012 : 0.012
-                    case 1:
-                        y += col.isMultiple(of: 2) ? 0.014 : -0.014
-                    case 2:
-                        x += CGFloat(row - 1) * 0.012
-                        y += CGFloat(col - 1) * 0.008
-                    case 3:
-                        x += CGFloat((col + row) % 3 - 1) * 0.014
-                    case 4:
-                        y += CGFloat((col * 2 + row) % 3 - 1) * 0.013
-                    case 5:
-                        x += col == row ? 0.018 : -0.006
-                    case 6:
-                        x += row == 3 - col ? -0.018 : 0.006
-                    default:
-                        x += CGFloat((col * 3 + row) % 4) * 0.010 - 0.015
-                    }
-
-                    result.append(CGSize(width: x * s, height: y * s))
-                }
+                cards.append(
+                    CollageCard(
+                        index: index,
+                        url: artworkURLs[index],
+                        size: cardSide,
+                        position: CGSize(
+                            width: origin + CGFloat(column) * step + jitterX,
+                            height: origin + CGFloat(row) * step + jitterY
+                        ),
+                        rotation: rotation,
+                        drift: CGSize(width: driftX, height: driftY)
+                    )
+                )
             }
-
-            patterns[pattern] = result
         }
 
-        return patterns[style]
-    }
-
-    private var rotationPattern: [Double] {
-        let patterns: [[Double]] = [
-            [-4, 2, -3, 5, 3, -5, 2, -2, -3, 4, -1, 3, 5, -2, 3, -4],
-            [5, -2, 4, -4, -3, 4, -1, 5, 2, -5, 3, -2, -4, 2, -3, 4],
-            [-2, 5, -4, 2, 4, -3, 5, -2, -5, 2, -1, 4, 3, -4, 2, -3],
-            [4, -4, 2, -5, -2, 3, -4, 2, 5, -2, 4, -3, -3, 5, -2, 3],
-            [-5, 3, -2, 4, 2, -4, 5, -3, -2, 5, -4, 2, 4, -3, 5, -2],
-            [3, -5, 4, -2, -4, 2, -5, 3, 2, -3, 5, -4, -2, 4, -3, 5],
-            [-3, 4, -5, 2, 5, -2, 3, -4, -5, 3, -2, 4, 2, -4, 5, -3],
-            [2, -3, 5, -4, -5, 2, -3, 4, 4, -2, 3, -5, -4, 5, -2, 3]
-        ]
-        return patterns[style]
+        return cards
     }
 
     private var emptyArtwork: some View {
@@ -285,5 +247,45 @@ struct PlaylistArtwork: View {
             value = (value &* 31) &+ Int(byte)
         }
         return value == Int.min ? 0 : value
+    }
+}
+
+private struct CollageCard: Identifiable {
+    let index: Int
+    let url: URL
+    let size: CGFloat
+    let position: CGSize
+    let rotation: Double
+    let drift: CGSize
+
+    var id: Int { index }
+}
+
+private struct SeededRandom {
+    private var state: UInt64
+
+    init(seed: Int) {
+        let unsigned = UInt64(bitPattern: Int64(seed))
+        state = unsigned == 0 ? 0x9E3779B97F4A7C15 : unsigned
+    }
+
+    mutating func nextUInt() -> UInt64 {
+        state ^= state << 13
+        state ^= state >> 7
+        state ^= state << 17
+        return state
+    }
+
+    mutating func nextDouble(in range: ClosedRange<Double>) -> Double {
+        let value = Double(nextUInt() % 1_000_000) / 1_000_000.0
+        return range.lowerBound + value * (range.upperBound - range.lowerBound)
+    }
+
+    mutating func shuffle<T>(_ array: inout [T]) {
+        guard array.count > 1 else { return }
+        for index in stride(from: array.count - 1, through: 1, by: -1) {
+            let target = Int(nextUInt() % UInt64(index + 1))
+            array.swapAt(index, target)
+        }
     }
 }
