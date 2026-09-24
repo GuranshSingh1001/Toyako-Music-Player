@@ -61,9 +61,7 @@ struct AlbumDetailView: View {
     let library: LocalLibrary
 
     @EnvironmentObject var audioManager: AudioEngineManager
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-
     @State private var artworkVisible = false
 
     private var sortedTracks: [LocalTrack] {
@@ -79,86 +77,125 @@ struct AlbumDetailView: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let isPortrait = width < 700 || verticalSizeClass == .regular
-            let isWide = width >= 900 && !isPortrait
+            let isPortrait = width < 760 || verticalSizeClass == .regular
+            let isWide = width >= 860 && !isPortrait
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if isWide {
-                        wideHeader
+                        wideHero(width: width)
                     } else {
-                        compactHeader(maxWidth: width)
+                        compactHero(width: width)
                     }
 
                     tracksSection
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
-                .padding(.bottom, 100)
+                .padding(.bottom, 110)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
         .navigationTitle(album.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.84)) {
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.84)) {
                 artworkVisible = true
             }
         }
     }
 
-    // MARK: Wide iPad / Landscape
+    // MARK: iPad / Landscape
 
-    private var wideHeader: some View {
-        HStack(alignment: .center, spacing: 46) {
-            artwork(size: 350)
-                .frame(maxWidth: 390)
+    private func wideHero(width: CGFloat) -> some View {
+        ZStack {
+            // Soft artwork backdrop gives the album page the same immersive
+            // visual language as the artist page without sacrificing legibility.
+            LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 0)
+                .frame(maxWidth: .infinity)
+                .frame(height: 390)
+                .blur(radius: 30)
+                .scaleEffect(1.10)
+                .opacity(0.32)
 
-            VStack(alignment: .leading, spacing: 14) {
-                Text("ALBUM")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .tracking(1.2)
+            LinearGradient(
+                colors: [
+                    .black.opacity(0.10),
+                    .black.opacity(0.58),
+                    .black.opacity(0.94)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
 
-                Text(album.name)
-                    .font(.system(size: 38, weight: .bold))
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.72)
+            HStack(spacing: min(60, width * 0.055)) {
+                LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 22)
+                    .frame(width: min(330, width * 0.31), height: min(330, width * 0.31))
+                    .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
+                    .scaleEffect(artworkVisible ? 1 : 0.92)
+                    .opacity(artworkVisible ? 1 : 0)
 
-                Text(album.artist)
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("ALBUM")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.4)
+                        .foregroundStyle(.white.opacity(0.72))
 
-                Text("\(album.tracks.count) \(album.tracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    Text(album.name)
+                        .font(.system(size: min(44, width * 0.044), weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.72)
 
-                HStack(spacing: 12) {
-                    playButton
-                    shuffleButton
+                    Text(album.artist)
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(2)
+
+                    Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.70))
+
+                    HStack(spacing: 12) {
+                        playButton
+                        shuffleButton
+                    }
+                    .padding(.top, 8)
                 }
-                .padding(.top, 8)
-            }
-            .frame(maxWidth: 520, alignment: .leading)
+                .frame(maxWidth: 520, alignment: .leading)
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: 1100)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 44)
         }
-        .frame(maxWidth: 1100)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 42)
-        .padding(.vertical, 34)
+        .frame(height: 390)
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
     }
 
-    // MARK: Portrait / Resized
+    // MARK: Portrait / Narrow / Resized
 
-    private func compactHeader(maxWidth: CGFloat) -> some View {
-        let size = min(maxWidth * 0.66, 310)
+    private func compactHero(width: CGFloat) -> some View {
+        let artworkSize = min(max(width * 0.62, 210), 330)
+        let veryNarrow = width < 520
 
-        return VStack(spacing: 16) {
-            artwork(size: size)
+        return VStack(spacing: 14) {
+            LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 20)
+                .frame(width: artworkSize, height: artworkSize)
+                .shadow(color: .black.opacity(0.32), radius: 24, y: 12)
+                .scaleEffect(artworkVisible ? 1 : 0.93)
+                .opacity(artworkVisible ? 1 : 0)
 
             VStack(spacing: 6) {
+                Text("ALBUM")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.25)
+                    .foregroundStyle(.secondary)
+
                 Text(album.name)
-                    .font(.system(size: maxWidth < 500 ? 26 : 32, weight: .bold))
+                    .font(.system(size: veryNarrow ? 27 : 34, weight: .bold))
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
                     .minimumScaleFactor(0.72)
@@ -166,33 +203,25 @@ struct AlbumDetailView: View {
                 Text(album.artist)
                     .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
 
-                Text("\(album.tracks.count) \(album.tracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
+                Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: 650)
+            .padding(.horizontal, 20)
 
             HStack(spacing: 12) {
                 playButton
                 shuffleButton
             }
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, min(maxWidth * 0.08, 32))
-        .padding(.top, 22)
-        .padding(.bottom, 30)
-    }
-
-    private func artwork(size: CGFloat) -> some View {
-        LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 20)
-            .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.26), radius: 26, y: 14)
-            .scaleEffect(artworkVisible ? 1 : 0.94)
-            .opacity(artworkVisible ? 1 : 0)
-            .animation(.spring(response: 0.48, dampingFraction: 0.84), value: artworkVisible)
+        .padding(.horizontal, min(max(width * 0.07, 18), 34))
+        .padding(.top, 18)
+        .padding(.bottom, 28)
     }
 
     private var playButton: some View {
@@ -217,11 +246,17 @@ struct AlbumDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             Divider()
 
-            Text("Tracks")
-                .font(.title2.bold())
-                .padding(.horizontal, 28)
-                .padding(.top, 28)
-                .padding(.bottom, 8)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Tracks")
+                    .font(.title2.bold())
+                Spacer()
+                Text("\(sortedTracks.count)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 28)
+            .padding(.bottom, 8)
 
             ForEach(Array(sortedTracks.enumerated()), id: \.element.id) { index, track in
                 AlbumTrackRow(track: track, number: index + 1) {
