@@ -944,9 +944,16 @@ class AudioEngineManager: ObservableObject {
     }
 
 
+    /// Starts a new queue from a collection of tracks.
+    ///
+    /// When `shuffle` is supplied, it explicitly sets the playback mode for
+    /// this queue. This is important for Play/Shuffle buttons: tapping Play
+    /// should always respect the source order, even if the global shuffle
+    /// state was previously enabled.
     func startQueue(
         tracks: [LocalTrack],
-        startIndex: Int
+        startIndex: Int,
+        shuffle: Bool? = nil
     ) {
 
         guard
@@ -958,6 +965,9 @@ class AudioEngineManager: ObservableObject {
             return
         }
 
+        if let shuffle {
+            isShuffle = shuffle
+        }
 
         originalQueue =
             tracks
@@ -1133,11 +1143,17 @@ class AudioEngineManager: ObservableObject {
 
         isShuffle.toggle()
 
-
+        // Shuffle can be enabled before anything is playing. The next
+        // startQueue(..., shuffle: true) call will then build a shuffled queue.
+        // There is nothing to reorder yet, so just persist the mode.
         guard
             let current =
                 currentTrack
         else {
+            savePlaybackState(
+                force:
+                    true
+            )
             return
         }
 

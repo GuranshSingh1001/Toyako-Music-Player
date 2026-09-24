@@ -10,6 +10,9 @@ struct AllPlaylistsGridView: View {
     var onRename:
         (Playlist) -> Void
 
+    var onDelete:
+        (Playlist) -> Void
+
     private let columns = [
         GridItem(
             .adaptive(
@@ -86,7 +89,9 @@ struct AllPlaylistsGridView: View {
                                 tracks:
                                     playlistTracks,
                                 playlistName:
-                                    playlist.name
+                                    playlist.name,
+                                playlistID:
+                                    playlist.id
                             )
                             .frame(
                                 width:
@@ -97,7 +102,7 @@ struct AllPlaylistsGridView: View {
                             .clipShape(
                                 RoundedRectangle(
                                     cornerRadius:
-                                        12,
+                                        16,
                                     style:
                                         .continuous
                                 )
@@ -105,12 +110,12 @@ struct AllPlaylistsGridView: View {
                             .shadow(
                                 color:
                                     .black.opacity(
-                                        0.16
+                                        0.20
                                     ),
                                 radius:
-                                    9,
+                                    10,
                                 y:
-                                    4
+                                    5
                             )
 
                             Text(
@@ -136,6 +141,39 @@ struct AllPlaylistsGridView: View {
                     .buttonStyle(
                         .plain
                     )
+                    .overlay(alignment: .topTrailing) {
+                        Menu {
+                            Button {
+                                onAddSongs(playlist)
+                            } label: {
+                                Label("Add Songs", systemImage: "plus")
+                            }
+
+                            Button {
+                                onRename(playlist)
+                            } label: {
+                                Label("Edit Name", systemImage: "pencil")
+                            }
+
+                            Divider()
+
+                            Button(role: .destructive) {
+                                onDelete(playlist)
+                            } label: {
+                                Label("Delete Playlist", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle.fill")
+                                .font(.title3)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.45), radius: 5)
+                                .padding(7)
+                                .background(.black.opacity(0.28), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(6)
+                    }
                     .contextMenu {
 
                         Button {
@@ -161,6 +199,12 @@ struct AllPlaylistsGridView: View {
                                     "pencil"
                             )
                         }
+
+                        Button(role: .destructive) {
+                            onDelete(playlist)
+                        } label: {
+                            Label("Delete Playlist", systemImage: "trash")
+                        }
                     }
                 }
             }
@@ -178,6 +222,7 @@ struct AllPlaylistsGridView: View {
 struct PlaylistArtwork: View {
     let tracks: [LocalTrack]
     let playlistName: String
+    var playlistID: UUID? = nil
 
     private var urls: [URL] {
         Array(tracks.prefix(4)).map(\.url)
@@ -185,49 +230,147 @@ struct PlaylistArtwork: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let width = proxy.size.width / 2
-            let height = proxy.size.height / 2
+            let side = min(proxy.size.width, proxy.size.height)
 
-            if urls.isEmpty {
-                emptyArtwork
-            } else {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        tile(index: 0, width: width, height: height)
-                        tile(index: 1, width: width, height: height)
-                    }
-                    HStack(spacing: 0) {
-                        tile(index: 2, width: width, height: height)
-                        tile(index: 3, width: width, height: height)
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.thinMaterial)
+
+                if urls.isEmpty {
+                    emptyArtwork
+                } else {
+                    ForEach(Array(urls.enumerated()), id: \.offset) { index, url in
+                        collageCard(
+                            url: url,
+                            index: index,
+                            count: urls.count,
+                            side: side
+                        )
                     }
                 }
+
+                // A very subtle glass highlight keeps the collage looking like
+                // one designed cover instead of four unrelated square images.
+                LinearGradient(
+                    colors: [
+                        .white.opacity(0.14),
+                        .clear,
+                        .black.opacity(0.08)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .allowsHitTesting(false)
+            }
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 16,
+                    style: .continuous
+                )
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func collageCard(
+        url: URL,
+        index: Int,
+        count: Int,
+        side: CGFloat
+    ) -> some View {
+        let cardSize: CGFloat = {
+            switch count {
+            case 1:
+                return side * 0.82
+            case 2:
+                return side * 0.68
+            default:
+                return side * 0.62
+            }
+        }()
+
+        LazyArtwork(
+            url: url,
+            size: cardSize,
+            cornerRadius: 14
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.white.opacity(0.22), lineWidth: 1)
+        }
+        .shadow(
+            color: .black.opacity(0.28),
+            radius: 7,
+            y: 4
+        )
+        .rotationEffect(.degrees(rotation(for: index, count: count)))
+        .offset(offset(for: index, count: count, side: side))
+        .zIndex(Double(index))
+    }
+
+    private func rotation(for index: Int, count: Int) -> Double {
+        switch count {
+        case 1:
+            return 0
+        case 2:
+            return index == 0 ? -5 : 5
+        case 3:
+            return [-6, 5, -2][index]
+        default:
+            return [-5, 4, 3, -4][index]
+        }
+    }
+
+    private func offset(
+        for index: Int,
+        count: Int,
+        side: CGFloat
+    ) -> CGSize {
+        switch count {
+        case 1:
+            return .zero
+        case 2:
+            let amount = side * 0.14
+            return index == 0
+                ? CGSize(width: -amount, height: amount * 0.35)
+                : CGSize(width: amount, height: -amount * 0.35)
+        case 3:
+            let amount = side * 0.16
+            switch index {
+            case 0:
+                return CGSize(width: -amount, height: amount * 0.50)
+            case 1:
+                return CGSize(width: amount, height: amount * 0.25)
+            default:
+                return CGSize(width: 0, height: -amount)
+            }
+        default:
+            let amount = side * 0.17
+            switch index {
+            case 0:
+                return CGSize(width: -amount, height: -amount)
+            case 1:
+                return CGSize(width: amount, height: -amount)
+            case 2:
+                return CGSize(width: -amount, height: amount)
+            default:
+                return CGSize(width: amount, height: amount)
             }
         }
     }
 
-    private func tile(index: Int, width: CGFloat, height: CGFloat) -> some View {
-        LazyArtwork(
-            url: urls[index % urls.count],
-            size: max(width, height),
-            cornerRadius: 0
-        )
-        .frame(width: width, height: height)
-        .clipped()
-    }
-
     private var emptyArtwork: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(.thinMaterial)
+        AbstractPlaylistCover(playlistID: playlistID ?? UUID())
             .overlay {
-                VStack(spacing: 8) {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 38, weight: .medium))
-                    Text(playlistName)
-                        .font(.caption.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                }
-                .foregroundStyle(.secondary)
+                Text(playlistName)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(12)
+                    .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(12)
             }
     }
 }
+

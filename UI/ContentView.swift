@@ -46,6 +46,10 @@ struct ContentView: View {
             Playlist?
 
     @State private var
+        playlistToDelete:
+            Playlist?
+
+    @State private var
         renameText = ""
 
     @State private var
@@ -220,6 +224,37 @@ struct ContentView: View {
 
                 newPlaylistName =
                     ""
+            }
+        }
+
+        .confirmationDialog(
+            "Delete Playlist?",
+            isPresented:
+                Binding(
+                    get: {
+                        playlistToDelete != nil
+                    },
+                    set: {
+                        if !$0 {
+                            playlistToDelete = nil
+                        }
+                    }
+                ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let playlist = playlistToDelete {
+                    library.deletePlaylist(id: playlist.id)
+                }
+                playlistToDelete = nil
+            }
+
+            Button("Cancel", role: .cancel) {
+                playlistToDelete = nil
+            }
+        } message: {
+            if let playlist = playlistToDelete {
+                Text("\"\(playlist.name)\" will be removed. The songs will stay in your library.")
             }
         }
 
@@ -447,6 +482,9 @@ struct ContentView: View {
                 },
                 onNewPlaylist: {
                     showNewPlaylistAlert = true
+                },
+                onAddSongsToPlaylist: { playlist in
+                    playlistToEdit = playlist
                 }
             )
             .toolbar {
@@ -544,6 +582,10 @@ struct ContentView: View {
 
                     playlistToRename =
                         $0
+                },
+                onDelete: {
+                    playlistToDelete =
+                        $0
                 }
             )
         }
@@ -632,6 +674,7 @@ private struct HomeAudioContainer: View {
     let library: LocalLibrary
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
+    let onAddSongsToPlaylist: (Playlist) -> Void
 
     @EnvironmentObject private var audioManager: AudioEngineManager
 
@@ -645,6 +688,7 @@ private struct HomeAudioContainer: View {
             library: library,
             onImport: onImport,
             onNewPlaylist: onNewPlaylist,
+            onAddSongsToPlaylist: onAddSongsToPlaylist,
             currentTrack: audioManager.currentTrack,
             isPlaying: audioManager.isPlaying,
             onPlayTrack: { index in
@@ -656,10 +700,11 @@ private struct HomeAudioContainer: View {
             onShuffleAll: {
                 guard !tracks.isEmpty else { return }
                 let index = Int.random(in: tracks.indices)
-                if !audioManager.isShuffle {
-                    audioManager.toggleShuffle()
-                }
-                audioManager.startQueue(tracks: tracks, startIndex: index)
+                audioManager.startQueue(
+                    tracks: tracks,
+                    startIndex: index,
+                    shuffle: true
+                )
             }
         )
     }

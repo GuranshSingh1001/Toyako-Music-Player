@@ -9,6 +9,7 @@ struct HomeView: View {
     let library: LocalLibrary
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
+    let onAddSongsToPlaylist: (Playlist) -> Void
     let currentTrack: LocalTrack?
     let isPlaying: Bool
     let onPlayTrack: (Int) -> Void
@@ -291,14 +292,25 @@ struct HomeView: View {
                             tracks: playlistTracks,
                             allTracks: playlistTracks,
                             library: library,
-                            playlistID: playlist.id
+                            playlistID: playlist.id,
+                            headerView: AnyView(
+                                PlaylistHeaderView(
+                                    playlist: playlist,
+                                    tracks: playlistTracks,
+                                    onAddSongs: {
+                                        onAddSongsToPlaylist(playlist)
+                                    }
+                                )
+                            )
                         )
                         .navigationTitle(playlist.name)
+                        .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             PlaylistArtwork(
                                 tracks: playlistTracks,
-                                playlistName: playlist.name
+                                playlistName: playlist.name,
+                                playlistID: playlist.id
                             )
                             .frame(width: 145, height: 145)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

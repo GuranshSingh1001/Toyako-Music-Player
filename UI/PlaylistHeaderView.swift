@@ -27,13 +27,15 @@ struct PlaylistHeaderView: View {
                     tracks:
                         tracks,
                     playlistName:
-                        playlist.name
+                        playlist.name,
+                    playlistID:
+                        playlist.id
                 )
                 .frame(
                     width:
-                        145,
+                        190,
                     height:
-                        145
+                        190
                 )
                 .clipShape(
                     RoundedRectangle(
@@ -128,7 +130,9 @@ struct PlaylistHeaderView: View {
                         tracks:
                             tracks,
                         startIndex:
-                            0
+                            0,
+                        shuffle:
+                            false
                     )
                 } label: {
                     Label(
@@ -150,10 +154,6 @@ struct PlaylistHeaderView: View {
                         return
                     }
 
-                    if !audioManager.isShuffle {
-                        audioManager.toggleShuffle()
-                    }
-
                     let index =
                         Int.random(
                             in:
@@ -164,7 +164,9 @@ struct PlaylistHeaderView: View {
                         tracks:
                             tracks,
                         startIndex:
-                            index
+                            index,
+                        shuffle:
+                            true
                     )
                 } label: {
                     Label(

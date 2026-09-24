@@ -351,7 +351,9 @@ struct AlbumDetailView: View {
             tracks:
                 sortedTracks,
             startIndex:
-                0
+                0,
+            shuffle:
+                false
         )
     }
 
@@ -359,10 +361,6 @@ struct AlbumDetailView: View {
         guard !sortedTracks.isEmpty
         else {
             return
-        }
-
-        if !audioManager.isShuffle {
-            audioManager.toggleShuffle()
         }
 
         let randomIndex =
@@ -375,7 +373,9 @@ struct AlbumDetailView: View {
             tracks:
                 sortedTracks,
             startIndex:
-                randomIndex
+                randomIndex,
+            shuffle:
+                true
         )
     }
 
