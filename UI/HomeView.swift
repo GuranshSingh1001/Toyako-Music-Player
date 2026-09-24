@@ -252,7 +252,14 @@ struct HomeView: View {
                         .navigationTitle(artist.name)
                     } label: {
                         VStack(spacing: 8) {
-                            ArtistArtworkView(artistName: artist.name, size: 100)
+                            Circle()
+                                .fill(.thinMaterial)
+                                .frame(width: 100, height: 100)
+                                .overlay {
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 34))
+                                        .foregroundStyle(.secondary)
+                                }
 
                             Text(artist.name)
                                 .font(.subheadline.weight(.semibold))

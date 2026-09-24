@@ -8,7 +8,6 @@ struct ToyakoPreferences {
     static let lyricsAnimationStyleKey = "Toyako.Lyrics.AnimationStyle"
     static let showAudioInfoKey = "Toyako.NowPlaying.ShowAudioInfo"
     static let translationKey = "Toyako.Lyrics.Translation"
-    static let automaticArtistArtworkKey = "Toyako.ArtistArtwork.AutomaticDownloads"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -18,8 +17,7 @@ struct ToyakoPreferences {
             lyricsLineSpacingKey: 30.0,
             lyricsAnimationStyleKey: "dynamic",
             showAudioInfoKey: true,
-            translationKey: false,
-            automaticArtistArtworkKey: false
+            translationKey: false
         ])
 
         // Classic was removed because it was visually too close to Smooth.
