@@ -78,7 +78,7 @@ struct AlbumDetailView: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let isPortrait = width < 760 || verticalSizeClass == .regular
-            let isWide = width >= 860 && !isPortrait
+            let isWide = width >= 900 && !isPortrait
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -112,7 +112,7 @@ struct AlbumDetailView: View {
             // visual language as the artist page without sacrificing legibility.
             LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 0)
                 .frame(maxWidth: .infinity)
-                .frame(height: 390)
+                .frame(height: 320)
                 .blur(radius: 30)
                 .scaleEffect(1.10)
                 .opacity(0.32)
@@ -129,7 +129,7 @@ struct AlbumDetailView: View {
 
             HStack(spacing: min(60, width * 0.055)) {
                 LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 22)
-                    .frame(width: min(330, width * 0.31), height: min(330, width * 0.31))
+                    .frame(width: min(280, width * 0.27), height: min(280, width * 0.27))
                     .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
                     .scaleEffect(artworkVisible ? 1 : 0.92)
                     .opacity(artworkVisible ? 1 : 0)
@@ -167,9 +167,9 @@ struct AlbumDetailView: View {
             }
             .frame(maxWidth: 1100)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 44)
+            .padding(.horizontal, 38)
         }
-        .frame(height: 390)
+        .frame(height: 320)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .padding(.horizontal, 24)
         .padding(.top, 18)
@@ -178,7 +178,7 @@ struct AlbumDetailView: View {
     // MARK: Portrait / Narrow / Resized
 
     private func compactHero(width: CGFloat) -> some View {
-        let artworkSize = min(max(width * 0.62, 210), 330)
+        let artworkSize = min(max(width * 0.52, 190), 270)
         let veryNarrow = width < 520
 
         return VStack(spacing: 14) {
@@ -221,7 +221,7 @@ struct AlbumDetailView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, min(max(width * 0.07, 18), 34))
         .padding(.top, 18)
-        .padding(.bottom, 28)
+        .padding(.bottom, 20)
     }
 
     private var playButton: some View {
@@ -255,8 +255,8 @@ struct AlbumDetailView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 28)
-            .padding(.top, 28)
-            .padding(.bottom, 8)
+            .padding(.top, 20)
+            .padding(.bottom, 6)
 
             ForEach(Array(sortedTracks.enumerated()), id: \.element.id) { index, track in
                 AlbumTrackRow(track: track, number: index + 1) {
@@ -329,7 +329,7 @@ private struct AlbumTrackRow: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 28)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

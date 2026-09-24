@@ -99,15 +99,15 @@ struct PlaylistArtwork: View {
     }
 
     private var style: Int {
-        abs(seed) % 6
+        abs(seed) % 8
     }
 
     private var artworkURLs: [URL] {
         guard !tracks.isEmpty else { return [] }
-        // Repeat the playlist artwork so the cover can fill the entire square.
-        // This deliberately does not stop at four images.
-        return (0..<max(9, min(12, tracks.count * 2))).map { index in
-            tracks[index % tracks.count].url
+        // Always build a dense 4x4 field. Reusing artwork is intentional for
+        // small playlists so there are no empty holes in the square.
+        return (0..<16).map { index in
+            tracks[(index * 3 + abs(seed)) % tracks.count].url
         }
     }
 
@@ -116,38 +116,33 @@ struct PlaylistArtwork: View {
             let side = min(proxy.size.width, proxy.size.height)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.black.opacity(0.94))
-
                 if artworkURLs.isEmpty {
                     emptyArtwork
                 } else {
-                    collage(side: side)
+                    denseCollage(side: side)
                 }
 
                 LinearGradient(
                     colors: [
-                        .white.opacity(0.12),
+                        .black.opacity(0.04),
                         .clear,
-                        .black.opacity(0.18)
+                        .black.opacity(0.20)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .allowsHitTesting(false)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipped()
+            .contentShape(Rectangle())
             .onAppear {
                 withAnimation(.spring(response: 0.58, dampingFraction: 0.78)) {
                     revealed = true
                 }
-                // The artwork keeps a subtle, slow horizontal drift after the
-                // entrance animation instead of becoming a static collage.
                 withAnimation(
-                    .easeInOut(duration: 9.0 + Double(abs(seed % 5)))
+                    .easeInOut(duration: 8.5 + Double(abs(seed % 5)))
                     .repeatForever(autoreverses: true)
-                    .delay(0.8)
+                    .delay(0.45)
                 ) {
                     drifting = true
                 }
@@ -156,44 +151,45 @@ struct PlaylistArtwork: View {
     }
 
     @ViewBuilder
-    private func collage(side: CGFloat) -> some View {
-        let cardSide = side * 0.43
-        let positions = layoutPositions(side: side)
-        let rotations = layoutRotations
+    private func denseCollage(side: CGFloat) -> some View {
+        let cardSide = side * 0.285
+        let positions = densePositions(side: side)
+        let rotations = rotationPattern
 
         ZStack {
-            // Two overlapping passes make the cover feel continuously filled,
-            // even when a playlist contains only one or two songs.
             ForEach(Array(artworkURLs.enumerated()), id: \.offset) { index, url in
-                let position = positions[index % positions.count]
-                let rotation = rotations[index % rotations.count]
-                let phase = Double((index * 13 + abs(seed)) % 9) / 9.0
-                let drift = drifting ? -(side * (0.035 + CGFloat(phase) * 0.035)) : 0
+                let position = positions[index]
+                let rotation = rotations[index]
+                let row = index / 4
+                let phase = CGFloat((index * 11 + abs(seed)) % 7) / 7
+                let drift = drifting
+                    ? -side * (0.018 + phase * 0.026)
+                    : 0
 
                 LazyArtwork(
                     url: url,
                     size: cardSide,
-                    cornerRadius: cardSide * 0.10
+                    cornerRadius: cardSide * 0.075
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: cardSide * 0.10, style: .continuous)
-                        .stroke(.white.opacity(0.24), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: cardSide * 0.075, style: .continuous)
+                        .stroke(.white.opacity(0.28), lineWidth: 1)
                 }
-                .shadow(color: .black.opacity(0.34), radius: 7, y: 4)
-                .scaleEffect(revealed ? 1 : 0.72)
-                .rotationEffect(.degrees(revealed ? rotation : rotation * 2.5))
+                .shadow(color: .black.opacity(0.30), radius: 6, y: 3)
+                .rotationEffect(.degrees(revealed ? rotation : rotation * 2.2))
+                .scaleEffect(revealed ? 1 : 0.76)
                 .offset(
-                    x: revealed ? position.width + drift : position.width * 1.8,
-                    y: revealed ? position.height : position.height * 1.8
+                    x: revealed ? position.width + drift * CGFloat(row + 1) : position.width * 1.35,
+                    y: revealed ? position.height : position.height * 1.35
                 )
                 .opacity(revealed ? 1 : 0)
                 .animation(
-                    .spring(response: 0.58, dampingFraction: 0.78)
-                        .delay(Double(index) * 0.045),
+                    .spring(response: 0.58, dampingFraction: 0.80)
+                        .delay(Double(index) * 0.028),
                     value: revealed
                 )
                 .animation(
-                    .easeInOut(duration: 9.0 + Double(abs(seed % 5)))
+                    .easeInOut(duration: 8.5 + Double(abs(seed % 5)))
                         .repeatForever(autoreverses: true),
                     value: drifting
                 )
@@ -202,54 +198,56 @@ struct PlaylistArtwork: View {
         }
     }
 
-    private func layoutPositions(side: CGFloat) -> [CGSize] {
+    private func densePositions(side: CGFloat) -> [CGSize] {
         let s = side
-        let patterns: [[CGSize]] = [
-            [
-                .init(width: -0.23*s, height: -0.22*s), .init(width: 0, height: -0.24*s), .init(width: 0.23*s, height: -0.20*s),
-                .init(width: -0.24*s, height: 0.01*s), .init(width: 0.01*s, height: 0.01*s), .init(width: 0.25*s, height: 0.02*s),
-                .init(width: -0.22*s, height: 0.23*s), .init(width: 0.02*s, height: 0.22*s), .init(width: 0.24*s, height: 0.24*s)
-            ],
-            [
-                .init(width: -0.25*s, height: -0.12*s), .init(width: -0.02*s, height: -0.25*s), .init(width: 0.24*s, height: -0.10*s),
-                .init(width: -0.22*s, height: 0.13*s), .init(width: 0.02*s, height: 0.02*s), .init(width: 0.25*s, height: 0.15*s),
-                .init(width: -0.12*s, height: 0.26*s), .init(width: 0.13*s, height: 0.25*s), .init(width: 0.01*s, height: -0.05*s)
-            ],
-            [
-                .init(width: -0.25*s, height: -0.22*s), .init(width: 0.01*s, height: -0.23*s), .init(width: 0.25*s, height: -0.20*s),
-                .init(width: -0.18*s, height: 0), .init(width: 0.08*s, height: -0.02*s), .init(width: 0.26*s, height: 0.04*s),
-                .init(width: -0.25*s, height: 0.23*s), .init(width: 0, height: 0.25*s), .init(width: 0.23*s, height: 0.23*s)
-            ],
-            [
-                .init(width: -0.18*s, height: -0.24*s), .init(width: 0.10*s, height: -0.25*s), .init(width: 0.26*s, height: -0.03*s),
-                .init(width: -0.26*s, height: -0.02*s), .init(width: 0, height: 0), .init(width: 0.17*s, height: 0.18*s),
-                .init(width: -0.22*s, height: 0.23*s), .init(width: 0.02*s, height: 0.25*s), .init(width: 0.25*s, height: 0.20*s)
-            ],
-            [
-                .init(width: -0.24*s, height: -0.18*s), .init(width: 0.02*s, height: -0.26*s), .init(width: 0.25*s, height: -0.17*s),
-                .init(width: -0.26*s, height: 0.08*s), .init(width: 0.01*s, height: -0.01*s), .init(width: 0.24*s, height: 0.08*s),
-                .init(width: -0.18*s, height: 0.25*s), .init(width: 0.08*s, height: 0.22*s), .init(width: 0.27*s, height: 0.24*s)
-            ],
-            [
-                .init(width: -0.25*s, height: -0.25*s), .init(width: 0.0*s, height: -0.16*s), .init(width: 0.25*s, height: -0.25*s),
-                .init(width: -0.17*s, height: 0.04*s), .init(width: 0.11*s, height: 0.03*s), .init(width: 0.27*s, height: 0.02*s),
-                .init(width: -0.24*s, height: 0.25*s), .init(width: 0.02*s, height: 0.20*s), .init(width: 0.24*s, height: 0.25*s)
-            ]
-        ]
+        let baseX: [CGFloat] = [-0.375, -0.125, 0.125, 0.375]
+        let baseY: [CGFloat] = [-0.375, -0.125, 0.125, 0.375]
 
+        let patterns: [[CGSize]] = (0..<8).map { pattern in
+            var result: [CGSize] = []
+            for row in 0..<4 {
+                for col in 0..<4 {
+                    var x = baseX[col]
+                    var y = baseY[row]
+                    switch pattern {
+                    case 0:
+                        x += (row.isMultiple(of: 2) ? -0.012 : 0.012)
+                    case 1:
+                        y += (col.isMultiple(of: 2) ? 0.014 : -0.014)
+                    case 2:
+                        x += CGFloat(row - 1) * 0.012
+                        y += CGFloat(col - 1) * 0.008
+                    case 3:
+                        x += CGFloat((col + row) % 3 - 1) * 0.014
+                    case 4:
+                        y += CGFloat((col * 2 + row) % 3 - 1) * 0.013
+                    case 5:
+                        x += col == row ? 0.018 : -0.006
+                    case 6:
+                        x += row == 3 - col ? -0.018 : 0.006
+                    default:
+                        x += CGFloat((col * 3 + row) % 4 - 1.5) * 0.010
+                    }
+                    result.append(.init(width: x * s, height: y * s))
+                }
+            }
+            return result
+        }
         return patterns[style]
     }
 
-    private var layoutRotations: [Double] {
-        let base = [
-            [-5, 2, 7, 3, -4, 5, -7, 3, -2],
-            [7, -4, 3, -6, 2, 8, -3, 5, -7],
-            [-3, 6, -5, 5, -2, 4, -7, 3, 6],
-            [6, -7, 4, -3, 5, -5, 2, 7, -4],
-            [-7, 3, 6, -5, 2, -4, 7, -3, 5],
-            [4, -6, 2, 7, -4, 5, -7, 3, -2]
+    private var rotationPattern: [Double] {
+        let patterns: [[Double]] = [
+            [-4, 2, -3, 5, 3, -5, 2, -2, -3, 4, -1, 3, 5, -2, 3, -4],
+            [5, -2, 4, -4, -3, 4, -1, 5, 2, -5, 3, -2, -4, 2, -3, 4],
+            [-2, 5, -4, 2, 4, -3, 5, -2, -5, 2, -1, 4, 3, -4, 2, -3],
+            [4, -4, 2, -5, -2, 3, -4, 2, 5, -2, 4, -3, -3, 5, -2, 3],
+            [-5, 3, -2, 4, 2, -4, 5, -3, -2, 5, -4, 2, 4, -3, 5, -2],
+            [3, -5, 4, -2, -4, 2, -5, 3, 2, -3, 5, -4, -2, 4, -3, 5],
+            [-3, 4, -5, 2, 5, -2, 3, -4, -5, 3, -2, 4, 2, -4, 5, -3],
+            [2, -3, 5, -4, -5, 2, -3, 4, 4, -2, 3, -5, -4, 5, -2, 3]
         ]
-        return base[style].map(Double.init)
+        return patterns[style]
     }
 
     private var emptyArtwork: some View {
@@ -259,18 +257,18 @@ struct PlaylistArtwork: View {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 34, weight: .semibold))
                     Text(playlistName)
-                        .font(.caption.weight(.bold))
-                        .multilineTextAlignment(.center)
+                        .font(.headline)
                         .lineLimit(2)
                 }
-                .foregroundStyle(.white)
-                .padding(12)
-                .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(12)
+                .foregroundStyle(.white.opacity(0.9))
             }
     }
 
     private func stableSeed(for id: UUID) -> Int {
-        id.uuidString.utf8.reduce(5381) { (($0 << 5) &- $0) &+ Int($1) }
+        var value = 0
+        for byte in id.uuidString.utf8 {
+            value = (value &* 31) &+ Int(byte)
+        }
+        return value == Int.min ? 0 : value
     }
 }
