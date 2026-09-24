@@ -8,28 +8,6 @@ struct PlaylistHeaderView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var heroVisible = true
 
-    private var artworkURLs: [URL] {
-        guard !tracks.isEmpty else { return [] }
-
-        // Use each track artwork once before repeating anything. This keeps the
-        // visible collage varied instead of producing obvious repeated patterns.
-        var urls = tracks.map(\.url)
-        var generator = PlaylistHeaderRandom(seed: stableSeed)
-        generator.shuffle(&urls)
-
-        let minimumCount = 72
-        if urls.count < minimumCount {
-            let original = urls
-            var index = 0
-            while urls.count < minimumCount {
-                urls.append(original[index % original.count])
-                index += 1
-            }
-        }
-
-        return urls
-    }
-
     private var stableSeed: Int {
         var value = 0
         for byte in playlist.id.uuidString.utf8 {
@@ -119,107 +97,12 @@ struct PlaylistHeaderView: View {
 
     @ViewBuilder
     private func marqueeArtwork(width: CGFloat, height: CGFloat) -> some View {
-        let tile = min(188, max(156, height * 0.39))
-        let gap: CGFloat = min(24, max(16, tile * 0.10))
-        let step = tile + gap
-        let rowGap: CGFloat = min(24, max(14, tile * 0.09))
-        let segmentWidth = max(width * 1.30, step * 9.0)
-        let duration = 44.0 + Double(stableSeed % 7)
-
-        if artworkURLs.isEmpty {
-            Color.black
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ZStack {
-                Color.black
-
-                // One oversized canvas contains every cover. Moving this single
-                // canvas means every cover travels left at exactly the same speed.
-                HStack(spacing: 0) {
-                    playlistCollageSegment(
-                        width: segmentWidth,
-                        height: height,
-                        tile: tile,
-                        step: step,
-                        rowGap: rowGap
-                    )
-
-                    // An exact copy makes the marquee loop without a visual jump.
-                    playlistCollageSegment(
-                        width: segmentWidth,
-                        height: height,
-                        tile: tile,
-                        step: step,
-                        rowGap: rowGap
-                    )
-                }
-                .frame(width: segmentWidth * 2, height: height)
-                .modifier(
-                    CollageMarqueeMotion(
-                        distance: segmentWidth,
-                        duration: duration
-                    )
-                )
-            }
-            .scaleEffect(1.08)
-            .clipped()
-        }
-    }
-
-    private func playlistCollageSegment(
-        width: CGFloat,
-        height: CGFloat,
-        tile: CGFloat,
-        step: CGFloat,
-        rowGap: CGFloat
-    ) -> some View {
-        let columns = Int(ceil(width / step)) + 3
-        let rowHeight = tile + rowGap
-        let top = -tile * 0.48
-        let middle = top + rowHeight
-        let bottom = middle + rowHeight
-        let rowCenters = [top, middle, bottom]
-
-        var generator = PlaylistHeaderRandom(seed: stableSeed &* 31 &+ 17)
-        var items: [(url: URL, x: CGFloat, y: CGFloat, rotation: Double)] = []
-        items.reserveCapacity(columns * rowCenters.count)
-
-        for row in 0..<rowCenters.count {
-            // Stagger the rows like the sketch, but keep their vertical spacing
-            // stable so the result reads as a collage rather than a grid.
-            let rowOffset = row == 1 ? step * 0.42 : (row == 2 ? step * -0.20 : 0)
-
-            for column in 0..<columns {
-                let index = items.count % artworkURLs.count
-                let x = -tile * 0.52 + rowOffset + CGFloat(column) * step
-                let y = rowCenters[row] + CGFloat(generator.nextDouble(in: -8...8))
-                let rotation = generator.nextDouble(in: -8.0...8.0)
-
-                items.append((
-                    url: artworkURLs[index],
-                    x: x,
-                    y: y,
-                    rotation: rotation
-                ))
-            }
-        }
-
-        return ZStack {
-            ForEach(Array(items.indices), id: \.self) { index in
-                let item = items[index]
-
-                LazyArtwork(
-                    url: item.url,
-                    size: tile,
-                    cornerRadius: tile * 0.085
-                )
-                .rotationEffect(.degrees(item.rotation))
-                .position(x: item.x, y: item.y)
-                .shadow(color: .black.opacity(0.32), radius: 7, y: 4)
-            }
-        }
-        .frame(width: width, height: height)
-        .clipped()
+        PlaylistArtworkMarquee(
+            tracks: tracks,
+            width: width,
+            height: height,
+            seed: stableSeed
+        )
     }
 
     private var playButton: some View {
@@ -271,48 +154,3 @@ struct PlaylistHeaderView: View {
     }
 }
 
-private struct CollageMarqueeMotion: ViewModifier {
-    let distance: CGFloat
-    let duration: Double
-    @State private var moved = false
-
-    func body(content: Content) -> some View {
-        content
-            .offset(x: moved ? -distance : 0)
-            .onAppear {
-                withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
-                    moved = true
-                }
-            }
-    }
-}
-
-
-private struct PlaylistHeaderRandom {
-    private var state: UInt64
-
-    init(seed: Int) {
-        let unsigned = UInt64(bitPattern: Int64(seed))
-        state = unsigned == 0 ? 0x9E3779B97F4A7C15 : unsigned
-    }
-
-    mutating func nextUInt() -> UInt64 {
-        state ^= state << 13
-        state ^= state >> 7
-        state ^= state << 17
-        return state
-    }
-
-    mutating func nextDouble(in range: ClosedRange<Double>) -> Double {
-        let value = Double(nextUInt() % 1_000_000) / 1_000_000.0
-        return range.lowerBound + value * (range.upperBound - range.lowerBound)
-    }
-
-    mutating func shuffle<T>(_ array: inout [T]) {
-        guard array.count > 1 else { return }
-        for index in stride(from: array.count - 1, through: 1, by: -1) {
-            let target = Int(nextUInt() % UInt64(index + 1))
-            array.swapAt(index, target)
-        }
-    }
-}
