@@ -101,26 +101,34 @@ struct PlaylistHeaderView: View {
     }
 
     private func marqueeArtwork(width: CGFloat, height: CGFloat) -> some View {
-        let tile = min(156, max(118, height * 0.37))
-        let rowSpacing = -tile * 0.16
+        // Build a dense rectangular collage that is deliberately larger than the
+        // header. The parent clips it to a clean rectangle, so there is never an
+        // exposed empty area while the collage slowly travels to the left.
+        let tile = min(150, max(116, height * 0.39))
+        let rowSpacing = min(18, max(10, tile * 0.10))
 
         return ZStack {
             Color.black
 
             VStack(spacing: rowSpacing) {
                 ForEach(0..<3, id: \.self) { row in
-                    marqueeRow(tile: tile, row: row, direction: row.isMultiple(of: 2) ? -1 : 1)
+                    marqueeRow(
+                        tile: tile,
+                        row: row,
+                        width: width,
+                        height: height
+                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
-            .rotationEffect(.degrees(-0.8))
-            .scaleEffect(1.08)
+            .rotationEffect(.degrees(-0.55))
+            .scaleEffect(1.10)
         }
         .overlay {
             LinearGradient(
                 colors: [
-                    .black.opacity(0.04),
+                    .black.opacity(0.03),
                     .clear,
                     .black.opacity(0.08)
                 ],
@@ -130,49 +138,63 @@ struct PlaylistHeaderView: View {
         }
     }
 
-    private func marqueeRow(tile: CGFloat, row: Int, direction: CGFloat) -> some View {
+    private func marqueeRow(
+        tile: CGFloat,
+        row: Int,
+        width: CGFloat,
+        height: CGFloat
+    ) -> some View {
         var generator = PlaylistHeaderRandom(seed: stableSeed &+ row * 7919)
-        let count = 8
-        var sequence: [URL] = []
-        sequence.reserveCapacity(count)
+
+        // One segment is duplicated several times. We animate by exactly one
+        // segment width, making the loop seamless instead of exposing blank space.
+        let baseCount = max(8, Int(ceil(width / tile)) + 2)
+        let spacing = min(16, max(8, tile * 0.075))
+        let segmentWidth = tile * CGFloat(baseCount) + spacing * CGFloat(baseCount - 1)
 
         var shuffled = artworkURLs
         generator.shuffle(&shuffled)
 
-        for index in 0..<count {
-            sequence.append(shuffled[index % shuffled.count])
+        var rotations: [Double] = []
+        var jitters: [CGFloat] = []
+        rotations.reserveCapacity(baseCount)
+        jitters.reserveCapacity(baseCount)
+
+        for _ in 0..<baseCount {
+            rotations.append(generator.nextDouble(in: -4.2...4.2))
+            jitters.append(CGFloat(generator.nextDouble(in: -0.035...0.035)) * tile)
         }
 
-        let spacing = -tile * 0.055
-        let totalWidth = tile * CGFloat(count) + spacing * CGFloat(count - 1)
-        let startOffset = CGFloat(generator.nextDouble(in: -0.28...0.04)) * tile
+        let startOffset = CGFloat(generator.nextDouble(in: -0.30...0.02)) * tile
+        let verticalJitter = CGFloat(generator.nextDouble(in: -0.035...0.035)) * tile
+        let duration = 38.0 + Double((stableSeed + row * 11) % 9)
 
         return HStack(spacing: spacing) {
-            ForEach(Array(sequence.enumerated()), id: \.offset) { index, url in
-                let verticalJitter = CGFloat(generator.nextDouble(in: -0.045...0.045)) * tile
-                let rotation = generator.nextDouble(in: -3.2...3.2)
+            ForEach(0..<(baseCount * 3), id: \.self) { index in
+                let baseIndex = index % baseCount
+                let url = shuffled[baseIndex % shuffled.count]
 
                 LazyArtwork(
                     url: url,
                     size: tile,
                     cornerRadius: tile * 0.10
                 )
-                .rotationEffect(.degrees(rotation))
-                .offset(y: verticalJitter)
-                .shadow(color: .black.opacity(0.24), radius: 7, y: 4)
+                .rotationEffect(.degrees(rotations[baseIndex]))
+                .offset(y: jitters[baseIndex])
+                .shadow(color: .black.opacity(0.28), radius: 7, y: 4)
                 .zIndex(Double(index))
             }
         }
-        .frame(width: totalWidth, height: tile, alignment: .center)
+        .frame(width: segmentWidth * 3, height: tile, alignment: .leading)
         .offset(x: startOffset)
         .modifier(
             MarqueeMotion(
-                direction: direction,
-                distance: tile * 2.4,
-                duration: 18 + Double((stableSeed + row * 5) % 7)
+                distance: segmentWidth,
+                duration: duration
             )
         )
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .offset(y: verticalJitter)
     }
 
     private var playButton: some View {
@@ -225,14 +247,13 @@ struct PlaylistHeaderView: View {
 }
 
 private struct MarqueeMotion: ViewModifier {
-    let direction: CGFloat
     let distance: CGFloat
     let duration: Double
     @State private var moved = false
 
     func body(content: Content) -> some View {
         content
-            .offset(x: moved ? direction * distance : 0)
+            .offset(x: moved ? -distance : 0)
             .onAppear {
                 withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
                     moved = true

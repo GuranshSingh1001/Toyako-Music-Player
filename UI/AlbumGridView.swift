@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AlbumGridView: View {
     @Namespace private var albumTransitionNamespace
+    @State private var activeAlbumTransitionID: String?
 
     let albums: [AlbumGroup]
     let library: LocalLibrary
@@ -14,13 +15,36 @@ struct AlbumGridView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 26) {
                 ForEach(albums) { album in
+                    let isActive = activeAlbumTransitionID == album.id
+
                     NavigationLink {
                         AlbumDetailView(album: album, library: library, transitionNamespace: albumTransitionNamespace)
+                            .navigationTransition(.zoom(sourceID: album.id, in: albumTransitionNamespace))
+                            .onDisappear {
+                                activeAlbumTransitionID = nil
+                            }
                     } label: {
                         AlbumCard(album: album)
-                            .matchedTransitionSource(id: album.id, in: albumTransitionNamespace)
+                            // iOS 26 can keep the live transition source attached to
+                            // the ScrollView after a zoom navigation. That makes the
+                            // scroll gesture appear locked for a short period after
+                            // returning. Keep the visible card out of the transition
+                            // renderer and use a tiny phantom source instead.
+                            .opacity(isActive ? 0 : 1)
+                            .animation(.easeOut(duration: 0.16), value: isActive)
+                            .background {
+                                Circle()
+                                    .fill(.black.opacity(0.001))
+                                    .frame(width: 1, height: 1)
+                                    .matchedTransitionSource(id: album.id, in: albumTransitionNamespace)
+                            }
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            activeAlbumTransitionID = album.id
+                        }
+                    )
                 }
             }
             .padding(.horizontal, 22)
@@ -102,7 +126,6 @@ struct AlbumDetailView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTransition(.zoom(sourceID: album.id, in: transitionNamespace))
         // The navigation zoom provides the page entrance animation. Avoid a
         // second hero animation here so scrolling is immediately responsive
         // after returning from the detail page.

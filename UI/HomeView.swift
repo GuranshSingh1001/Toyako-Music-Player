@@ -22,6 +22,9 @@ struct HomeView: View {
     let onShuffleAll: () -> Void
 
     @State private var recommendationSeed = UInt64.random(in: 1...UInt64.max)
+    @State private var activeAlbumTransitionID: String?
+    @State private var activeArtistTransitionID: String?
+    @State private var activePlaylistTransitionID: UUID?
 
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
@@ -219,18 +222,20 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
                 ForEach(items) { album in
+                    let isActive = activeAlbumTransitionID == album.id
+
                     NavigationLink {
                         AlbumDetailView(album: album, library: library, transitionNamespace: homeAlbumTransitionNamespace)
                             .navigationTitle("")
                             .navigationBarTitleDisplayMode(.inline)
+                            .navigationTransition(.zoom(sourceID: album.id, in: homeAlbumTransitionNamespace))
+                            .onDisappear {
+                                activeAlbumTransitionID = nil
+                            }
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyAlbumArtwork(url: album.artworkURL)
                                 .frame(width: 145, height: 145)
-                                .background {
-                                    Color.clear
-                                        .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace)
-                                }
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             Text(album.name)
                                 .font(.subheadline.weight(.semibold))
@@ -242,7 +247,20 @@ struct HomeView: View {
                         }
                         .frame(width: 145, alignment: .leading)
                     }
+                    .opacity(isActive ? 0 : 1)
+                    .animation(.easeOut(duration: 0.16), value: isActive)
+                    .background {
+                        Circle()
+                            .fill(.black.opacity(0.001))
+                            .frame(width: 1, height: 1)
+                            .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace)
+                    }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            activeAlbumTransitionID = album.id
+                        }
+                    )
                 }
             }
         }
@@ -253,15 +271,17 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
                 ForEach(items) { artist in
+                    let isActive = activeArtistTransitionID == artist.id
+
                     NavigationLink {
                         ArtistDetailView(artist: artist, library: library, transitionNamespace: homeArtistTransitionNamespace)
+                            .navigationTransition(.zoom(sourceID: artist.id, in: homeArtistTransitionNamespace))
+                            .onDisappear {
+                                activeArtistTransitionID = nil
+                            }
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
-                                .background {
-                                    Color.clear
-                                        .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
-                                }
 
                             Text(artist.name)
                                 .font(.subheadline.weight(.semibold))
@@ -269,7 +289,20 @@ struct HomeView: View {
                         }
                         .frame(width: 110)
                     }
+                    .opacity(isActive ? 0 : 1)
+                    .animation(.easeOut(duration: 0.16), value: isActive)
+                    .background {
+                        Circle()
+                            .fill(.black.opacity(0.001))
+                            .frame(width: 1, height: 1)
+                            .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
+                    }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            activeArtistTransitionID = artist.id
+                        }
+                    )
                 }
             }
         }
@@ -294,6 +327,7 @@ struct HomeView: View {
                     let playlistTracks = playlist.trackURLs.compactMap { playlistURL in
                         tracksByURL[playlistURL.standardizedFileURL]
                     }
+                    let isActive = activePlaylistTransitionID == playlist.id
 
                     NavigationLink {
                         SongListView(
@@ -314,6 +348,9 @@ struct HomeView: View {
                         .navigationTitle("")
                         .navigationBarTitleDisplayMode(.inline)
                         .navigationTransition(.zoom(sourceID: playlist.id, in: homePlaylistTransitionNamespace))
+                        .onDisappear {
+                            activePlaylistTransitionID = nil
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             PlaylistArtwork(
@@ -322,10 +359,6 @@ struct HomeView: View {
                                 playlistID: playlist.id
                             )
                             .frame(width: 145, height: 145)
-                            .background {
-                                Color.clear
-                                    .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace)
-                            }
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                             Text(playlist.name)
@@ -338,7 +371,20 @@ struct HomeView: View {
                         }
                         .frame(width: 145, alignment: .leading)
                     }
+                    .opacity(isActive ? 0 : 1)
+                    .animation(.easeOut(duration: 0.16), value: isActive)
+                    .background {
+                        Circle()
+                            .fill(.black.opacity(0.001))
+                            .frame(width: 1, height: 1)
+                            .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace)
+                    }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            activePlaylistTransitionID = playlist.id
+                        }
+                    )
                     .contextMenu {
                         Button {
                             onAddSongsToPlaylist(playlist)

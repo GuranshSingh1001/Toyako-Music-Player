@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ArtistListView: View {
     @Namespace private var artistTransitionNamespace
+    @State private var activeArtistTransitionID: String?
 
     let artists: [ArtistGroup]
     let library: LocalLibrary
@@ -19,13 +20,31 @@ struct ArtistListView: View {
                     spacing: 26
                 ) {
                     ForEach(artists) { artist in
+                        let isActive = activeArtistTransitionID == artist.id
+
                         NavigationLink {
                             ArtistDetailView(artist: artist, library: library, transitionNamespace: artistTransitionNamespace)
+                                .navigationTransition(.zoom(sourceID: artist.id, in: artistTransitionNamespace))
+                                .onDisappear {
+                                    activeArtistTransitionID = nil
+                                }
                         } label: {
                             artistGridCard(artist)
-                                .matchedTransitionSource(id: artist.id, in: artistTransitionNamespace)
+                                .opacity(isActive ? 0 : 1)
+                                .animation(.easeOut(duration: 0.16), value: isActive)
+                                .background {
+                                    Circle()
+                                        .fill(.black.opacity(0.001))
+                                        .frame(width: 1, height: 1)
+                                        .matchedTransitionSource(id: artist.id, in: artistTransitionNamespace)
+                                }
                         }
                         .buttonStyle(.plain)
+                        .simultaneousGesture(
+                            TapGesture().onEnded {
+                                activeArtistTransitionID = artist.id
+                            }
+                        )
                     }
                 }
                 .padding(.horizontal, horizontalPadding)
@@ -76,6 +95,7 @@ struct ArtistDetailView: View {
 
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var heroVisible = true
+    @State private var activeAlbumTransitionID: String?
 
     private var albums: [AlbumGroup] {
         Dictionary(grouping: artist.tracks) { track in
@@ -131,7 +151,6 @@ struct ArtistDetailView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTransition(.zoom(sourceID: artist.id, in: transitionNamespace))
         // The navigation zoom supplies the opening/closing transition.
         // Do not run a second hero animation here: it can temporarily compete
         // with the navigation transition and make the ScrollView feel locked
@@ -333,6 +352,8 @@ struct ArtistDetailView: View {
     }
 
     private func albumCard(_ album: AlbumGroup) -> some View {
+        let isActive = activeAlbumTransitionID == album.id
+
         NavigationLink {
             AlbumDetailView(album: album, library: library, transitionNamespace: transitionNamespace)
         } label: {
@@ -351,12 +372,21 @@ struct ArtistDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .opacity(isActive ? 0 : 1)
+            .animation(.easeOut(duration: 0.16), value: isActive)
             .background {
-                Color.clear
+                Circle()
+                    .fill(.black.opacity(0.001))
+                    .frame(width: 1, height: 1)
                     .matchedTransitionSource(id: album.id, in: transitionNamespace)
             }
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                activeAlbumTransitionID = album.id
+            }
+        )
     }
 
     private var tracksSection: some View {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AllPlaylistsGridView: View {
     @Namespace private var playlistTransitionNamespace
+    @State private var activePlaylistTransitionID: UUID?
 
     let playlists: [Playlist]
     let library: LocalLibrary
@@ -19,6 +20,7 @@ struct AllPlaylistsGridView: View {
             LazyVGrid(columns: columns, spacing: 28) {
                 ForEach(playlists) { playlist in
                     let playlistTracks = library.tracks.filter { playlist.trackURLs.contains($0.url) }
+                    let isActive = activePlaylistTransitionID == playlist.id
 
                     NavigationLink {
                         SongListView(
@@ -37,6 +39,9 @@ struct AllPlaylistsGridView: View {
                         .navigationTitle("")
                         .navigationBarTitleDisplayMode(.inline)
                         .navigationTransition(.zoom(sourceID: playlist.id, in: playlistTransitionNamespace))
+                        .onDisappear {
+                            activePlaylistTransitionID = nil
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 9) {
                             PlaylistArtwork(
@@ -45,10 +50,6 @@ struct AllPlaylistsGridView: View {
                                 playlistID: playlist.id
                             )
                             .aspectRatio(1, contentMode: .fit)
-                            .background {
-                                Color.clear
-                                    .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
-                            }
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
 
@@ -61,7 +62,20 @@ struct AllPlaylistsGridView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .opacity(isActive ? 0 : 1)
+                    .animation(.easeOut(duration: 0.16), value: isActive)
+                    .background {
+                        Circle()
+                            .fill(.black.opacity(0.001))
+                            .frame(width: 1, height: 1)
+                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
+                    }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            activePlaylistTransitionID = playlist.id
+                        }
+                    )
                     .contextMenu {
                         Button {
                             onAddSongs(playlist)
@@ -99,8 +113,6 @@ struct PlaylistArtwork: View {
     let playlistName: String
     var playlistID: UUID? = nil
 
-    @State private var revealed = false
-    @State private var drifting = false
 
     private var seed: Int {
         stableSeed(for: playlistID ?? UUID())
@@ -125,7 +137,7 @@ struct PlaylistArtwork: View {
                 if artworkURLs.isEmpty {
                     emptyArtwork
                 } else {
-                    cleanCollage(side: side)
+                    staticCollage(side: side)
                 }
 
                 LinearGradient(
@@ -141,23 +153,11 @@ struct PlaylistArtwork: View {
             }
             .clipped()
             .contentShape(Rectangle())
-            .onAppear {
-                withAnimation(.spring(response: 0.58, dampingFraction: 0.80)) {
-                    revealed = true
-                }
-                withAnimation(
-                    .easeInOut(duration: 8.0 + Double(abs(seed % 4)))
-                    .repeatForever(autoreverses: true)
-                    .delay(0.35)
-                ) {
-                    drifting = true
-                }
-            }
         }
     }
 
     @ViewBuilder
-    private func cleanCollage(side: CGFloat) -> some View {
+    private func staticCollage(side: CGFloat) -> some View {
         let cards = collageCards(side: side)
 
         ZStack {
@@ -169,60 +169,46 @@ struct PlaylistArtwork: View {
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: card.size * 0.075, style: .continuous)
-                        .stroke(.white.opacity(0.24), lineWidth: 1)
+                        .stroke(.white.opacity(0.22), lineWidth: 0.8)
                 }
-                .shadow(color: .black.opacity(0.24), radius: 7, y: 4)
-                .rotationEffect(.degrees(revealed ? card.rotation : card.rotation * 2.0))
-                .scaleEffect(revealed ? 1 : 0.86)
-                .offset(
-                    x: revealed ? card.position.width + (drifting ? card.drift.width : 0) : card.position.width,
-                    y: revealed ? card.position.height + (drifting ? card.drift.height : 0) : card.position.height
-                )
-                .opacity(revealed ? 1 : 0)
-                .animation(
-                    .spring(response: 0.56, dampingFraction: 0.82)
-                        .delay(Double(card.index) * 0.035),
-                    value: revealed
-                )
-                .animation(
-                    .easeInOut(duration: 8.0 + Double(abs(seed % 4)))
-                        .repeatForever(autoreverses: true),
-                    value: drifting
-                )
+                .shadow(color: .black.opacity(0.28), radius: 6, y: 3)
+                .rotationEffect(.degrees(card.rotation))
+                .offset(card.position)
                 .zIndex(Double(card.index))
             }
         }
+        .frame(width: side * 1.12, height: side * 1.12)
+        .position(x: side * 0.50, y: side * 0.50)
     }
 
     private func collageCards(side: CGFloat) -> [CollageCard] {
         var generator = SeededRandom(seed: seed)
-        let cardSide = side * 0.355
-        let step = side * 0.315
-        let origin = -step
+        let cardSide = side * 0.255
+        let step = side * 0.267
+        let totalSpan = cardSide + step * 3
+        let origin = -totalSpan * 0.50 + cardSide * 0.50
 
         var cards: [CollageCard] = []
-        cards.reserveCapacity(9)
+        cards.reserveCapacity(16)
 
-        for row in 0..<3 {
-            for column in 0..<3 {
-                let index = row * 3 + column
-                let jitterX = CGFloat(generator.nextDouble(in: -0.032...0.032)) * side
-                let jitterY = CGFloat(generator.nextDouble(in: -0.032...0.032)) * side
-                let rotation = generator.nextDouble(in: -4.5...4.5)
-                let driftX = CGFloat(generator.nextDouble(in: -0.018...0.018)) * side
-                let driftY = CGFloat(generator.nextDouble(in: -0.010...0.010)) * side
+        for row in 0..<4 {
+            for column in 0..<4 {
+                let index = row * 4 + column
+                let jitterX = CGFloat(generator.nextDouble(in: -0.012...0.012)) * side
+                let jitterY = CGFloat(generator.nextDouble(in: -0.012...0.012)) * side
+                let rotation = generator.nextDouble(in: -5.0...5.0)
 
                 cards.append(
                     CollageCard(
                         index: index,
-                        url: artworkURLs[index],
+                        url: artworkURLs[index % artworkURLs.count],
                         size: cardSide,
                         position: CGSize(
                             width: origin + CGFloat(column) * step + jitterX,
                             height: origin + CGFloat(row) * step + jitterY
                         ),
                         rotation: rotation,
-                        drift: CGSize(width: driftX, height: driftY)
+                        drift: .zero
                     )
                 )
             }
