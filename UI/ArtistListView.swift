@@ -33,6 +33,7 @@ struct ArtistListView: View {
                 .padding(.bottom, audioManager.currentTrack != nil ? 100 : 30)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .scrollDisabled(false)
         }
         .overlay(alignment: .topLeading) {
             Text("\(artists.count) Artists")
@@ -74,7 +75,7 @@ struct ArtistDetailView: View {
     let transitionNamespace: Namespace.ID
 
     @EnvironmentObject var audioManager: AudioEngineManager
-    @State private var heroVisible = false
+    @State private var heroVisible = true
 
     private var albums: [AlbumGroup] {
         Dictionary(grouping: artist.tracks) { track in
@@ -126,23 +127,36 @@ struct ArtistDetailView: View {
                 .padding(.bottom, 100)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .scrollDisabled(false)
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationTransition(.zoom(sourceID: artist.id, in: transitionNamespace))
-        .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
-                heroVisible = true
-            }
-        }
+        // The navigation zoom supplies the opening/closing transition.
+        // Do not run a second hero animation here: it can temporarily compete
+        // with the navigation transition and make the ScrollView feel locked
+        // immediately after returning to the page.
     }
 
     private var wideHero: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let artworkSize = min(max(width * 0.42, 300), 560)
+            let horizontalPadding = min(max(width * 0.04, 24), 56)
+            let available = max(320, width - horizontalPadding * 2)
+            let spacing = min(max(available * 0.045, 24), 52)
+            let artworkSize = min(max(available * 0.36, 220), 430)
+            let textWidth = max(240, available - artworkSize - spacing)
 
-            HStack(alignment: .center, spacing: min(max(width * 0.06, 32), 90)) {
+            HStack(alignment: .center, spacing: spacing) {
+                // Keep the iPad artist layout consistent with the album page:
+                // artwork first, metadata/actions second.
+                ArtistArtworkView(artistName: artist.name, size: artworkSize)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
+                    .scaleEffect(heroVisible ? 1 : 0.92)
+                    .opacity(heroVisible ? 1 : 0)
+                    .layoutPriority(1)
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("ARTIST")
                         .font(.caption.weight(.bold))
@@ -150,55 +164,58 @@ struct ArtistDetailView: View {
                         .foregroundStyle(.secondary)
 
                     Text(artist.name)
-                        .font(.system(size: min(max(width * 0.055, 38), 58), weight: .bold))
+                        .font(.system(size: min(max(textWidth * 0.12, 34), 58), weight: .bold))
                         .lineLimit(2)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.68)
 
                     Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
                         .font(.title3)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
 
-                    HStack(spacing: 12) {
-                        Button {
-                            guard !sortedTracks.isEmpty else { return }
-                            audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
-                        } label: {
-                            Label("Play", systemImage: "play.fill")
-                                .font(.headline)
-                                .frame(minWidth: 120)
-                        }
-                        .buttonStyle(HeroPrimaryButtonStyle())
-
-                        Button {
-                            guard !sortedTracks.isEmpty else { return }
-                            audioManager.startQueue(
-                                tracks: sortedTracks,
-                                startIndex: Int.random(in: 0..<sortedTracks.count),
-                                shuffle: true
-                            )
-                        } label: {
-                            Label("Shuffle", systemImage: "shuffle")
-                                .font(.headline)
-                                .frame(minWidth: 120)
-                        }
-                        .buttonStyle(HeroSecondaryButtonStyle())
+                    HStack(spacing: 10) {
+                        artistPlayButton
+                        artistShuffleButton
                     }
-                    .padding(.top, 8)
+                    .frame(maxWidth: min(textWidth, 430), alignment: .leading)
+                    .padding(.top, 6)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                ArtistArtworkView(artistName: artist.name, size: artworkSize)
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
-                    .scaleEffect(heroVisible ? 1 : 0.92)
-                    .opacity(heroVisible ? 1 : 0)
+                .frame(width: textWidth, alignment: .leading)
             }
-            .padding(.horizontal, min(max(width * 0.055, 32), 88))
+            .padding(.horizontal, horizontalPadding)
             .frame(maxWidth: 1280)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(height: min(max(artworkHeroHeight, 360), 590))
+        .frame(height: min(max(artworkHeroHeight, 340), 500))
         .padding(.top, 8)
+    }
+
+    private var artistPlayButton: some View {
+        Button {
+            guard !sortedTracks.isEmpty else { return }
+            audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
+        } label: {
+            Label("Play", systemImage: "play.fill")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(HeroPrimaryButtonStyle())
+    }
+
+    private var artistShuffleButton: some View {
+        Button {
+            guard !sortedTracks.isEmpty else { return }
+            audioManager.startQueue(
+                tracks: sortedTracks,
+                startIndex: Int.random(in: 0..<sortedTracks.count),
+                shuffle: true
+            )
+        } label: {
+            Label("Shuffle", systemImage: "shuffle")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(HeroSecondaryButtonStyle())
     }
 
     private var artworkHeroHeight: CGFloat {
@@ -206,12 +223,16 @@ struct ArtistDetailView: View {
     }
 
     private func compactHero(maxWidth: CGFloat) -> some View {
-        // Keep the same artist-page visual language in smaller windows.
-        // Only the geometry changes; the hero never falls back to the old page.
         if maxWidth >= 420 {
+            let padding: CGFloat = 20
+            let available = max(280, maxWidth - padding * 2)
+            let spacing: CGFloat = 18
+            let artworkSize = min(max(available * 0.36, 150), 220)
+            let textWidth = max(150, available - artworkSize - spacing)
+
             return AnyView(
-                HStack(spacing: 24) {
-                    ArtistArtworkView(artistName: artist.name, size: min(maxWidth * 0.42, 250))
+                HStack(alignment: .center, spacing: spacing) {
+                    ArtistArtworkView(artistName: artist.name, size: artworkSize)
                         .clipShape(Circle())
                         .shadow(color: .black.opacity(0.25), radius: 22, y: 12)
                         .scaleEffect(heroVisible ? 1 : 0.92)
@@ -224,43 +245,33 @@ struct ArtistDetailView: View {
                             .foregroundStyle(.secondary)
 
                         Text(artist.name)
-                            .font(.system(size: min(maxWidth * 0.075, 30), weight: .bold))
+                            .font(.system(size: min(max(textWidth * 0.16, 27), 40), weight: .bold))
                             .lineLimit(2)
+                            .minimumScaleFactor(0.7)
 
                         Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .lineLimit(2)
 
-                        HStack(spacing: 10) {
-                            Button {
-                                guard !sortedTracks.isEmpty else { return }
-                                audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
-                            } label: {
-                                Label("Play", systemImage: "play.fill")
-                            }
-                            .buttonStyle(HeroPrimaryButtonStyle())
-
-                            Button {
-                                guard !sortedTracks.isEmpty else { return }
-                                audioManager.startQueue(tracks: sortedTracks, startIndex: Int.random(in: 0..<sortedTracks.count), shuffle: true)
-                            } label: {
-                                Label("Shuffle", systemImage: "shuffle")
-                            }
-                            .buttonStyle(HeroSecondaryButtonStyle())
+                        HStack(spacing: 8) {
+                            artistPlayButton
+                            artistShuffleButton
                         }
-                        .padding(.top, 4)
+                        .frame(maxWidth: textWidth)
+                        .padding(.top, 2)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: textWidth, alignment: .leading)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 22)
+                .padding(.horizontal, padding)
+                .padding(.vertical, 18)
                 .frame(maxWidth: .infinity)
             )
         }
 
         return AnyView(
-            VStack(spacing: 12) {
-                ArtistArtworkView(artistName: artist.name, size: min(maxWidth * 0.62, 240))
+            VStack(spacing: 10) {
+                ArtistArtworkView(artistName: artist.name, size: min(maxWidth * 0.62, 230))
                     .clipShape(Circle())
                     .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
                     .scaleEffect(heroVisible ? 1 : 0.92)
@@ -274,26 +285,21 @@ struct ArtistDetailView: View {
                 Text(artist.name)
                     .font(.system(size: 28, weight: .bold))
                     .multilineTextAlignment(.center)
+                    .lineLimit(2)
 
                 Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 10) {
-                    Button { audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false) } label: {
-                        Label("Play", systemImage: "play.fill")
-                    }.buttonStyle(HeroPrimaryButtonStyle())
-                    Button {
-                        guard !sortedTracks.isEmpty else { return }
-                        audioManager.startQueue(tracks: sortedTracks, startIndex: Int.random(in: 0..<sortedTracks.count), shuffle: true)
-                    } label: {
-                        Label("Shuffle", systemImage: "shuffle")
-                    }.buttonStyle(HeroSecondaryButtonStyle())
+                HStack(spacing: 8) {
+                    artistPlayButton
+                    artistShuffleButton
                 }
+                .frame(maxWidth: 360)
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         )
     }
 
@@ -345,7 +351,10 @@ struct ArtistDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .matchedTransitionSource(id: album.id, in: transitionNamespace)
+            .background {
+                Color.clear
+                    .matchedTransitionSource(id: album.id, in: transitionNamespace)
+            }
         }
         .buttonStyle(.plain)
     }

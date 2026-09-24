@@ -28,6 +28,7 @@ struct AlbumGridView: View {
             .padding(.bottom, 100)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .scrollDisabled(false)
     }
 }
 
@@ -66,7 +67,7 @@ struct AlbumDetailView: View {
 
     @EnvironmentObject var audioManager: AudioEngineManager
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @State private var artworkVisible = false
+    @State private var artworkVisible = true
 
     private var sortedTracks: [LocalTrack] {
         album.tracks.sorted {
@@ -97,23 +98,34 @@ struct AlbumDetailView: View {
                 .padding(.bottom, 110)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .scrollDisabled(false)
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationTransition(.zoom(sourceID: album.id, in: transitionNamespace))
-        .onAppear {
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.84)) {
-                artworkVisible = true
-            }
-        }
+        // The navigation zoom provides the page entrance animation. Avoid a
+        // second hero animation here so scrolling is immediately responsive
+        // after returning from the detail page.
     }
 
     // MARK: Album Hero — same visual language as the iPad Artist page
 
     private func wideHero(width: CGFloat) -> some View {
-        let artworkSize = min(max(width * 0.38, 280), 520)
+        let horizontalPadding = min(max(width * 0.04, 24), 56)
+        let available = max(320, width - horizontalPadding * 2)
+        let spacing = min(max(available * 0.045, 24), 52)
+        let artworkSize = min(max(available * 0.36, 220), 430)
+        let textWidth = max(240, available - artworkSize - spacing)
 
-        return HStack(alignment: .center, spacing: min(max(width * 0.06, 32), 88)) {
+        return HStack(alignment: .center, spacing: spacing) {
+            LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 24)
+                .frame(width: artworkSize, height: artworkSize)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
+                .scaleEffect(artworkVisible ? 1 : 0.92)
+                .opacity(artworkVisible ? 1 : 0)
+                .layoutPriority(1)
+
             VStack(alignment: .leading, spacing: 10) {
                 Text("ALBUM")
                     .font(.caption.weight(.bold))
@@ -121,9 +133,9 @@ struct AlbumDetailView: View {
                     .foregroundStyle(.secondary)
 
                 Text(album.name)
-                    .font(.system(size: min(max(width * 0.055, 38), 58), weight: .bold))
+                    .font(.system(size: min(max(textWidth * 0.12, 34), 58), weight: .bold))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.68)
 
                 Text(album.artist)
                     .font(.title3.weight(.medium))
@@ -133,35 +145,36 @@ struct AlbumDetailView: View {
                 Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
                     .font(.title3)
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     playButton
                     shuffleButton
                 }
-                .padding(.top, 8)
+                .frame(maxWidth: min(textWidth, 430), alignment: .leading)
+                .padding(.top, 6)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 24)
-                .frame(width: artworkSize, height: artworkSize)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
-                .scaleEffect(artworkVisible ? 1 : 0.92)
-                .opacity(artworkVisible ? 1 : 0)
+            .frame(width: textWidth, alignment: .leading)
         }
-        .padding(.horizontal, min(max(width * 0.055, 32), 88))
+        .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: 1280)
         .frame(maxWidth: .infinity)
-        .frame(height: min(max(artworkSize + 30, 360), 500))
+        .frame(height: min(max(artworkSize + 36, 340), 500))
         .padding(.top, 8)
     }
 
     private func compactHero(width: CGFloat) -> some View {
         if width >= 420 {
+            let padding: CGFloat = 20
+            let available = max(280, width - padding * 2)
+            let spacing: CGFloat = 18
+            let artworkSize = min(max(available * 0.36, 150), 220)
+            let textWidth = max(150, available - artworkSize - spacing)
+
             return AnyView(
-                HStack(spacing: 24) {
+                HStack(alignment: .center, spacing: spacing) {
                     LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 20)
-                        .frame(width: min(max(width * 0.40, 180), 250), height: min(max(width * 0.40, 180), 250))
+                        .frame(width: artworkSize, height: artworkSize)
                         .shadow(color: .black.opacity(0.25), radius: 22, y: 12)
                         .scaleEffect(artworkVisible ? 1 : 0.92)
                         .opacity(artworkVisible ? 1 : 0)
@@ -173,8 +186,9 @@ struct AlbumDetailView: View {
                             .foregroundStyle(.secondary)
 
                         Text(album.name)
-                            .font(.system(size: min(max(width * 0.075, 30), 40), weight: .bold))
+                            .font(.system(size: min(max(textWidth * 0.16, 27), 40), weight: .bold))
                             .lineLimit(2)
+                            .minimumScaleFactor(0.7)
 
                         Text(album.artist)
                             .font(.headline)
@@ -184,17 +198,20 @@ struct AlbumDetailView: View {
                         Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .lineLimit(2)
 
-                        HStack(spacing: 10) {
+                        HStack(spacing: 8) {
                             playButton
                             shuffleButton
                         }
-                        .padding(.top, 3)
+                        .frame(maxWidth: textWidth)
+                        .padding(.top, 2)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: textWidth, alignment: .leading)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+                .padding(.horizontal, padding)
+                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity)
             )
         }
 
@@ -225,13 +242,14 @@ struct AlbumDetailView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     playButton
                     shuffleButton
                 }
+                .frame(maxWidth: 360)
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 16)
             .padding(.vertical, 16)
         )
     }
@@ -240,7 +258,7 @@ struct AlbumDetailView: View {
         Button(action: playAlbum) {
             Label("Play", systemImage: "play.fill")
                 .font(.headline)
-                .frame(minWidth: 112)
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(HeroPrimaryButtonStyle())
     }
@@ -249,7 +267,7 @@ struct AlbumDetailView: View {
         Button(action: shuffleAlbum) {
             Label("Shuffle", systemImage: "shuffle")
                 .font(.headline)
-                .frame(minWidth: 112)
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(HeroSecondaryButtonStyle())
     }

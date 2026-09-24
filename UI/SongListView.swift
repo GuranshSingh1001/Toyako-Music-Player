@@ -70,6 +70,7 @@ struct SongListView: View {
             }
             .padding(.vertical)
         }
+        .scrollDisabled(false)
     }
 
     private func formatTime(_ duration: TimeInterval) -> String {

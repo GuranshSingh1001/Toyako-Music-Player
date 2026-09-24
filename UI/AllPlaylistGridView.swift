@@ -44,8 +44,11 @@ struct AllPlaylistsGridView: View {
                                 playlistName: playlist.name,
                                 playlistID: playlist.id
                             )
-                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
                             .aspectRatio(1, contentMode: .fit)
+                            .background {
+                                Color.clear
+                                    .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
+                            }
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
 
@@ -85,6 +88,7 @@ struct AllPlaylistsGridView: View {
             .padding(.bottom, 100)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .scrollDisabled(false)
     }
 }
 

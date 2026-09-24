@@ -6,7 +6,7 @@ struct PlaylistHeaderView: View {
     let onAddSongs: () -> Void
 
     @EnvironmentObject var audioManager: AudioEngineManager
-    @State private var heroVisible = false
+    @State private var heroVisible = true
 
     private var artworkURLs: [URL] {
         guard !tracks.isEmpty else { return [] }
@@ -94,11 +94,8 @@ struct PlaylistHeaderView: View {
             .shadow(color: .black.opacity(0.28), radius: 18, y: 9)
             .padding(.horizontal, wide ? 24 : 16)
             .padding(.top, 16)
-            .onAppear {
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                    heroVisible = true
-                }
-            }
+            // The navigation zoom handles the page entrance. Avoid another
+            // large hero animation competing with the scroll view on return.
         }
         .frame(height: 390)
     }

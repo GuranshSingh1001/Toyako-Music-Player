@@ -226,8 +226,11 @@ struct HomeView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyAlbumArtwork(url: album.artworkURL)
-                                .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace)
                                 .frame(width: 145, height: 145)
+                                .background {
+                                    Color.clear
+                                        .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace)
+                                }
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             Text(album.name)
                                 .font(.subheadline.weight(.semibold))
@@ -255,7 +258,10 @@ struct HomeView: View {
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
-                                .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
+                                .background {
+                                    Color.clear
+                                        .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
+                                }
 
                             Text(artist.name)
                                 .font(.subheadline.weight(.semibold))
@@ -315,8 +321,11 @@ struct HomeView: View {
                                 playlistName: playlist.name,
                                 playlistID: playlist.id
                             )
-                            .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace)
                             .frame(width: 145, height: 145)
+                            .background {
+                                Color.clear
+                                    .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace)
+                            }
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                             Text(playlist.name)
