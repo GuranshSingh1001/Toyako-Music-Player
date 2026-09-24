@@ -106,7 +106,9 @@ struct ArtistDetailView: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let wide = width >= 900
+            // Use the same hero treatment at every window size. The compact
+            // layout is only a spatial adaptation, not the old detail-page UI.
+            let wide = width >= 700
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -127,7 +129,7 @@ struct ArtistDetailView: View {
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
-        .navigationTitle(artist.name)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationTransition(.zoom(sourceID: artist.id, in: transitionNamespace))
         .onAppear {
@@ -190,36 +192,85 @@ struct ArtistDetailView: View {
     }
 
     private func compactHero(maxWidth: CGFloat) -> some View {
-        let size = min(maxWidth * 0.56, 260)
+        let isVeryNarrow = maxWidth < 520
+        let artworkSize = isVeryNarrow
+            ? min(maxWidth * 0.62, 250)
+            : min(maxWidth * 0.38, 300)
 
-        return VStack(spacing: 14) {
-            ArtistArtworkView(artistName: artist.name, size: size)
-                .shadow(color: .black.opacity(0.25), radius: 22, y: 12)
-                .scaleEffect(heroVisible ? 1 : 0.92)
-                .opacity(heroVisible ? 1 : 0)
+        return Group {
+            if isVeryNarrow {
+                // Phone / very narrow window: retain the visual hierarchy of
+                // the large hero while keeping the content compact.
+                VStack(spacing: 14) {
+                    ArtistArtworkView(artistName: artist.name, size: artworkSize)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
+                        .scaleEffect(heroVisible ? 1 : 0.94)
+                        .opacity(heroVisible ? 1 : 0)
 
+                    heroMetadata(centered: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 26)
+            } else {
+                // Resized iPad / narrow desktop window: use the same horizontal
+                // composition as the landscape hero, scaled to the available width.
+                HStack(spacing: 26) {
+                    ArtistArtworkView(artistName: artist.name, size: artworkSize)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.25), radius: 22, y: 12)
+                        .scaleEffect(heroVisible ? 1 : 0.94)
+                        .opacity(heroVisible ? 1 : 0)
+
+                    heroMetadata(centered: false)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 22)
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background {
+            LinearGradient(
+                colors: [.black.opacity(0.03), .black.opacity(0.18)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .padding(.horizontal, isVeryNarrow ? 14 : 20)
+        .padding(.top, 14)
+    }
+
+    private func heroMetadata(centered: Bool) -> some View {
+        VStack(alignment: centered ? .center : .leading, spacing: 8) {
             Text("ARTIST")
                 .font(.caption.weight(.bold))
+                .tracking(1.3)
                 .foregroundStyle(.secondary)
-                .tracking(1.2)
 
             Text(artist.name)
-                .font(.system(size: maxWidth < 500 ? 28 : 34, weight: .bold))
-                .multilineTextAlignment(.center)
+                .font(.system(size: 34, weight: .bold))
                 .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(centered ? .center : .leading)
 
             Text("\(albums.count) \(albums.count == 1 ? "Album" : "Albums") • \(artist.tracks.count) \(artist.tracks.count == 1 ? "Song" : "Tracks") • \(formatDuration(totalDuration))")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(centered ? .center : .leading)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Button {
                     guard !sortedTracks.isEmpty else { return }
                     audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false)
                 } label: {
                     Label("Play", systemImage: "play.fill")
                         .font(.headline)
-                        .frame(minWidth: 110)
+                        .frame(minWidth: 100)
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -233,15 +284,12 @@ struct ArtistDetailView: View {
                 } label: {
                     Label("Shuffle", systemImage: "shuffle")
                         .font(.headline)
-                        .frame(minWidth: 110)
+                        .frame(minWidth: 100)
                 }
                 .buttonStyle(.bordered)
             }
+            .padding(.top, 5)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
-        .padding(.bottom, 30)
     }
 
     private func albumsSection(wide: Bool) -> some View {
@@ -258,15 +306,16 @@ struct ArtistDetailView: View {
                 }
                 .padding(.horizontal, 24)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) {
-                        ForEach(albums) { album in
-                            albumCard(album)
-                                .frame(width: min(190, UIScreen.main.bounds.width * 0.42))
-                        }
+                let columns = max(1, Int((UIScreen.main.bounds.width - 72) / 170))
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: min(columns, 2)),
+                    spacing: 20
+                ) {
+                    ForEach(albums) { album in
+                        albumCard(album)
                     }
-                    .padding(.horizontal, 24)
                 }
+                .padding(.horizontal, 24)
             }
         }
         .padding(.vertical, 22)

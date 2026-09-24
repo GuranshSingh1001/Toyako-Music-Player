@@ -221,7 +221,7 @@ struct HomeView: View {
                 ForEach(items) { album in
                     NavigationLink {
                         AlbumDetailView(album: album, library: library, transitionNamespace: homeAlbumTransitionNamespace)
-                            .navigationTitle(album.name)
+                            .navigationTitle("")
                             .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
@@ -305,7 +305,7 @@ struct HomeView: View {
                                 )
                             )
                         )
-                        .navigationTitle(playlist.name)
+                        .navigationTitle("")
                         .navigationBarTitleDisplayMode(.inline)
                         .navigationTransition(.zoom(sourceID: playlist.id, in: homePlaylistTransitionNamespace))
                     } label: {

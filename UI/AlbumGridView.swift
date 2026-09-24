@@ -99,7 +99,7 @@ struct AlbumDetailView: View {
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
-        .navigationTitle(album.name)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationTransition(.zoom(sourceID: album.id, in: transitionNamespace))
         .onAppear {
@@ -112,69 +112,68 @@ struct AlbumDetailView: View {
     // MARK: iPad / Landscape
 
     private func wideHero(width: CGFloat) -> some View {
-        ZStack {
-            // Soft artwork backdrop gives the album page the same immersive
-            // visual language as the artist page without sacrificing legibility.
+        ZStack(alignment: .bottomLeading) {
+            // Match the artist detail experience: the artwork becomes the hero
+            // rather than sitting alone in the middle of a large empty page.
             LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 0)
                 .frame(maxWidth: .infinity)
-                .frame(height: 320)
-                .blur(radius: 30)
-                .scaleEffect(1.10)
-                .opacity(0.32)
+                .frame(height: 390)
+                .clipped()
+                .overlay {
+                    LinearGradient(
+                        colors: [
+                            .black.opacity(0.04),
+                            .black.opacity(0.28),
+                            .black.opacity(0.90)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
 
-            LinearGradient(
-                colors: [
-                    .black.opacity(0.10),
-                    .black.opacity(0.58),
-                    .black.opacity(0.94)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            HStack(spacing: min(60, width * 0.055)) {
-                LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 22)
-                    .frame(width: min(280, width * 0.27), height: min(280, width * 0.27))
-                    .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
-                    .scaleEffect(artworkVisible ? 1 : 0.92)
+            HStack(alignment: .bottom, spacing: 26) {
+                LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 18)
+                    .frame(width: min(230, width * 0.22), height: min(230, width * 0.22))
+                    .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
+                    .scaleEffect(artworkVisible ? 1 : 0.94)
                     .opacity(artworkVisible ? 1 : 0)
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("ALBUM")
                         .font(.caption.weight(.bold))
-                        .tracking(1.4)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .tracking(1.3)
+                        .foregroundStyle(.white.opacity(0.78))
 
                     Text(album.name)
-                        .font(.system(size: min(44, width * 0.044), weight: .bold))
+                        .font(.system(size: min(42, width * 0.043), weight: .bold))
                         .foregroundStyle(.white)
-                        .lineLimit(3)
+                        .lineLimit(2)
                         .minimumScaleFactor(0.72)
 
                     Text(album.artist)
                         .font(.title3.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.78))
+                        .foregroundStyle(.white.opacity(0.82))
                         .lineLimit(2)
 
                     Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.70))
+                        .foregroundStyle(.white.opacity(0.76))
 
                     HStack(spacing: 12) {
                         playButton
                         shuffleButton
                     }
-                    .padding(.top, 8)
+                    .padding(.top, 5)
                 }
-                .frame(maxWidth: 520, alignment: .leading)
 
                 Spacer(minLength: 0)
             }
-            .frame(maxWidth: 1100)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 38)
+            .frame(maxWidth: 1120)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 36)
+            .padding(.bottom, 28)
         }
-        .frame(height: 320)
+        .frame(height: 390)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .padding(.horizontal, 24)
         .padding(.top, 18)
@@ -183,50 +182,48 @@ struct AlbumDetailView: View {
     // MARK: Portrait / Narrow / Resized
 
     private func compactHero(width: CGFloat) -> some View {
-        let artworkSize = min(max(width * 0.52, 190), 270)
+        let artworkSize = min(max(width * 0.48, 180), 250)
         let veryNarrow = width < 520
 
-        return VStack(spacing: 14) {
+        return VStack(spacing: 12) {
             LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 20)
                 .frame(width: artworkSize, height: artworkSize)
-                .shadow(color: .black.opacity(0.32), radius: 24, y: 12)
-                .scaleEffect(artworkVisible ? 1 : 0.93)
+                .shadow(color: .black.opacity(0.28), radius: 22, y: 12)
+                .scaleEffect(artworkVisible ? 1 : 0.94)
                 .opacity(artworkVisible ? 1 : 0)
 
-            VStack(spacing: 6) {
-                Text("ALBUM")
-                    .font(.caption.weight(.bold))
-                    .tracking(1.25)
-                    .foregroundStyle(.secondary)
+            Text("ALBUM")
+                .font(.caption.weight(.bold))
+                .tracking(1.25)
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
 
-                Text(album.name)
-                    .font(.system(size: veryNarrow ? 27 : 34, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.72)
+            Text(album.name)
+                .font(.system(size: veryNarrow ? 28 : 34, weight: .bold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
 
-                Text(album.artist)
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+            Text(album.artist)
+                .font(.title3.weight(.medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
 
-                Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 20)
+            Text("\(sortedTracks.count) \(sortedTracks.count == 1 ? "Song" : "Tracks") • \(formatTotalDuration(totalDuration))")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
                 playButton
                 shuffleButton
             }
-            .padding(.top, 4)
+            .padding(.top, 3)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, min(max(width * 0.07, 18), 34))
         .padding(.top, 18)
-        .padding(.bottom, 20)
+        .padding(.bottom, 18)
     }
 
     private var playButton: some View {

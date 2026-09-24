@@ -34,7 +34,7 @@ struct AllPlaylistsGridView: View {
                                 )
                             )
                         )
-                        .navigationTitle(playlist.name)
+                        .navigationTitle("")
                         .navigationBarTitleDisplayMode(.inline)
                         .navigationTransition(.zoom(sourceID: playlist.id, in: playlistTransitionNamespace))
                     } label: {
