@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
+    @AppStorage(ToyakoPreferences.preventAccidentalAlbumArtistPlaybackKey) private var preventAccidentalAlbumArtistPlayback = true
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
@@ -51,6 +52,14 @@ struct SettingsView: View {
                         }
                         Slider(value: $lyricsLineSpacing, in: 8...60, step: 1)
                     }
+                }
+
+                Section("Playback") {
+                    Toggle("Prevent Accidental Playback", isOn: $preventAccidentalAlbumArtistPlayback)
+
+                    Text("When enabled, tapping a song inside an album or artist page will not start playback. Use Play or Shuffle instead.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Now Playing") {
