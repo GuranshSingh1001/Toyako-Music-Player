@@ -11,9 +11,6 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
-    @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
-    @State private var showClearArtistArtworkConfirmation = false
-    @State private var artistArtworkStatus: String?
 
     var body: some View {
         NavigationStack {
@@ -57,44 +54,13 @@ struct SettingsView: View {
                     Toggle("Show Audio Quality", isOn: $showAudioInfo)
                 }
 
-                Section("Artist Artwork") {
-                    Toggle("Automatically Download Artist Artwork", isOn: $automaticArtistArtwork)
-
-                    Text("When enabled, Toyako uses internet metadata services to find artist artwork and caches the images on your device. It is off by default.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Button("Remove All Downloaded Artist Artwork", role: .destructive) {
-                        showClearArtistArtworkConfirmation = true
-                    }
-
-                    Text("Artwork is stored in Toyako's app sandbox under Library/Caches/ArtistArtwork. It does not appear in the Files app because it is app cache data.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if let artistArtworkStatus {
-                        Text(artistArtworkStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
                 Section("About") {
                     LabeledContent("App", value: "Toyako")
-                    LabeledContent("Version", value: "1.3.4")
+                    LabeledContent("Version", value: "1.3.3")
                 }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .confirmationDialog("Remove all downloaded artist artwork?", isPresented: $showClearArtistArtworkConfirmation, titleVisibility: .visible) {
-                Button("Remove Artwork", role: .destructive) {
-                    Task {
-                        let count = await ArtistArtworkService.shared.clearCache()
-                        artistArtworkStatus = count == 0 ? "No cached artist artwork was found." : "Removed \(count) cached artist artwork files."
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
