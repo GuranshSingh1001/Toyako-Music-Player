@@ -3,6 +3,12 @@ import Foundation
 import MusicKit
 import UIKit
 
+struct AppleMusicArtworkDebugResult: Sendable {
+    let success: Bool
+    let message: String
+    let details: String
+}
+
 /// Fetches artist artwork from Apple's Apple Music catalog and caches it locally.
 ///
 /// Artist names come from the user's local music metadata. The returned artwork
@@ -54,6 +60,103 @@ actor AppleMusicArtistArtworkService {
         let result = await task.value
         inFlight[key] = nil
         return result
+    }
+
+    func debugTest(artistName: String) async -> AppleMusicArtworkDebugResult {
+        let name = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            return AppleMusicArtworkDebugResult(
+                success: false,
+                message: "Enter an artist name.",
+                details: "The MusicKit catalog test was not started."
+            )
+        }
+
+        do {
+            let statusBefore = MusicAuthorization.currentStatus
+            if statusBefore != .authorized {
+                let status = await MusicAuthorization.request()
+                guard status == .authorized else {
+                    return AppleMusicArtworkDebugResult(
+                        success: false,
+                        message: "MusicKit authorization was not granted.",
+                        details: "Current status: \(String(describing: status)). This test cannot continue without MusicKit authorization in the current implementation."
+                    )
+                }
+            }
+
+            var request = MusicCatalogSearchRequest(term: name, types: [Artist.self])
+            request.limit = 5
+            let response = try await request.response()
+            let artists = Array(response.artists)
+
+            guard !artists.isEmpty else {
+                return AppleMusicArtworkDebugResult(
+                    success: false,
+                    message: "Apple Music returned no artists.",
+                    details: "Search term: \(name)"
+                )
+            }
+
+            let normalizedQuery = normalize(name)
+            let artist = artists.first(where: { normalize($0.name) == normalizedQuery }) ?? artists.first!
+
+            guard let artwork = artist.artwork else {
+                return AppleMusicArtworkDebugResult(
+                    success: false,
+                    message: "Artist found, but no artwork was returned.",
+                    details: "Matched artist: \(artist.name)"
+                )
+            }
+
+            guard let url = artwork.url(width: 512, height: 512) else {
+                return AppleMusicArtworkDebugResult(
+                    success: false,
+                    message: "Artist artwork exists, but no image URL was returned.",
+                    details: "Matched artist: \(artist.name)"
+                )
+            }
+
+            var urlRequest = URLRequest(url: url)
+            urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, urlResponse) = try await session.data(for: urlRequest)
+
+            guard let httpResponse = urlResponse as? HTTPURLResponse else {
+                return AppleMusicArtworkDebugResult(
+                    success: false,
+                    message: "Artwork request returned an invalid response.",
+                    details: url.absoluteString
+                )
+            }
+
+            guard 200..<300 ~= httpResponse.statusCode, !data.isEmpty else {
+                return AppleMusicArtworkDebugResult(
+                    success: false,
+                    message: "Artwork image download failed.",
+                    details: "HTTP \(httpResponse.statusCode)\n\(url.absoluteString)"
+                )
+            }
+
+            guard UIImage(data: data) != nil else {
+                return AppleMusicArtworkDebugResult(
+                    success: false,
+                    message: "Apple returned data, but it is not a valid image.",
+                    details: "Downloaded \(data.count) bytes."
+                )
+            }
+
+            return AppleMusicArtworkDebugResult(
+                success: true,
+                message: "Apple Music artist artwork works.",
+                details: "Matched: \(artist.name)\nDownloaded: \(data.count) bytes\nHTTP: \(httpResponse.statusCode)"
+            )
+        } catch {
+            return AppleMusicArtworkDebugResult(
+                success: false,
+                message: "MusicKit request failed.",
+                details: "\(String(reflecting: error))"
+            )
+        }
     }
 
     private func fetchArtwork(for artistName: String, cacheKey: String) async -> Data? {

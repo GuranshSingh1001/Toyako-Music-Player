@@ -12,6 +12,11 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
 
+    @State private var artworkDebugArtist = "Aimer"
+    @State private var artworkDebugMessage = "Not tested yet"
+    @State private var artworkDebugDetails = ""
+    @State private var artworkDebugRunning = false
+
     var body: some View {
         NavigationStack {
             Form {
@@ -52,6 +57,55 @@ struct SettingsView: View {
 
                 Section("Now Playing") {
                     Toggle("Show Audio Quality", isOn: $showAudioInfo)
+                }
+
+                Section("Apple Music Artwork") {
+                    TextField("Test artist", text: $artworkDebugArtist)
+                        .textInputAutocapitalization(.words)
+
+                    HStack(spacing: 10) {
+                        Image(systemName: artworkDebugMessage == "Apple Music artist artwork works." ? "checkmark.circle.fill" : "info.circle")
+                            .foregroundStyle(artworkDebugMessage == "Apple Music artist artwork works." ? .green : .secondary)
+
+                        Text(artworkDebugMessage)
+                            .font(.subheadline)
+                    }
+
+                    if !artworkDebugDetails.isEmpty {
+                        Text(artworkDebugDetails)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+
+                    Button {
+                        artworkDebugRunning = true
+                        artworkDebugMessage = "Testing…"
+                        artworkDebugDetails = "Searching the Apple Music catalog and downloading the artist artwork."
+
+                        Task {
+                            let result = await AppleMusicArtistArtworkService.shared.debugTest(artistName: artworkDebugArtist)
+                            guard !Task.isCancelled else { return }
+                            await MainActor.run {
+                                artworkDebugRunning = false
+                                artworkDebugMessage = result.message
+                                artworkDebugDetails = result.details
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text("Test Apple Music Artwork")
+                            Spacer()
+                            if artworkDebugRunning {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(artworkDebugRunning || artworkDebugArtist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Text("This only tests catalog artist artwork. It does not play Apple Music tracks.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("About") {
