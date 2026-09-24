@@ -242,7 +242,7 @@ struct AlbumDetailView: View {
                 .font(.headline)
                 .frame(minWidth: 112)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(HeroPrimaryButtonStyle())
     }
 
     private var shuffleButton: some View {
@@ -251,7 +251,7 @@ struct AlbumDetailView: View {
                 .font(.headline)
                 .frame(minWidth: 112)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(HeroSecondaryButtonStyle())
     }
 
     private var tracksSection: some View {

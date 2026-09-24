@@ -167,7 +167,7 @@ struct ArtistDetailView: View {
                                 .font(.headline)
                                 .frame(minWidth: 120)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(HeroPrimaryButtonStyle())
 
                         Button {
                             guard !sortedTracks.isEmpty else { return }
@@ -181,7 +181,7 @@ struct ArtistDetailView: View {
                                 .font(.headline)
                                 .frame(minWidth: 120)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(HeroSecondaryButtonStyle())
                     }
                     .padding(.top, 8)
                 }
@@ -238,7 +238,7 @@ struct ArtistDetailView: View {
                             } label: {
                                 Label("Play", systemImage: "play.fill")
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(HeroPrimaryButtonStyle())
 
                             Button {
                                 guard !sortedTracks.isEmpty else { return }
@@ -246,7 +246,7 @@ struct ArtistDetailView: View {
                             } label: {
                                 Label("Shuffle", systemImage: "shuffle")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(HeroSecondaryButtonStyle())
                         }
                         .padding(.top, 4)
                     }
@@ -282,13 +282,13 @@ struct ArtistDetailView: View {
                 HStack(spacing: 10) {
                     Button { audioManager.startQueue(tracks: sortedTracks, startIndex: 0, shuffle: false) } label: {
                         Label("Play", systemImage: "play.fill")
-                    }.buttonStyle(.borderedProminent)
+                    }.buttonStyle(HeroPrimaryButtonStyle())
                     Button {
                         guard !sortedTracks.isEmpty else { return }
                         audioManager.startQueue(tracks: sortedTracks, startIndex: Int.random(in: 0..<sortedTracks.count), shuffle: true)
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
-                    }.buttonStyle(.bordered)
+                    }.buttonStyle(HeroSecondaryButtonStyle())
                 }
             }
             .frame(maxWidth: .infinity)
