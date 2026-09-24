@@ -32,8 +32,6 @@ targets:
 
       INFOPLIST_KEY_CFBundleDisplayName: "Toyako"
 
-      INFOPLIST_KEY_NSAppleMusicUsageDescription: "Toyako uses Apple Music catalog data to display artist artwork for your local music."
-
       INFOPLIST_KEY_UIBackgroundModes:
         - audio
 
