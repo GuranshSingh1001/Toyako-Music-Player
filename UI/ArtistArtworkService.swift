@@ -9,6 +9,7 @@ import UIKit
 enum ArtistArtworkSource: String {
     case deezer = "Deezer"
     case iTunes = "iTunes"
+    case wikidata = "Wikidata / Wikimedia Commons"
     case none = "None"
 }
 
@@ -45,14 +46,9 @@ actor ArtistArtworkService {
     func debugFetch(artistName: String) async -> ArtistArtworkDebugResult {
         let name = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = cacheKey(for: name)
-        if let cached = memoryCache[key] ?? readDiskCache(for: key) {
-            memoryCache[key] = cached
-            return ArtistArtworkDebugResult(
-                artist: name, source: .none, matchedName: nil, imageURL: nil,
-                bytes: cached.count, message: "Artwork is already cached locally."
-            )
-        }
 
+        // Debug intentionally bypasses the cache so the result identifies the
+        // actual provider and matching path used by the current request.
         let result = await fetchNetworkDetailed(artistName: name)
         if let data = result.data {
             memoryCache[key] = data
@@ -144,61 +140,111 @@ actor ArtistArtworkService {
     }
 
     private func fetchNetworkDetailed(artistName: String) async -> NetworkArtworkResult {
+        var diagnostics: [String] = []
+
         let deezer = await fetchFromDeezerDetailed(artistName: artistName)
-        if let deezer, deezer.data != nil {
-            return deezer
+        if let deezer {
+            if deezer.data != nil { return deezer }
+            diagnostics.append(deezer.message)
         }
 
         let itunes = await fetchFromITunesDetailed(artistName: artistName)
-        if let itunes, itunes.data != nil {
-            return itunes
+        if let itunes {
+            if itunes.data != nil { return itunes }
+            diagnostics.append(itunes.message)
         }
 
-        let fallbackMessage = [deezer?.message, itunes?.message]
-            .compactMap { $0 }
-            .joined(separator: " ")
+        let wikidata = await fetchFromWikidataDetailed(artistName: artistName)
+        if let wikidata {
+            if wikidata.data != nil { return wikidata }
+            diagnostics.append(wikidata.message)
+        }
 
         return NetworkArtworkResult(
             data: nil,
-            source: deezer?.source ?? itunes?.source ?? .none,
-            matchedName: deezer?.matchedName ?? itunes?.matchedName,
-            imageURL: deezer?.imageURL ?? itunes?.imageURL,
-            message: fallbackMessage.isEmpty ? "No artwork source returned usable artwork." : fallbackMessage
+            source: .none,
+            matchedName: nil,
+            imageURL: nil,
+            message: diagnostics.isEmpty ? "No artwork source returned usable artwork." : diagnostics.joined(separator: " ")
         )
     }
 
     private func fetchFromDeezerDetailed(artistName: String) async -> NetworkArtworkResult? {
-        guard var components = URLComponents(string: "https://api.deezer.com/search/artist") else { return nil }
-        components.queryItems = [URLQueryItem(name: "q", value: artistName), URLQueryItem(name: "limit", value: "5")]
-        guard let url = components.url else { return nil }
+        let queries = searchQueries(for: artistName)
+        var lastMessage = "Deezer returned no usable artist artwork."
 
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse else { return nil }
-            guard 200..<300 ~= http.statusCode else {
-                return NetworkArtworkResult(data: nil, source: .deezer, matchedName: nil, imageURL: nil,
-                                            message: "Deezer HTTP status: \(http.statusCode).")
+        for query in queries {
+            guard var components = URLComponents(string: "https://api.deezer.com/search/artist") else { continue }
+            components.queryItems = [
+                URLQueryItem(name: "q", value: query),
+                URLQueryItem(name: "limit", value: "25")
+            ]
+            guard let url = components.url else { continue }
+
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse else { continue }
+                guard 200..<300 ~= http.statusCode else {
+                    lastMessage = "Deezer HTTP status: \(http.statusCode) for \(query)."
+                    continue
+                }
+
+                let decoded = try JSONDecoder().decode(DeezerSearchResponse.self, from: data)
+                guard !decoded.data.isEmpty else {
+                    lastMessage = "Deezer returned no artists for \(query)."
+                    continue
+                }
+
+                if let artist = bestDeezerMatch(for: artistName, candidates: decoded.data),
+                   let imageString = artist.picture_xl ?? artist.picture_big ?? artist.picture_medium,
+                   let imageURL = URL(string: imageString) {
+                    let imageData = await downloadImage(url: imageURL)
+                    if let imageData {
+                        return NetworkArtworkResult(
+                            data: imageData, source: .deezer, matchedName: artist.name,
+                            imageURL: imageURL.absoluteString,
+                            message: "Deezer artist image downloaded using query: \(query)."
+                        )
+                    }
+                    lastMessage = "Deezer matched \(artist.name), but its image could not be downloaded."
+                } else {
+                    lastMessage = "Deezer returned artists for \(query), but no sufficiently close artist match was found."
+                }
+            } catch {
+                lastMessage = "Deezer request failed for \(query): \(error.localizedDescription)"
             }
-            let decoded = try JSONDecoder().decode(DeezerSearchResponse.self, from: data)
-            guard !decoded.data.isEmpty else {
-                return NetworkArtworkResult(data: nil, source: .deezer, matchedName: nil, imageURL: nil,
-                                            message: "Deezer returned no matching artists.")
-            }
-            let query = normalize(artistName)
-            let artist = decoded.data.first(where: { normalize($0.name) == query }) ?? decoded.data.first!
-            guard let imageString = artist.picture_xl ?? artist.picture_big ?? artist.picture_medium,
-                  let imageURL = URL(string: imageString) else {
-                return NetworkArtworkResult(data: nil, source: .deezer, matchedName: artist.name, imageURL: nil,
-                                            message: "Deezer found \(artist.name), but it returned no artist image URL.")
-            }
-            let imageData = await downloadImage(url: imageURL)
-            return NetworkArtworkResult(data: imageData, source: .deezer, matchedName: artist.name,
-                                        imageURL: imageURL.absoluteString,
-                                        message: imageData == nil ? "Deezer image download failed." : "Deezer artist image downloaded.")
-        } catch {
-            return NetworkArtworkResult(data: nil, source: .deezer, matchedName: nil, imageURL: nil,
-                                        message: "Deezer request failed: \(error.localizedDescription)")
         }
+
+        return NetworkArtworkResult(data: nil, source: .deezer, matchedName: nil, imageURL: nil, message: lastMessage)
+    }
+
+    private func bestDeezerMatch(for artistName: String, candidates: [DeezerArtist]) -> DeezerArtist? {
+        let query = normalizeForMatching(artistName)
+        guard !query.isEmpty else { return nil }
+
+        var best: (artist: DeezerArtist, score: Double)?
+        for candidate in candidates {
+            let score = artistMatchScore(query: query, candidate: normalizeForMatching(candidate.name))
+            if best == nil || score > best!.score {
+                best = (candidate, score)
+            }
+        }
+
+        guard let best, best.score >= 0.72 else { return nil }
+        return best.artist
+    }
+
+    private func artistMatchScore(query: String, candidate: String) -> Double {
+        if query == candidate { return 1.0 }
+        if query.replacingOccurrences(of: " ", with: "") == candidate.replacingOccurrences(of: " ", with: "") { return 0.97 }
+        if candidate.contains(query) || query.contains(candidate) { return 0.86 }
+
+        let q = Set(query.split(separator: " "))
+        let c = Set(candidate.split(separator: " "))
+        guard !q.isEmpty && !c.isEmpty else { return 0 }
+        let intersection = q.intersection(c).count
+        let union = q.union(c).count
+        return Double(intersection) / Double(union)
     }
 
     private func fetchFromITunesDetailed(artistName: String) async -> NetworkArtworkResult? {
@@ -239,6 +285,52 @@ actor ArtistArtworkService {
         }
     }
 
+    private func fetchFromWikidataDetailed(artistName: String) async -> NetworkArtworkResult? {
+        guard var components = URLComponents(string: "https://www.wikidata.org/w/api.php") else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "action", value: "wbsearchentities"),
+            URLQueryItem(name: "search", value: artistName),
+            URLQueryItem(name: "language", value: "en"),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "limit", value: "5")
+        ]
+        guard let searchURL = components.url else { return nil }
+
+        do {
+            let (searchData, searchResponse) = try await session.data(from: searchURL)
+            guard let http = searchResponse as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+                return NetworkArtworkResult(data: nil, source: .wikidata, matchedName: nil, imageURL: nil, message: "Wikidata search request failed.")
+            }
+            let search = try JSONDecoder().decode(WikidataSearchResponse.self, from: searchData)
+            let query = normalizeForMatching(artistName)
+            guard let entity = search.search.first(where: { artistMatchScore(query: query, candidate: normalizeForMatching($0.label)) >= 0.72 }) ?? search.search.first else {
+                return NetworkArtworkResult(data: nil, source: .wikidata, matchedName: nil, imageURL: nil, message: "Wikidata found no usable artist entity.")
+            }
+
+            guard let entityURL = URL(string: "https://www.wikidata.org/wiki/Special:EntityData/\(entity.id).json") else { return nil }
+            let (entityData, entityResponse) = try await session.data(from: entityURL)
+            guard let entityHTTP = entityResponse as? HTTPURLResponse, 200..<300 ~= entityHTTP.statusCode else {
+                return NetworkArtworkResult(data: nil, source: .wikidata, matchedName: entity.label, imageURL: nil, message: "Wikidata entity request failed.")
+            }
+            let entityJSON = try JSONDecoder().decode(WikidataEntityResponse.self, from: entityData)
+            guard let claims = entityJSON.entities[entity.id]?.claims,
+                  let p18 = claims["P18"]?.first?.mainsnak.datavalue?.value,
+                  !p18.isEmpty else {
+                return NetworkArtworkResult(data: nil, source: .wikidata, matchedName: entity.label, imageURL: nil, message: "Wikidata found \(entity.label), but no P18 image is available.")
+            }
+
+            let encoded = p18.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? p18
+            guard let imageURL = URL(string: "https://commons.wikimedia.org/wiki/Special:Redirect/file/\(encoded)?width=512") else { return nil }
+            let imageData = await downloadImage(url: imageURL)
+            return NetworkArtworkResult(
+                data: imageData, source: .wikidata, matchedName: entity.label, imageURL: imageURL.absoluteString,
+                message: imageData == nil ? "Wikimedia Commons image download failed." : "Wikidata/Wikimedia Commons artist image downloaded."
+            )
+        } catch {
+            return NetworkArtworkResult(data: nil, source: .wikidata, matchedName: nil, imageURL: nil, message: "Wikidata request failed: \(error.localizedDescription)")
+        }
+    }
+
     private func downloadImage(url: URL) async -> Data? {
         do {
             let (data, response) = try await session.data(from: url)
@@ -250,6 +342,36 @@ actor ArtistArtworkService {
         } catch {
             return nil
         }
+    }
+
+    private func searchQueries(for artistName: String) -> [String] {
+        var values: [String] = []
+        func add(_ value: String) {
+            let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleaned.isEmpty && !values.contains(cleaned) { values.append(cleaned) }
+        }
+
+        add(artistName)
+        add(artistName.replacingOccurrences(of: "&", with: "and"))
+        add(artistName.replacingOccurrences(of: "&", with: " "))
+        add(artistName.replacingOccurrences(of: "'", with: ""))
+        add(artistName.replacingOccurrences(of: "’", with: ""))
+        add(artistName.replacingOccurrences(of: "'", with: " "))
+
+        let punctuationFree = artistName.replacingOccurrences(of: "[^\\p{L}\\p{N} ]", with: " ", options: .regularExpression)
+        add(punctuationFree)
+        return values
+    }
+
+    private func normalizeForMatching(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: "&", with: " and ")
+            .replacingOccurrences(of: "'", with: "")
+            .replacingOccurrences(of: "’", with: "")
+            .replacingOccurrences(of: "[^a-z0-9\\p{L}\\p{N}]+", with: " ", options: .regularExpression)
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
     }
 
     private func normalize(_ value: String) -> String {
@@ -284,6 +406,35 @@ actor ArtistArtworkService {
 
     private func writeDiskCache(_ data: Data, for key: String) {
         try? data.write(to: diskURL(for: key), options: .atomic)
+    }
+
+    private struct WikidataSearchResponse: Decodable {
+        let search: [WikidataSearchEntity]
+    }
+
+    private struct WikidataSearchEntity: Decodable {
+        let id: String
+        let label: String
+    }
+
+    private struct WikidataEntityResponse: Decodable {
+        let entities: [String: WikidataEntity]
+    }
+
+    private struct WikidataEntity: Decodable {
+        let claims: [String: [WikidataClaim]]
+    }
+
+    private struct WikidataClaim: Decodable {
+        let mainsnak: WikidataMainSnak
+    }
+
+    private struct WikidataMainSnak: Decodable {
+        let datavalue: WikidataDataValue?
+    }
+
+    private struct WikidataDataValue: Decodable {
+        let value: String
     }
 
     private struct DeezerSearchResponse: Decodable {
