@@ -21,10 +21,13 @@ struct ColorfulArtworkBleedBackground: View {
     @State private var targetPalette = ArtworkBleedPalette.fallback
     @State private var transitionProgress: CGFloat = 1.0
     @State private var transitionID = 0
+    @State private var artworkImage: UIImage?
 
     var body: some View {
         GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
+            // The bleed is decorative; 12 fps is enough for smooth perceived motion
+            // while substantially reducing continuous GPU work on iPad/iPhone.
+            TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 let size = geometry.size
 
@@ -50,8 +53,7 @@ struct ColorfulArtworkBleedBackground: View {
 
                     // Very faint artwork texture. The cloudy palette remains
                     // the main visual effect.
-                    if let artworkData,
-                       let image = UIImage(data: artworkData) {
+                    if let image = artworkImage {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
@@ -62,7 +64,7 @@ struct ColorfulArtworkBleedBackground: View {
                             .saturation(1.25)
                             .brightness(-0.28)
                             .opacity(0.045)
-                            .blur(radius: 105)
+                            .blur(radius: 82)
                             .scaleEffect(1.06)
                     }
 
@@ -86,7 +88,11 @@ struct ColorfulArtworkBleedBackground: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .task(id: artworkData?.hashValue) {
-            let newPalette = await Task.detached(priority: .userInitiated) {
+            // Decode artwork once per track. Decoding UIImage inside TimelineView
+            // would repeat the JPEG decode on every animation frame.
+            artworkImage = artworkData.flatMap(UIImage.init(data:))
+
+            let newPalette = await Task.detached(priority: .utility) {
                 ArtworkBleedPalette.extract(from: artworkData)
             }.value
 

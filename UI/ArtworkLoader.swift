@@ -144,6 +144,7 @@ struct LazyArtwork: View {
     let cornerRadius: CGFloat
 
     @State private var data: Data?
+    @State private var image: UIImage?
 
     init(url: URL?, size: CGFloat, cornerRadius: CGFloat = 12) {
         self.url = url
@@ -153,7 +154,7 @@ struct LazyArtwork: View {
 
     var body: some View {
         Group {
-            if let data, let image = UIImage(data: data) {
+            if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -174,10 +175,13 @@ struct LazyArtwork: View {
         // does not reflow layout or affect scroll position.
         .animation(.easeOut(duration: 0.18), value: data == nil)
         .task(id: url) {
+            image = nil
+            data = nil
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)
             guard !Task.isCancelled else { return }
             data = loaded
+            image = loaded.flatMap(UIImage.init(data:))
         }
     }
 }
@@ -186,6 +190,7 @@ struct LazyAlbumArtwork: View {
     let url: URL?
     let cornerRadius: CGFloat
     @State private var data: Data?
+    @State private var image: UIImage?
 
     init(url: URL?, cornerRadius: CGFloat = 12) {
         self.url = url
@@ -194,7 +199,7 @@ struct LazyAlbumArtwork: View {
 
     var body: some View {
         Group {
-            if let data, let image = UIImage(data: data) {
+            if let image {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -205,10 +210,13 @@ struct LazyAlbumArtwork: View {
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .animation(.easeOut(duration: 0.18), value: data == nil)
         .task(id: url) {
+            image = nil
+            data = nil
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)
             guard !Task.isCancelled else { return }
             data = loaded
+            image = loaded.flatMap(UIImage.init(data:))
         }
     }
 }

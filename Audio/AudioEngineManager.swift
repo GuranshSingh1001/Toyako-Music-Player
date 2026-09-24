@@ -57,6 +57,9 @@ class AudioEngineManager: ObservableObject {
     private var lastPersistedTime:
         TimeInterval = -100
 
+    private var lastNowPlayingInfoUpdateTime:
+        TimeInterval = -100
+
     private var didAttemptRestore =
         false
 
@@ -1725,7 +1728,16 @@ class AudioEngineManager: ObservableObject {
                     )
 
                 self.savePlaybackState()
-                self.updatePlaybackState()
+
+                // AVPlayer's 250 ms observer is intentionally kept for the UI
+                // clock, but updating MPNowPlayingInfoCenter that often causes
+                // unnecessary system work. The system can interpolate elapsed
+                // time from playback rate, so refresh metadata at most once/sec.
+                if abs(clampedSeconds - self.lastNowPlayingInfoUpdateTime) >= 1.0 ||
+                    self.lastNowPlayingInfoUpdateTime < 0 {
+                    self.lastNowPlayingInfoUpdateTime = clampedSeconds
+                    self.updatePlaybackState()
+                }
             }
     }
 
@@ -1877,6 +1889,7 @@ class AudioEngineManager: ObservableObject {
         MPNowPlayingInfoCenter
             .default()
             .nowPlayingInfo = info
+        lastNowPlayingInfoUpdateTime = currentTime
 
         // Most tracks arrive with artworkData == nil by design. Pull the same
         // shared artwork cache used by the UI, without touching currentTrack or
