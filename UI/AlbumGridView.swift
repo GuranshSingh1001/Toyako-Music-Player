@@ -70,6 +70,7 @@ struct AlbumDetailView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var artworkVisible = true
+    @AppStorage(ToyakoPreferences.playTracksByTappingKey) private var playTracksByTapping = false
 
     private var sortedTracks: [LocalTrack] {
         album.tracks.sorted {
@@ -291,6 +292,7 @@ struct AlbumDetailView: View {
 
             ForEach(Array(sortedTracks.enumerated()), id: \.element.id) { index, track in
                 AlbumTrackRow(track: track, number: index + 1) {
+                    guard playTracksByTapping else { return }
                     audioManager.startQueue(
                         tracks: sortedTracks,
                         startIndex: index,

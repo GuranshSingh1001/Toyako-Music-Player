@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
+    @AppStorage(ToyakoPreferences.playTracksByTappingKey) private var playTracksByTapping = false
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
@@ -51,6 +52,13 @@ struct SettingsView: View {
                         }
                         Slider(value: $lyricsLineSpacing, in: 8...60, step: 1)
                     }
+                }
+
+                Section("Playback") {
+                    Toggle("Play Tracks by Tapping", isOn: $playTracksByTapping)
+                    Text("When enabled, tapping a track on Album and Artist pages starts playback. It is off by default to prevent accidental playback.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Now Playing") {
