@@ -16,6 +16,8 @@ targets:
     sources:
       - path: App
       - path: Audio
+        excludes:
+          - UI/AbstructPlaylistCover.swift
       - path: Models
       - path: UI
 
