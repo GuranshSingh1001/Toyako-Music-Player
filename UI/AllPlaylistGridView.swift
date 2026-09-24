@@ -203,17 +203,25 @@ struct PlaylistArtwork: View {
         let baseX: [CGFloat] = [-0.375, -0.125, 0.125, 0.375]
         let baseY: [CGFloat] = [-0.375, -0.125, 0.125, 0.375]
 
-        let patterns: [[CGSize]] = (0..<8).map { pattern in
+        // Build the small pattern table explicitly instead of using a nested
+        // map/closure. Swift's type checker can spend an excessive amount of
+        // time inferring the nested generic types in the closure above.
+        var patterns = Array(repeating: [CGSize](), count: 8)
+
+        for pattern in 0..<8 {
             var result: [CGSize] = []
+            result.reserveCapacity(16)
+
             for row in 0..<4 {
                 for col in 0..<4 {
                     var x = baseX[col]
                     var y = baseY[row]
+
                     switch pattern {
                     case 0:
-                        x += (row.isMultiple(of: 2) ? -0.012 : 0.012)
+                        x += row.isMultiple(of: 2) ? -0.012 : 0.012
                     case 1:
-                        y += (col.isMultiple(of: 2) ? 0.014 : -0.014)
+                        y += col.isMultiple(of: 2) ? 0.014 : -0.014
                     case 2:
                         x += CGFloat(row - 1) * 0.012
                         y += CGFloat(col - 1) * 0.008
@@ -226,13 +234,16 @@ struct PlaylistArtwork: View {
                     case 6:
                         x += row == 3 - col ? -0.018 : 0.006
                     default:
-                        x += CGFloat((col * 3 + row) % 4 - 1.5) * 0.010
+                        x += CGFloat((col * 3 + row) % 4) * 0.010 - 0.015
                     }
-                    result.append(.init(width: x * s, height: y * s))
+
+                    result.append(CGSize(width: x * s, height: y * s))
                 }
             }
-            return result
+
+            patterns[pattern] = result
         }
+
         return patterns[style]
     }
 
