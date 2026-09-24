@@ -14,8 +14,11 @@ struct PlaylistHeaderView: View {
         // Use each track artwork once before repeating anything. This keeps the
         // visible collage varied instead of producing obvious repeated patterns.
         var urls = tracks.map(\.url)
-        var generator = PlaylistHeaderRandom(seed: stableSeed)
-        generator.shuffle(&urls)
+        // Deterministic ordering keeps the collage stable without requiring
+        // another random-shuffle helper.
+        urls.sort {
+            stableArtworkKey(for: $0) < stableArtworkKey(for: $1)
+        }
 
         let minimumCount = 72
         if urls.count < minimumCount {
@@ -28,6 +31,15 @@ struct PlaylistHeaderView: View {
         }
 
         return urls
+    }
+
+    private func stableArtworkKey(for url: URL) -> UInt64 {
+        var hash = UInt64(bitPattern: Int64(stableSeed))
+        for byte in url.absoluteString.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 1099511628211
+        }
+        return hash
     }
 
     private var stableSeed: Int {
