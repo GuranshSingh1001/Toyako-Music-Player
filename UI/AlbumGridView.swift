@@ -41,8 +41,11 @@ private struct AlbumCard: View {
             LazyAlbumArtwork(url: album.artworkURL)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .matchedTransitionSource(id: album.id, in: transitionNamespace)
-                .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                .matchedTransitionSource(id: album.id, in: transitionNamespace) { source in
+                    source
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                }
 
             Text(album.name)
                 .font(.headline)
@@ -70,7 +73,6 @@ struct AlbumDetailView: View {
     @EnvironmentObject var audioManager: AudioEngineManager
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var artworkVisible = true
-    @AppStorage(ToyakoPreferences.playTracksByTappingKey) private var playTracksByTapping = false
 
     private var sortedTracks: [LocalTrack] {
         album.tracks.sorted {
@@ -292,7 +294,6 @@ struct AlbumDetailView: View {
 
             ForEach(Array(sortedTracks.enumerated()), id: \.element.id) { index, track in
                 AlbumTrackRow(track: track, number: index + 1) {
-                    guard playTracksByTapping else { return }
                     audioManager.startQueue(
                         tracks: sortedTracks,
                         startIndex: index,

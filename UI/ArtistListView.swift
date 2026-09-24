@@ -50,8 +50,11 @@ struct ArtistListView: View {
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(Circle())
-                .matchedTransitionSource(id: artist.id, in: transitionNamespace)
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+                .matchedTransitionSource(id: artist.id, in: transitionNamespace) { source in
+                    source
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+                }
 
             Text(artist.name)
                 .font(.headline)
@@ -77,7 +80,6 @@ struct ArtistDetailView: View {
 
     @EnvironmentObject var audioManager: AudioEngineManager
     @State private var heroVisible = true
-    @AppStorage(ToyakoPreferences.playTracksByTappingKey) private var playTracksByTapping = false
 
     private var albums: [AlbumGroup] {
         Dictionary(grouping: artist.tracks) { track in
@@ -343,8 +345,11 @@ struct ArtistDetailView: View {
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .matchedTransitionSource(id: album.id, in: transitionNamespace)
-                    .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                    .matchedTransitionSource(id: album.id, in: transitionNamespace) { source in
+                        source
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                    }
 
                 Text(album.name)
                     .font(.subheadline.weight(.semibold))
@@ -369,7 +374,6 @@ struct ArtistDetailView: View {
 
             ForEach(sortedTracks) { track in
                 Button {
-                    guard playTracksByTapping else { return }
                     audioManager.play(track: track)
                 } label: {
                     HStack(spacing: 12) {

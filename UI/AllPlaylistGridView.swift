@@ -46,8 +46,11 @@ struct AllPlaylistsGridView: View {
                             )
                             .aspectRatio(1, contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace)
-                            .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
+                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace) { source in
+                                source
+                                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                    .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
+                            }
 
                             Text(playlist.name)
                                 .font(.headline)

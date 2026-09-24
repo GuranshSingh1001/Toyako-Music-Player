@@ -229,7 +229,10 @@ struct HomeView: View {
                             LazyAlbumArtwork(url: album.artworkURL)
                                 .frame(width: 145, height: 145)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace)
+                                .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace) { source in
+                                    source
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
                             Text(album.name)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
@@ -257,7 +260,9 @@ struct HomeView: View {
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
-                                .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
+                                .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace) { source in
+                                    source.clipShape(Circle())
+                                }
 
                             Text(artist.name)
                                 .font(.subheadline.weight(.semibold))
@@ -319,7 +324,10 @@ struct HomeView: View {
                             )
                             .frame(width: 145, height: 145)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace)
+                            .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace) { source in
+                                    source
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
 
                             Text(playlist.name)
                                 .font(.subheadline.weight(.semibold))
