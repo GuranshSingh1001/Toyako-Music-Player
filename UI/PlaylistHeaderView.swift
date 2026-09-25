@@ -92,6 +92,28 @@ struct PlaylistHeaderView: View {
         let visibleRadius = 5
 
         return TimelineView(.animation) { context in
+            AnyView(
+                marqueeTimelineContent(
+                    context: context,
+                    count: count,
+                    availableWidth: availableWidth,
+                    coverSize: coverSize,
+                    stride: stride,
+                    visibleRadius: visibleRadius
+                )
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func marqueeTimelineContent(
+        context: TimelineViewDefaultContext,
+        count: Int,
+        availableWidth: CGFloat,
+        coverSize: CGFloat,
+        stride: CGFloat,
+        visibleRadius: Int
+    ) -> some View {
             let time = context.date.timeIntervalSinceReferenceDate
 
             // The phase is measured in artwork widths, so one complete cycle
@@ -239,7 +261,6 @@ struct PlaylistHeaderView: View {
                     endPoint: .trailing
                 )
             }
-        }
     }
 
     private func positiveModulo(
