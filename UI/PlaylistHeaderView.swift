@@ -38,7 +38,7 @@ struct PlaylistHeaderView: View {
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius:
-                            14,
+                            ToyakoDesign.Metrics.artworkRadius,
                         style:
                             .continuous
                     )
@@ -67,19 +67,14 @@ struct PlaylistHeaderView: View {
                     .font(
                         .caption.bold()
                     )
-                    .foregroundColor(
+                    .foregroundStyle(
                         .secondary
                     )
 
                     Text(
                         playlist.name
                     )
-                    .font(
-                        .system(
-                            size: 26,
-                            weight: .bold
-                        )
-                    )
+                    .font(ToyakoDesign.Typography.screenTitle)
                     .lineLimit(
                         2
                     )
@@ -97,7 +92,7 @@ struct PlaylistHeaderView: View {
                     .font(
                         .subheadline
                     )
-                    .foregroundColor(
+                    .foregroundStyle(
                         .secondary
                     )
 
@@ -140,9 +135,7 @@ struct PlaylistHeaderView: View {
                         .subheadline.bold()
                     )
                 }
-                .buttonStyle(
-                    .borderedProminent
-                )
+                .buttonStyle(ToyakoPrimaryButtonStyle())
 
                 Button {
                     guard !tracks.isEmpty
@@ -176,9 +169,7 @@ struct PlaylistHeaderView: View {
                         .subheadline.bold()
                     )
                 }
-                .buttonStyle(
-                    .bordered
-                )
+                .buttonStyle(ToyakoSecondaryButtonStyle())
 
                 Button(
                     action:
@@ -193,15 +184,10 @@ struct PlaylistHeaderView: View {
                         .subheadline.bold()
                     )
                 }
-                .buttonStyle(
-                    .bordered
-                )
+                .buttonStyle(ToyakoSecondaryButtonStyle())
             }
         }
-        .padding(
-            .horizontal,
-            20
-        )
+        .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
         .padding(
             .vertical,
             18

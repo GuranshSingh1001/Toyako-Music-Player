@@ -47,6 +47,7 @@ struct PlaylistAddSongsSheet: View {
                 }
             }
         }
+        .tint(ToyakoDesign.Color.accent)
         .onAppear {
             selectedURLs = Set(playlist.trackURLs)
         }

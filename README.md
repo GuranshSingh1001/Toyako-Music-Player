@@ -79,3 +79,17 @@ The interface is built specifically for iPad and supports portrait and landscape
 Toyako can optionally download artist artwork from the internet and cache it locally. This feature is **off by default** because artist names are sent to online metadata services when artwork is requested. When enabled, Toyako tries **Deezer**, then **iTunes**, then **Wikidata / Wikimedia Commons** as fallbacks. Artist names are normalized to improve matching, and common multi-artist metadata such as `Aki Toyosaki, Yoko Hikasa, Satomi Sato` is split into individual artist entries.
 
 You can enable or disable automatic downloads in **Settings → Artist Artwork**. The same section includes **Remove All Downloaded Artist Artwork**. Artwork is stored in the app sandbox at `Library/Caches/ArtistArtwork`, so it does not appear in the Files app. iOS treats the Caches directory as app-managed, discardable data rather than user documents.
+
+## Toyako Design System
+
+The UI now uses a shared SwiftUI design system under `UI/DesignSystem/ToyakoDesignSystem.swift`.
+
+The design system centralizes:
+
+- Toyako accent color and semantic surfaces
+- Screen spacing, control heights, corner radii, and artwork sizes
+- Typography hierarchy for titles, sections, items, metadata, and actions
+- Primary, secondary, icon, and small-action button styles
+- Shared card/surface and section-header components
+
+Screens should use these shared values and components instead of introducing new ad-hoc visual constants. This keeps Home, Tracks, Albums, Artists, Playlists, Queue, Settings, and shared playback surfaces visually coherent while still allowing immersive Now Playing-specific presentation where appropriate.

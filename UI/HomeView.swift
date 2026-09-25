@@ -84,9 +84,7 @@ struct HomeView: View {
 
                 libraryOverview
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 100)
+            .toyakoScreenPadding()
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .navigationTitle("Home")
@@ -97,7 +95,7 @@ struct HomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Your Library")
-                .font(.largeTitle.weight(.bold))
+                .font(ToyakoDesign.Typography.screenTitle)
 
             Text(
                 tracks.isEmpty
@@ -160,7 +158,7 @@ struct HomeView: View {
                         .background(.thinMaterial, in: Circle())
                 }
                 .padding(14)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .toyakoCard()
             }
             .buttonStyle(.plain)
         }
@@ -170,9 +168,8 @@ struct HomeView: View {
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title3.weight(.bold))
+        VStack(alignment: .leading, spacing: ToyakoDesign.Metrics.itemSpacing) {
+            ToyakoSectionHeader(title)
             content()
         }
     }
@@ -191,7 +188,7 @@ struct HomeView: View {
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
-                            LazyArtwork(url: library.artworkURL(for: track), size: 145)
+                            LazyArtwork(url: library.artworkURL(for: track), size: ToyakoArtworkSize.homeCard)
                             Text(track.title)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
@@ -200,7 +197,7 @@ struct HomeView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
-                        .frame(width: 145, alignment: .leading)
+                        .frame(width: ToyakoArtworkSize.homeCard, alignment: .leading)
                     }
                     .buttonStyle(.plain)
                 }
@@ -220,8 +217,8 @@ struct HomeView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyAlbumArtwork(url: album.artworkURL)
-                                .frame(width: 145, height: 145)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .frame(width: ToyakoArtworkSize.homeCard, height: ToyakoArtworkSize.homeCard)
+                                .toyakoArtwork()
                             Text(album.name)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
@@ -230,7 +227,7 @@ struct HomeView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
-                        .frame(width: 145, alignment: .leading)
+                        .frame(width: ToyakoArtworkSize.homeCard, alignment: .leading)
                     }
                     .buttonStyle(.plain)
                 }
@@ -300,8 +297,8 @@ struct HomeView: View {
                                 tracks: playlistTracks,
                                 playlistName: playlist.name
                             )
-                            .frame(width: 145, height: 145)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .frame(width: ToyakoArtworkSize.homeCard, height: ToyakoArtworkSize.homeCard)
+                            .toyakoArtwork()
 
                             Text(playlist.name)
                                 .font(.subheadline.weight(.semibold))
@@ -311,7 +308,7 @@ struct HomeView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(width: 145, alignment: .leading)
+                        .frame(width: ToyakoArtworkSize.homeCard, alignment: .leading)
                     }
                     .buttonStyle(.plain)
                 }
@@ -338,12 +335,9 @@ private struct HomeActionButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ToyakoSecondaryButtonStyle())
     }
 }
 
@@ -369,7 +363,7 @@ private struct HomeStatCard: View {
             Spacer()
         }
         .padding(13)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.controlRadius)
     }
 }
 

@@ -26,8 +26,9 @@ struct AlbumGridView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding()
-            .padding(.bottom, 80)
+            .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+            .padding(.top, ToyakoDesign.Metrics.screenTop)
+            .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
         }
     }
 }
@@ -52,21 +53,16 @@ private struct AlbumCard: View {
                 1,
                 contentMode: .fit
             )
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: 12,
-                    style: .continuous
-                )
-            )
+            .toyakoArtwork()
 
             Text(album.name)
-                .font(.headline)
-                .foregroundColor(.primary)
+                .font(ToyakoDesign.Typography.item)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
 
             Text(album.artist)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Text(
@@ -78,7 +74,7 @@ private struct AlbumCard: View {
                 )
             )
             .font(.caption)
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
         }
     }
 }
@@ -180,9 +176,7 @@ struct AlbumDetailView: View {
                                     weight: .medium
                                 )
                             )
-                            .foregroundColor(
-                                .secondary
-                            )
+                            .foregroundStyle(.secondary)
 
                         Text(
                             "\(album.tracks.count) "
@@ -197,7 +191,7 @@ struct AlbumDetailView: View {
                             )
                         )
                         .font(.subheadline)
-                        .foregroundColor(
+                        .foregroundStyle(
                             .secondary
                         )
                     }
@@ -216,16 +210,12 @@ struct AlbumDetailView: View {
                                 systemImage:
                                     "play.fill"
                             )
-                            .font(
-                                .headline
-                            )
+                            .font(ToyakoDesign.Typography.button)
                             .frame(
                                 minWidth: 110
                             )
                         }
-                        .buttonStyle(
-                            .borderedProminent
-                        )
+                        .buttonStyle(ToyakoPrimaryButtonStyle())
 
                         Button {
                             shuffleAlbum()
@@ -235,25 +225,18 @@ struct AlbumDetailView: View {
                                 systemImage:
                                     "shuffle"
                             )
-                            .font(
-                                .headline
-                            )
+                            .font(ToyakoDesign.Typography.button)
                             .frame(
                                 minWidth: 110
                             )
                         }
-                        .buttonStyle(
-                            .bordered
-                        )
+                        .buttonStyle(ToyakoSecondaryButtonStyle())
                     }
                 }
                 .frame(
                     maxWidth: .infinity
                 )
-                .padding(
-                    .horizontal,
-                    20
-                )
+                .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
                 .padding(
                     .top,
                     20
@@ -275,10 +258,7 @@ struct AlbumDetailView: View {
                         .font(
                             .title2.bold()
                         )
-                        .padding(
-                            .horizontal,
-                            20
-                        )
+                        .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
                         .padding(
                             .top,
                             24
@@ -431,14 +411,12 @@ private struct AlbumTrackRow: View {
                         design: .monospaced
                     )
                 )
-                .foregroundColor(
-                    .secondary
-                )
+                .foregroundStyle(.secondary)
                 .frame(
                     width: 24
                 )
 
-                LazyArtwork(url: track.url, size: 48, cornerRadius: 7)
+                LazyArtwork(url: track.url, size: ToyakoArtworkSize.compactRow, cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
                 VStack(
                     alignment: .leading,
@@ -452,9 +430,7 @@ private struct AlbumTrackRow: View {
                             .medium
                         )
                     )
-                    .foregroundColor(
-                        .primary
-                    )
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
 
                     Text(
@@ -463,9 +439,7 @@ private struct AlbumTrackRow: View {
                     .font(
                         .caption
                     )
-                    .foregroundColor(
-                        .secondary
-                    )
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                 }
 
@@ -479,14 +453,9 @@ private struct AlbumTrackRow: View {
                 .font(
                     .caption.monospacedDigit()
                 )
-                .foregroundColor(
-                    .secondary
-                )
+                .foregroundStyle(.secondary)
             }
-            .padding(
-                .horizontal,
-                20
-            )
+            .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
             .padding(
                 .vertical,
                 9

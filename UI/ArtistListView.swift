@@ -80,7 +80,7 @@ struct ArtistListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(.systemBackground))
+        .background(ToyakoDesign.Color.canvas)
     }
 
     private var artistSidebar: some View {
@@ -127,7 +127,7 @@ struct ArtistListView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .background(Color(.secondarySystemBackground).opacity(0.35))
+        .background(ToyakoDesign.Color.surface.opacity(0.42))
     }
 
     private func artistRow(_ artist: ArtistGroup) -> some View {
@@ -163,11 +163,11 @@ struct ArtistListView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
             .background {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.16))
+                    RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous)
+                        .fill(ToyakoDesign.Color.selectedFill)
                 }
             }
         }
@@ -277,6 +277,8 @@ private struct ArtistDetailView: View {
     @EnvironmentObject private var audioManager: AudioEngineManager
     @State private var artwork: UIImage?
     @State private var showAllTracks = false
+    @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
+
 
     private var albums: [ArtistAlbum] {
         var grouped: [String: [LocalTrack]] = [:]
@@ -312,93 +314,114 @@ private struct ArtistDetailView: View {
                 popularTracks
                 albumSection
             }
-            .padding(.horizontal, 34)
-            .padding(.top, 20)
-            .padding(.bottom, 100)
+            .toyakoScreenPadding()
         }
         .scrollIndicators(.hidden)
+        .tint(ToyakoDesign.Color.accent)
         .background {
             ZStack {
-                Color(.systemBackground)
+                ToyakoDesign.Color.canvas
 
+                // The hero background is derived from the real artist photo:
+                // enlarged, heavily blurred, darkened and faded into the page.
+                // It gives the detail page atmosphere without competing with
+                // the content or looking like a separate full-screen poster.
                 if let artwork {
                     Image(uiImage: artwork)
                         .resizable()
                         .scaledToFill()
-                        .frame(height: 460)
+                        .frame(height: 500)
                         .frame(maxWidth: .infinity, alignment: .top)
-                        .blur(radius: 45)
-                        .opacity(0.20)
+                        .blur(radius: 55)
+                        .scaleEffect(1.08)
+                        .opacity(0.26)
+                        .overlay {
+                            LinearGradient(
+                                colors: [
+                                    ToyakoDesign.Color.canvas.opacity(0.05),
+                                    ToyakoDesign.Color.canvas.opacity(0.52),
+                                    ToyakoDesign.Color.canvas
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
                         .mask {
                             LinearGradient(
-                                colors: [.black, .black.opacity(0.55), .clear],
+                                colors: [.black, .black.opacity(0.8), .black.opacity(0.25), .clear],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         }
                 }
+
+                LinearGradient(
+                    colors: [ToyakoDesign.Color.accent.opacity(0.08), .clear, ToyakoDesign.Color.canvas],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             }
             .ignoresSafeArea()
         }
-        .task(id: artist.name) {
-            let data = await AppleMusicArtistArtworkService.shared.imageData(for: artist.name)
+        .task(id: "\(artist.name)|\(automaticArtistArtwork)") {
+            // Reuse Toyako's existing artwork provider instead of the MusicKit
+            // provider. This is the same source used by the artist list, so
+            // the detail page and sidebar stay consistent.
+            let data = await ArtistArtworkService.shared.imageData(
+                for: artist.name,
+                allowNetwork: true
+            )
             guard !Task.isCancelled else { return }
             artwork = data.flatMap(UIImage.init(data:))
         }
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .bottom, spacing: 26) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .center, spacing: 28) {
                 ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.07))
+
                     if let artwork {
                         Image(uiImage: artwork)
                             .resizable()
                             .scaledToFill()
                     } else {
-                        Color.secondary.opacity(0.16)
-                            .overlay {
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 54))
-                                    .foregroundStyle(.secondary)
-                            }
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 56, weight: .medium))
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .frame(width: 190, height: 190)
+                .frame(width: 210, height: 210)
                 .clipShape(Circle())
-                .shadow(radius: 24, y: 12)
+                .overlay {
+                    Circle()
+                        .stroke(ToyakoDesign.Color.accent.opacity(0.75), lineWidth: 3)
+                }
+                .shadow(color: ToyakoDesign.Color.accent.opacity(0.25), radius: 28, y: 12)
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     Text(artist.name)
-                        .font(.system(size: 46, weight: .bold, design: .rounded))
+                        .font(.system(size: 48, weight: .bold, design: .rounded))
                         .lineLimit(2)
 
                     Text(artistMeta)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
 
-                    HStack(spacing: 10) {
-                        Button {
-                            playArtist()
-                        } label: {
+                    HStack(spacing: 12) {
+                        Button(action: playArtist) {
                             Label("Play", systemImage: "play.fill")
-                                .font(.body.weight(.semibold))
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 11)
+                                .frame(minWidth: 142)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.capsule)
+                        .buttonStyle(ToyakoPrimaryButtonStyle())
 
-                        Button {
-                            shuffleArtist()
-                        } label: {
+                        Button(action: shuffleArtist) {
                             Label("Shuffle", systemImage: "shuffle")
-                                .font(.body.weight(.semibold))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 11)
+                                .frame(minWidth: 142)
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
+                        .buttonStyle(ToyakoSecondaryButtonStyle())
 
                         Menu {
                             Button {
@@ -408,13 +431,10 @@ private struct ArtistDetailView: View {
                             }
                         } label: {
                             Image(systemName: "ellipsis")
-                                .frame(width: 42, height: 42)
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.circle)
+                        .buttonStyle(ToyakoIconButtonStyle(size: ToyakoDesign.Metrics.largeControlHeight))
                     }
                 }
-                .padding(.bottom, 4)
 
                 Spacer(minLength: 0)
             }
@@ -423,21 +443,15 @@ private struct ArtistDetailView: View {
 
     private var popularTracks: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Popular Tracks")
-                    .font(.title3.weight(.bold))
-
-                Spacer()
-
-                if artist.tracks.count > 6 {
-                    Button(showAllTracks ? "Show Less" : "View All") {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showAllTracks.toggle()
-                        }
+            ToyakoSectionHeader(
+                "Popular Tracks",
+                trailingTitle: artist.tracks.count > 6 ? (showAllTracks ? "Show Less" : "View All") : nil,
+                trailingAction: artist.tracks.count > 6 ? {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showAllTracks.toggle()
                     }
-                    .font(.subheadline.weight(.semibold))
-                }
-            }
+                } : nil
+            )
 
             VStack(spacing: 0) {
                 ForEach(Array(visibleTracks.enumerated()), id: \.element.id) { index, track in
@@ -452,8 +466,8 @@ private struct ArtistDetailView: View {
 
                             LazyArtwork(
                                 url: library.artworkURL(for: track),
-                                size: 48,
-                                cornerRadius: 7
+                                size: ToyakoArtworkSize.compactRow,
+                                cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius
                             )
 
                             VStack(alignment: .leading, spacing: 3) {
@@ -502,18 +516,16 @@ private struct ArtistDetailView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .toyakoCard()
         }
     }
 
     private var albumSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Albums")
-                    .font(.title3.weight(.bold))
-
-                Spacer()
-
+                    .font(ToyakoDesign.Typography.section)
+                Spacer(minLength: 0)
                 Text("\(albums.count)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -530,7 +542,7 @@ private struct ArtistDetailView: View {
                                 LazyArtwork(
                                     url: album.artworkURL,
                                     size: 150,
-                                    cornerRadius: 12
+                                    cornerRadius: ToyakoDesign.Metrics.artworkRadius
                                 )
 
                                 Text(album.name)

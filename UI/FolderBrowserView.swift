@@ -22,13 +22,13 @@ struct FolderBrowserView: View {
                                 onNavigate(folder.url)
                             } label: {
                                 HStack {
-                                    Image(systemName: "folder.fill").foregroundColor(.blue)
+                                    Image(systemName: "folder.fill").foregroundStyle(ToyakoDesign.Color.accent)
                                     VStack(alignment: .leading) {
-                                        Text(folder.url.lastPathComponent).foregroundColor(.primary)
-                                        Text("\(folder.count) songs").font(.caption).foregroundColor(.secondary)
+                                        Text(folder.url.lastPathComponent).foregroundStyle(.primary)
+                                        Text("\(folder.count) songs").font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    Image(systemName: "chevron.right").foregroundColor(.gray).font(.caption)
+                                    Image(systemName: "chevron.right").foregroundStyle(.secondary).font(.caption)
                                 }
                             }
                         }
@@ -40,19 +40,19 @@ struct FolderBrowserView: View {
                         Button("Select All in Folder") {
                             for track in localTracks { selectedURLs.insert(track.url) }
                         }
-                        .foregroundColor(.blue)
+                        .foregroundStyle(ToyakoDesign.Color.accent)
                         
                         ForEach(localTracks) { track in
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(track.title).lineLimit(1)
-                                    Text(track.artist).font(.caption).foregroundColor(.secondary)
+                                    Text(track.artist).font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 if selectedURLs.contains(track.url) {
-                                    Image(systemName: "checkmark.circle.fill").foregroundColor(.blue)
+                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(ToyakoDesign.Color.accent)
                                 } else {
-                                    Image(systemName: "circle").foregroundColor(.gray)
+                                    Image(systemName: "circle").foregroundStyle(.secondary)
                                 }
                             }
                             .contentShape(Rectangle())

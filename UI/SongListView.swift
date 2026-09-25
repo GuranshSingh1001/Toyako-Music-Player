@@ -17,23 +17,23 @@ struct SongListView: View {
 
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     HStack(spacing: 12) {
-                        LazyArtwork(url: library.artworkURL(for: track), size: 44, cornerRadius: 6)
+                        LazyArtwork(url: library.artworkURL(for: track), size: ToyakoArtworkSize.row, cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(track.title).font(.headline).lineLimit(1)
                             Text("\(track.artist) — \(track.album)")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
                         Spacer()
                         Text(formatTime(track.duration))
                             .font(.caption.monospacedDigit())
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
                     .padding(.vertical, 10)
-                    .contentShape(Rectangle())
+                    .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
                     .onTapGesture {
                         // Playing a track directly from the Tracks tab must not
                         // rebuild or replace the user's existing queue.

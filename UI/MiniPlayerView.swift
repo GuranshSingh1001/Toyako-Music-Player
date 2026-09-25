@@ -82,9 +82,9 @@ struct MiniPlayerView: View {
             // The mini-player artwork remains independent from Now Playing.
             // Opening Now Playing uses one consistent bottom-to-top presentation
             // rather than a shared hero/matched-geometry transition.
-            LazyArtwork(url: track.url, size: 44, cornerRadius: 9)
+            LazyArtwork(url: track.url, size: ToyakoArtworkSize.row, cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
         } else {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius, style: .continuous)
                 .fill(.secondary.opacity(0.16))
                 .frame(width: 44, height: 44)
                 .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
@@ -106,7 +106,7 @@ private struct MiniPlayerProgressBar: View {
                     .fill(.primary.opacity(0.11))
 
                 Capsule()
-                    .fill(.primary.opacity(0.52))
+                    .fill(ToyakoDesign.Color.accent)
                     .frame(
                         width: proxy.size.width * min(
                             max(clock.playbackProgress, 0),

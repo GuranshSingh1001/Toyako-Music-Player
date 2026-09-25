@@ -12,12 +12,12 @@ struct QueueView: View {
         VStack(spacing: 0) {
             HStack {
                 Button("Done") { dismiss() }
-                    .buttonStyle(.glass)
+                    .buttonStyle(ToyakoSmallActionButtonStyle())
 
                 Spacer()
 
                 Text("Queue")
-                    .font(.headline.weight(.semibold))
+                    .font(ToyakoDesign.Typography.item)
 
                 Spacer()
 
@@ -80,10 +80,10 @@ struct QueueView: View {
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
         .glassEffect(
             .regular.interactive(),
-            in: RoundedRectangle(cornerRadius: 30, style: .continuous)
+            in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
         )
         .padding(8)
         .background(Color.clear)
@@ -98,7 +98,7 @@ private struct QueueRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            LazyArtwork(url: track.url, size: 44, cornerRadius: 8)
+            LazyArtwork(url: track.url, size: ToyakoArtworkSize.row, cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)

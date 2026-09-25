@@ -128,6 +128,7 @@ struct ContentView: View {
         .tabViewStyle(
             .sidebarAdaptable
         )
+        .tint(ToyakoDesign.Color.accent)
         // The mini-player belongs to the tab destination, not to the outer
         // TabView. This is important for sidebarAdaptable: when the sidebar
         // opens/closes, SwiftUI animates the destination's frame. Because the
@@ -333,6 +334,7 @@ struct ContentView: View {
                         }
                     )
                     .glassEffect(.regular.interactive(), in: .capsule)
+                    .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
                     .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
                     .frame(width: playerWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -351,16 +353,17 @@ struct ContentView: View {
     ) -> some View {
 
         NavigationStack {
-            detailContent(
-                for:
-                    category
-            )
-            .searchable(
-                text:
-                    $searchText,
-                prompt:
-                    "Search library"
-            )
+            Group {
+                if category == .artists {
+                    detailContent(for: category)
+                } else {
+                    detailContent(for: category)
+                        .searchable(
+                            text: $searchText,
+                            prompt: "Search library"
+                        )
+                }
+            }
             .navigationTitle(
                 titleForCategory(
                     category

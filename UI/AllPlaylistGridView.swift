@@ -13,7 +13,7 @@ struct AllPlaylistsGridView: View {
     private let columns = [
         GridItem(
             .adaptive(
-                minimum: 160
+                minimum: ToyakoArtworkSize.playlistCard
             ),
             spacing: 20
         )
@@ -90,45 +90,32 @@ struct AllPlaylistsGridView: View {
                             )
                             .frame(
                                 width:
-                                    160,
+                                    ToyakoArtworkSize.playlistCard,
                                 height:
-                                    160
+                                    ToyakoArtworkSize.playlistCard
                             )
                             .clipShape(
                                 RoundedRectangle(
                                     cornerRadius:
-                                        12,
+                                        ToyakoDesign.Metrics.artworkRadius,
                                     style:
                                         .continuous
                                 )
                             )
-                            .shadow(
-                                color:
-                                    .black.opacity(
-                                        0.16
-                                    ),
-                                radius:
-                                    9,
-                                y:
-                                    4
-                            )
+
 
                             Text(
                                 playlist.name
                             )
-                            .font(
-                                .headline
-                            )
-                            .foregroundColor(
-                                .primary
-                            )
+                            .font(ToyakoDesign.Typography.item)
+                            .foregroundStyle(.primary)
                             .lineLimit(
                                 1
                             )
                         }
                         .frame(
                             width:
-                                160,
+                                ToyakoArtworkSize.playlistCard,
                             alignment:
                                 .leading
                         )
@@ -164,11 +151,9 @@ struct AllPlaylistsGridView: View {
                     }
                 }
             }
-            .padding()
-            .padding(
-                .bottom,
-                80
-            )
+            .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+            .padding(.top, ToyakoDesign.Metrics.screenTop)
+            .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
         }
     }
 }
