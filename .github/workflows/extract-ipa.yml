@@ -1,0 +1,72 @@
+name: Extract IPA Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build workflow run ID containing the Toyako-IPA artifact"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: Toyako-IPA
+          path: downloaded-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.run_id }}
+
+      - name: Extract IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p extracted
+
+          # The build artifact may contain the IPA directly, or an additional
+          # archive depending on how the previous workflow packaged it.
+          found="$(find downloaded-artifact -type f -name '*.ipa' -print -quit || true)"
+
+          if [ -n "$found" ]; then
+            cp "$found" extracted/Toyako.ipa
+          else
+            archive="$(find downloaded-artifact -type f \( -name '*.zip' -o -name '*.ZIP' \) -print -quit || true)"
+
+            if [ -z "$archive" ]; then
+              echo "No .ipa or ZIP containing the IPA was found."
+              find downloaded-artifact -maxdepth 3 -type f -print
+              exit 1
+            fi
+
+            unzip -q "$archive" -d extracted-zip
+            found="$(find extracted-zip -type f -name '*.ipa' -print -quit || true)"
+
+            if [ -z "$found" ]; then
+              echo "ZIP was extracted, but no .ipa was found."
+              find extracted-zip -maxdepth 4 -type f -print
+              exit 1
+            fi
+
+            cp "$found" extracted/Toyako.ipa
+          fi
+
+          ls -lh extracted/Toyako.ipa
+
+      - name: Upload IPA as Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Toyako-IPA-Extracted
+          path: extracted/Toyako.ipa
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 14

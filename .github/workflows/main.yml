@@ -6,8 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+# No repository write access is needed because this workflow only
+# builds the app and uploads the IPA to the Actions artifact store.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -31,6 +33,7 @@ jobs:
 
           sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
           xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -67,12 +70,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$APP" "$RUNNER_TEMP/Payload/Toyako.app"
 
-          cd "$RUNNER_TEMP"
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
-            Payload \
-            "$IPA"
+          # The IPA itself is a ZIP-format package with a .ipa extension.
+          # This creates Toyako.ipa; there is no manually-created outer ZIP.
+          (
+            cd "$RUNNER_TEMP"
+            /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+              Payload \
+              "$IPA"
+          )
 
           test -f "$IPA"
+          file "$IPA"
           ls -lh "$IPA"
 
       - name: Verify IPA
@@ -81,9 +89,7 @@ jobs:
           set -euo pipefail
           /usr/bin/unzip -t "$RUNNER_TEMP/Toyako.ipa"
 
-      # GitHub's Actions artifact service always presents artifacts as a
-      # downloadable ZIP. The file INSIDE is the real Toyako.ipa.
-      - name: Upload IPA as Actions artifact
+      - name: Upload IPA to GitHub Actions artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Toyako-IPA
@@ -91,11 +97,5 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # The Release asset is the raw .ipa and is NOT wrapped in another ZIP.
-      - name: Publish raw IPA to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: toyako-ipa-${{ github.run_number }}
-          name: Toyako IPA ${{ github.run_number }}
-          generate_release_notes: false
-          files: ${{ runner.temp }}/Toyako.ipa
+      # Intentionally no GitHub Release step.
+      # The IPA is available from the workflow run's Artifacts section.
