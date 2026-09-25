@@ -4,133 +4,132 @@ struct AllPlaylistsGridView: View {
     let playlists: [Playlist]
     let library: LocalLibrary
 
-    var onAddSongs:
-        (Playlist) -> Void
+    var onAddSongs: (Playlist) -> Void
+    var onRename: (Playlist) -> Void
 
-    var onRename:
-        (Playlist) -> Void
+    @EnvironmentObject private var audioManager: AudioEngineManager
 
     private let columns = [
-        GridItem(
-            .adaptive(
-                minimum: ToyakoArtworkSize.playlistCard
-            ),
-            spacing: 20
-        )
+        GridItem(.adaptive(minimum: 180), spacing: 18)
     ]
 
+    private var bleedArtworkURL: URL? {
+        audioManager.currentTrack.flatMap { library.artworkURL(for: $0) }
+            ?? playlists
+                .first
+                .flatMap { playlist in
+                    library.tracks.first(where: { playlist.trackURLs.contains($0.url) })
+                }
+                .flatMap { library.artworkURL(for: $0) }
+    }
+
     var body: some View {
-        ScrollView {
-            LazyVGrid(
-                columns:
-                    columns,
-                spacing:
-                    24
-            ) {
+        ZStack {
+            ArtworkBleedPageBackground(artworkURL: bleedArtworkURL)
 
-                ForEach(
-                    playlists
+            GeometryReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    CenteredLibraryGrid(
+                    items: playlists,
+                    availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
+                    minimumItemWidth: 180,
+                    rowSpacing: 24,
+                    columnSpacing: 18
                 ) { playlist in
-
-                    let playlistTracks =
-                        library.tracks.filter {
-                            playlist.trackURLs
-                                .contains(
-                                    $0.url
-                                )
-                        }
+                    let playlistTracks = library.tracks.filter {
+                        playlist.trackURLs.contains($0.url)
+                    }
 
                     NavigationLink {
                         PlaylistDetailView(
                             playlist: playlist,
                             tracks: playlistTracks,
                             library: library,
-                            onAddSongs: {
-                                onAddSongs(playlist)
-                            }
+                            onAddSongs: { onAddSongs(playlist) }
                         )
                     } label: {
-
-                        VStack(
-                            alignment:
-                                .leading,
-                            spacing:
-                                8
-                        ) {
-
-                            PlaylistArtwork(
-                                tracks:
-                                    playlistTracks,
-                                playlistName:
-                                    playlist.name
-                            )
-                            .frame(
-                                width:
-                                    ToyakoArtworkSize.playlistCard,
-                                height:
-                                    ToyakoArtworkSize.playlistCard
-                            )
-                            .clipShape(
-                                RoundedRectangle(
-                                    cornerRadius:
-                                        ToyakoDesign.Metrics.artworkRadius,
-                                    style:
-                                        .continuous
-                                )
-                            )
-
-
-                            Text(
-                                playlist.name
-                            )
-                            .font(ToyakoDesign.Typography.item)
-                            .foregroundStyle(.primary)
-                            .lineLimit(
-                                1
-                            )
-                        }
-                        .frame(
-                            width:
-                                ToyakoArtworkSize.playlistCard,
-                            alignment:
-                                .leading
+                        PlaylistCard(
+                            playlist: playlist,
+                            tracks: playlistTracks
                         )
                     }
-                    .buttonStyle(
-                        .plain
-                    )
+                    .buttonStyle(.plain)
                     .contextMenu {
-
                         Button {
-                            onAddSongs(
-                                playlist
-                            )
+                            onAddSongs(playlist)
                         } label: {
-                            Label(
-                                "Add Songs",
-                                systemImage:
-                                    "plus"
-                            )
+                            Label("Add Songs", systemImage: "plus")
                         }
 
                         Button {
-                            onRename(
-                                playlist
-                            )
+                            onRename(playlist)
                         } label: {
-                            Label(
-                                "Edit Name",
-                                systemImage:
-                                    "pencil"
-                            )
+                            Label("Edit Name", systemImage: "pencil")
                         }
                     }
                 }
+                .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+                .padding(.top, ToyakoDesign.Metrics.screenTop)
+                .padding(.bottom, ToyakoDesign.Metrics.screenBottom + 24)
             }
-            .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
-            .padding(.top, ToyakoDesign.Metrics.screenTop)
-            .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            }
         }
+    }
+}
+
+// MARK: - Playlist Card
+
+private struct PlaylistCard: View {
+    let playlist: Playlist
+    let tracks: [LocalTrack]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            PlaylistArtwork(
+                tracks: tracks,
+                playlistName: playlist.name
+            )
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius,
+                    style: .continuous
+                )
+            )
+
+            Text(playlist.name)
+                .font(.headline)
+                .lineLimit(1)
+
+            Text(
+                "\(tracks.count) " + (tracks.count == 1 ? "Song" : "Tracks")
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+
+            HStack(spacing: 6) {
+                Text("Playlist")
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Text(formatPlaylistDuration)
+                    .monospacedDigit()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
+    }
+
+    private var formatPlaylistDuration: String {
+        let seconds = max(0, Int(tracks.reduce(0) { $0 + $1.duration }.rounded()))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
 

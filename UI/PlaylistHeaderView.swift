@@ -129,28 +129,7 @@ struct PlaylistHeaderView: View {
             let localPhase = phase - Double(centerIndex)
 
             ZStack {
-                // A restrained glow makes the center artwork feel like the
-                // "hero" without washing the other covers out.
                 if count > 0 {
-                    Ellipse()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    .white.opacity(0.11),
-                                    .clear
-                                ],
-                                center: .center,
-                                startRadius: 8,
-                                endRadius: coverSize * 1.65
-                            )
-                        )
-                        .frame(
-                            width: coverSize * 3.0,
-                            height: coverSize * 1.2
-                        )
-                        .blur(radius: 18)
-                        .allowsHitTesting(false)
-
                     ForEach(
                         (centerIndex - visibleRadius)...(centerIndex + visibleRadius),
                         id: \.self

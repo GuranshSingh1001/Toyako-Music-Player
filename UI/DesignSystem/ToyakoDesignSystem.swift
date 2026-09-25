@@ -243,3 +243,72 @@ enum ToyakoArtworkSize {
     static let albumCard: CGFloat = 160
     static let playlistCard: CGFloat = 160
 }
+
+// MARK: - Centered adaptive library grid
+
+/// An adaptive library grid whose incomplete final row is centered instead of
+/// being pinned to the leading edge. Card widths remain consistent across rows.
+struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
+    let items: [Item]
+    let availableWidth: CGFloat
+    let minimumItemWidth: CGFloat
+    let rowSpacing: CGFloat
+    let columnSpacing: CGFloat
+    @ViewBuilder let content: (Item) -> Content
+
+    init(
+        items: [Item],
+        availableWidth: CGFloat,
+        minimumItemWidth: CGFloat = 180,
+        rowSpacing: CGFloat = 24,
+        columnSpacing: CGFloat = 18,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) {
+        self.items = items
+        self.availableWidth = max(0, availableWidth)
+        self.minimumItemWidth = minimumItemWidth
+        self.rowSpacing = rowSpacing
+        self.columnSpacing = columnSpacing
+        self.content = content
+    }
+
+    var body: some View {
+        let width = max(0, availableWidth)
+        let columnCount = max(
+            1,
+            Int((width + columnSpacing) / (minimumItemWidth + columnSpacing))
+        )
+        let itemWidth = max(
+            minimumItemWidth,
+            (width - CGFloat(columnCount - 1) * columnSpacing) / CGFloat(columnCount)
+        )
+
+        LazyVStack(alignment: .center, spacing: rowSpacing) {
+            ForEach(Array(items.chunked(into: columnCount).enumerated()), id: \.offset) { _, row in
+                HStack(spacing: columnSpacing) {
+                    ForEach(row) { item in
+                        content(item)
+                            .frame(width: itemWidth)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        var result: [[Element]] = []
+        result.reserveCapacity((count + size - 1) / size)
+
+        var start = 0
+        while start < count {
+            let end = Swift.min(start + size, count)
+            result.append(Array(self[start..<end]))
+            start = end
+        }
+        return result
+    }
+}

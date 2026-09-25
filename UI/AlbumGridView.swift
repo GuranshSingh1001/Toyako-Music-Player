@@ -4,17 +4,30 @@ struct AlbumGridView: View {
     let albums: [AlbumGroup]
     let library: LocalLibrary
 
+    @EnvironmentObject private var audioManager: AudioEngineManager
+
     private let columns = [
-        GridItem(.adaptive(minimum: 160), spacing: 20)
+        GridItem(.adaptive(minimum: 180), spacing: 18)
     ]
 
+    private var bleedArtworkURL: URL? {
+        audioManager.currentTrack.flatMap { library.artworkURL(for: $0) }
+            ?? albums.first?.artworkURL
+    }
+
     var body: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: columns,
-                spacing: 24
-            ) {
-                ForEach(albums) { album in
+        ZStack {
+            ArtworkBleedPageBackground(artworkURL: bleedArtworkURL)
+
+            GeometryReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    CenteredLibraryGrid(
+                    items: albums,
+                    availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
+                    minimumItemWidth: 180,
+                    rowSpacing: 24,
+                    columnSpacing: 18
+                ) { album in
                     NavigationLink {
                         AlbumDetailView(
                             album: album,
@@ -25,10 +38,12 @@ struct AlbumGridView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+                .padding(.top, ToyakoDesign.Metrics.screenTop)
+                .padding(.bottom, ToyakoDesign.Metrics.screenBottom + 24)
             }
-            .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
-            .padding(.top, ToyakoDesign.Metrics.screenTop)
-            .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            }
         }
     }
 }
@@ -39,25 +54,14 @@ private struct AlbumCard: View {
     let album: AlbumGroup
 
     var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: 8
-        ) {
-            LazyAlbumArtwork(
-                url: album.artworkURL
-            )
-            .frame(
-                maxWidth: .infinity
-            )
-            .aspectRatio(
-                1,
-                contentMode: .fit
-            )
-            .toyakoArtwork()
+        VStack(alignment: .leading, spacing: 9) {
+            LazyAlbumArtwork(url: album.artworkURL)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
             Text(album.name)
-                .font(ToyakoDesign.Typography.item)
-                .foregroundStyle(.primary)
+                .font(.headline)
                 .lineLimit(1)
 
             Text(album.artist)
@@ -65,17 +69,29 @@ private struct AlbumCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            Text(
-                "\(album.tracks.count) "
-                + (
-                    album.tracks.count == 1
-                    ? "Song"
-                    : "Tracks"
+            HStack(spacing: 6) {
+                Text(
+                    "\(album.tracks.count) "
+                    + (album.tracks.count == 1 ? "Song" : "Tracks")
                 )
-            )
+                .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Text(formatAlbumDuration(album.tracks))
+                    .monospacedDigit()
+            }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
+    }
+
+    private func formatAlbumDuration(_ tracks: [LocalTrack]) -> String {
+        let seconds = max(0, Int(tracks.reduce(0) { $0 + $1.duration }.rounded()))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
 

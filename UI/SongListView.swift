@@ -128,19 +128,25 @@ struct TrackGridView: View {
         ZStack {
             ArtworkBleedPageBackground(artworkURL: bleedArtworkURL)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVGrid(columns: columns, spacing: 24) {
-                    ForEach(tracks) { track in
-                        TrackGridCard(track: track, library: library) {
-                            audioManager.play(track: track)
-                        }
+            GeometryReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    CenteredLibraryGrid(
+                    items: tracks,
+                    availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
+                    minimumItemWidth: 180,
+                    rowSpacing: 24,
+                    columnSpacing: 18
+                ) { track in
+                    TrackGridCard(track: track, library: library) {
+                        audioManager.play(track: track)
                     }
                 }
                 .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
                 .padding(.top, ToyakoDesign.Metrics.screenTop)
                 .padding(.bottom, ToyakoDesign.Metrics.screenBottom + 24)
             }
-            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            }
         }
     }
 }
