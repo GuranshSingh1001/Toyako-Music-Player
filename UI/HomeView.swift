@@ -43,9 +43,10 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            HomeArtworkBackdrop(
+            ArtworkBleedPageBackground(
                 artworkURL: currentTrack.flatMap { library.artworkURL(for: $0) }
                     ?? recentlyPlayed.first.flatMap { library.artworkURL(for: $0) }
+                    ?? tracks.first.flatMap { library.artworkURL(for: $0) }
             )
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -195,7 +196,12 @@ struct HomeView: View {
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
-                            LazyArtwork(url: library.artworkURL(for: track), size: ToyakoArtworkSize.homeCard)
+                            LazyArtwork(
+                                url: library.artworkURL(for: track),
+                                size: ToyakoArtworkSize.libraryArtwork
+                            )
+                            .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
+                            .toyakoArtwork()
                             Text(track.title)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
@@ -204,7 +210,9 @@ struct HomeView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
-                        .frame(width: ToyakoArtworkSize.homeCard, alignment: .leading)
+                        .padding(12)
+                        .frame(width: ToyakoArtworkSize.libraryCardWidth, height: 270, alignment: .topLeading)
+                        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                     }
                     .buttonStyle(.plain)
                 }
@@ -224,7 +232,7 @@ struct HomeView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyAlbumArtwork(url: album.artworkURL)
-                                .frame(width: ToyakoArtworkSize.homeCard, height: ToyakoArtworkSize.homeCard)
+                                .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
                                 .toyakoArtwork()
                             Text(album.name)
                                 .font(.subheadline.weight(.semibold))
@@ -234,7 +242,9 @@ struct HomeView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
-                        .frame(width: ToyakoArtworkSize.homeCard, alignment: .leading)
+                        .padding(12)
+                        .frame(width: ToyakoArtworkSize.libraryCardWidth, height: 270, alignment: .topLeading)
+                        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                     }
                     .buttonStyle(.plain)
                 }
@@ -306,7 +316,7 @@ struct HomeView: View {
                                 tracks: playlistTracks,
                                 playlistName: playlist.name
                             )
-                            .frame(width: ToyakoArtworkSize.homeCard, height: ToyakoArtworkSize.homeCard)
+                            .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
                             .toyakoArtwork()
 
                             Text(playlist.name)
@@ -317,7 +327,9 @@ struct HomeView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(width: ToyakoArtworkSize.homeCard, alignment: .leading)
+                        .padding(12)
+                        .frame(width: ToyakoArtworkSize.libraryCardWidth, height: 270, alignment: .topLeading)
+                        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                     }
                     .buttonStyle(.plain)
                 }
@@ -336,85 +348,6 @@ struct HomeView: View {
     }
 }
 
-
-private struct HomeArtworkBackdrop: View {
-    let artworkURL: URL?
-
-    @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
-    @State private var artworkData: Data?
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                Color.black
-
-                if bleedingEffect, let artworkData, let image = UIImage(data: artworkData) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(
-                            width: proxy.size.width * 1.18,
-                            height: proxy.size.height * 1.18
-                        )
-                        .blur(radius: 72)
-                        .saturation(1.18)
-                        .opacity(0.22)
-                        .scaleEffect(1.08)
-
-                    // A second, softer bleed keeps the artwork's colour close to
-                    // the content instead of turning the entire screen into a
-                    // flat colour wash.
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(
-                            width: proxy.size.width * 1.04,
-                            height: proxy.size.height * 1.04
-                        )
-                        .blur(radius: 115)
-                        .saturation(1.05)
-                        .opacity(0.13)
-                }
-
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.52),
-                        Color.black.opacity(0.30),
-                        Color.black.opacity(0.62)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                // Keep text and controls readable while preserving the artwork
-                // bleed around the edges of the home content.
-                RadialGradient(
-                    colors: [
-                        Color.black.opacity(0.08),
-                        Color.black.opacity(0.34)
-                    ],
-                    center: .center,
-                    startRadius: 80,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.78
-                )
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .task(id: artworkURL) {
-            guard let artworkURL else {
-                artworkData = nil
-                return
-            }
-
-            let loaded = await ArtworkStore.shared.data(for: artworkURL)
-            guard !Task.isCancelled else { return }
-            artworkData = loaded
-        }
-    }
-}
 
 private struct HomeActionButton: View {
     let title: String

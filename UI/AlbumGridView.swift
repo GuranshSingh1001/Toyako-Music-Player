@@ -24,7 +24,7 @@ struct AlbumGridView: View {
                     CenteredLibraryGrid(
                     items: albums,
                     availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
-                    minimumItemWidth: 180,
+                    minimumItemWidth: ToyakoArtworkSize.libraryCardWidth,
                     rowSpacing: 24,
                     columnSpacing: 18
                 ) { album in
@@ -56,8 +56,10 @@ private struct AlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             LazyAlbumArtwork(url: album.artworkURL)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
+                .frame(
+                    width: ToyakoArtworkSize.libraryArtwork,
+                    height: ToyakoArtworkSize.libraryArtwork
+                )
                 .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
             Text(album.name)
@@ -251,7 +253,10 @@ private struct AlbumDetailHero: View {
     private var wideHero: some View {
         HStack(alignment: .center, spacing: 30) {
             artwork
-                .frame(width: 300, height: 300)
+                .frame(
+                    width: ToyakoArtworkSize.libraryArtwork,
+                    height: ToyakoArtworkSize.libraryArtwork
+                )
 
             VStack(alignment: .leading, spacing: 20) {
                 information
@@ -267,7 +272,7 @@ private struct AlbumDetailHero: View {
 
     private var compactHero: some View {
         let contentWidth = max(0, availableWidth - (ToyakoDesign.Metrics.screenHorizontal * 2))
-        let artworkSize = min(320, contentWidth)
+        let artworkSize = ToyakoArtworkSize.libraryArtwork
 
         let heroWidth = min(520, contentWidth)
         let buttonWidth = min(430, contentWidth)

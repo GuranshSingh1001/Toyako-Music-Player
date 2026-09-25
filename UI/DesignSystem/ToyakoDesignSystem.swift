@@ -239,9 +239,15 @@ extension View {
 enum ToyakoArtworkSize {
     static let row: CGFloat = 44
     static let compactRow: CGFloat = 48
-    static let homeCard: CGFloat = 145
-    static let albumCard: CGFloat = 160
-    static let playlistCard: CGFloat = 160
+
+    // One fixed square artwork size is shared by the main library and Home.
+    // Keeping this independent from the window width prevents artwork from
+    // growing/shrinking during Stage Manager or split-view resizing.
+    static let libraryArtwork: CGFloat = 180
+    static let libraryCardWidth: CGFloat = 220
+    static let homeCard: CGFloat = libraryArtwork
+    static let albumCard: CGFloat = libraryArtwork
+    static let playlistCard: CGFloat = libraryArtwork
 }
 
 // MARK: - Centered adaptive library grid
@@ -278,10 +284,9 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
             1,
             Int((width + columnSpacing) / (minimumItemWidth + columnSpacing))
         )
-        let itemWidth = max(
-            minimumItemWidth,
-            (width - CGFloat(columnCount - 1) * columnSpacing) / CGFloat(columnCount)
-        )
+        // Deliberately keep each card width fixed. Only the number of columns
+        // changes as the window changes; the artwork/card geometry does not.
+        let itemWidth = minimumItemWidth
 
         LazyVStack(alignment: .center, spacing: rowSpacing) {
             ForEach(Array(items.chunked(into: columnCount).enumerated()), id: \.offset) { _, row in

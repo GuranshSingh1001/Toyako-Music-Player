@@ -32,7 +32,7 @@ struct AllPlaylistsGridView: View {
                     CenteredLibraryGrid(
                     items: playlists,
                     availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
-                    minimumItemWidth: 180,
+                    minimumItemWidth: ToyakoArtworkSize.libraryCardWidth,
                     rowSpacing: 24,
                     columnSpacing: 18
                 ) { playlist in
@@ -90,8 +90,10 @@ private struct PlaylistCard: View {
                 tracks: tracks,
                 playlistName: playlist.name
             )
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
+            .frame(
+                width: ToyakoArtworkSize.libraryArtwork,
+                height: ToyakoArtworkSize.libraryArtwork
+            )
             .clipShape(
                 RoundedRectangle(
                     cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius,
@@ -201,8 +203,13 @@ struct PlaylistDetailView: View {
     let library: LocalLibrary
     let onAddSongs: () -> Void
 
+    @EnvironmentObject private var audioManager: AudioEngineManager
+
+    // Use the exact same artwork-selection rule as the Playlists page so the
+    // bleed does not visually change when navigating into a playlist.
     private var bleedArtworkURL: URL? {
-        tracks.first.flatMap { library.artworkURL(for: $0) }
+        audioManager.currentTrack.flatMap { library.artworkURL(for: $0) }
+            ?? tracks.first.flatMap { library.artworkURL(for: $0) }
     }
 
     var body: some View {

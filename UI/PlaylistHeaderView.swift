@@ -14,9 +14,10 @@ struct PlaylistHeaderView: View {
     var body: some View {
         GeometryReader { proxy in
             let narrow = proxy.size.width < 820
-            let coverSize = narrow
-                ? min(112, max(82, (proxy.size.width - 54) / 3.05))
-                : 156
+            // Fixed artwork geometry: window resizing changes layout, not the
+            // cover size. This keeps Playlist Detail consistent with the
+            // square library artwork used by Tracks/Albums/Playlists.
+            let coverSize: CGFloat = ToyakoArtworkSize.libraryArtwork
 
             VStack(alignment: .leading, spacing: 0) {
                 coverMarquee(

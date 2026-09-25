@@ -133,7 +133,7 @@ struct TrackGridView: View {
                     CenteredLibraryGrid(
                     items: tracks,
                     availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
-                    minimumItemWidth: 180,
+                    minimumItemWidth: ToyakoArtworkSize.libraryCardWidth,
                     rowSpacing: 24,
                     columnSpacing: 18
                 ) { track in
@@ -161,11 +161,13 @@ private struct TrackGridCard: View {
             VStack(alignment: .leading, spacing: 9) {
                 LazyArtwork(
                     url: library.artworkURL(for: track),
-                    size: 180,
+                    size: ToyakoArtworkSize.libraryArtwork,
                     cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius
                 )
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
+                .frame(
+                    width: ToyakoArtworkSize.libraryArtwork,
+                    height: ToyakoArtworkSize.libraryArtwork
+                )
                 .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
                 Text(track.title)
