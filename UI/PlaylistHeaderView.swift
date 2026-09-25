@@ -93,55 +93,112 @@ struct PlaylistHeaderView: View {
         coverSize: CGFloat
     ) -> some View {
         let count = max(tracks.count, 1)
-        let sequenceWidth = CGFloat(count) * (coverSize + coverSpacing)
+        let singleSequenceWidth =
+            CGFloat(count) * coverSize +
+            CGFloat(max(count - 1, 0)) * coverSpacing
+        let sequenceWidth = singleSequenceWidth + coverSpacing
 
         return TimelineView(.animation) { context in
             let elapsed = context.date.timeIntervalSinceReferenceDate
-            let distance = CGFloat(elapsed.truncatingRemainder(
-                dividingBy: TimeInterval(max(sequenceWidth / marqueeSpeed, 0.001))
-            )) * marqueeSpeed
+            let distance = CGFloat(
+                elapsed.truncatingRemainder(
+                    dividingBy: TimeInterval(
+                        max(sequenceWidth / marqueeSpeed, 0.001)
+                    )
+                )
+            ) * marqueeSpeed
 
             HStack(spacing: coverSpacing) {
-                coverSequence(size: coverSize)
-                coverSequence(size: coverSize)
+                coverSequence(
+                    size: coverSize,
+                    availableWidth: availableWidth
+                )
+                coverSequence(
+                    size: coverSize,
+                    availableWidth: availableWidth
+                )
             }
             .offset(x: -distance)
             .frame(
                 width: availableWidth,
-                height: coverSize,
+                height: coverSize * 1.22,
                 alignment: .leading
             )
             .clipped()
+            .coordinateSpace(name: "playlistMarquee")
             .mask {
                 LinearGradient(
                     stops: [
                         .init(color: .clear, location: 0),
-                        .init(color: .black, location: 0.045),
-                        .init(color: .black, location: 0.955),
+                        .init(color: .black, location: 0.055),
+                        .init(color: .black, location: 0.945),
                         .init(color: .clear, location: 1)
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
             }
+            .frame(height: coverSize)
         }
     }
 
-    private func coverSequence(size: CGFloat) -> some View {
+    private func coverSequence(
+        size: CGFloat,
+        availableWidth: CGFloat
+    ) -> some View {
         HStack(spacing: coverSpacing) {
-            ForEach(Array(tracks.enumerated()), id: \.offset) { _, track in
-                LazyArtwork(
-                    url: library.artworkURL(for: track),
-                    size: size,
-                    cornerRadius: min(16, size * 0.12)
-                )
-                .frame(width: size, height: size)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: min(16, size * 0.12),
-                        style: .continuous
+            ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
+                GeometryReader { geo in
+                    let frame = geo.frame(in: .named("playlistMarquee"))
+                    let centerX = availableWidth / 2
+                    let distanceFromCenter = frame.midX - centerX
+                    let normalizedDistance = min(
+                        abs(distanceFromCenter) / max(centerX, 1),
+                        1
                     )
-                )
+
+                    // A subtle Cover Flow treatment: the center artwork is
+                    // slightly larger/brighter, while the outer covers turn
+                    // away and recede. It stays entirely driven by position,
+                    // so it remains smooth at the fixed marquee speed.
+                    let scale = 1.0 - (normalizedDistance * 0.10)
+                    let rotation = Double(
+                        max(-1, min(1, distanceFromCenter / max(centerX, 1)))
+                    ) * -11
+                    let lift = sin(
+                        Double(index) * 0.85 +
+                        geo.frame(in: .named("playlistMarquee")).midX / 90
+                    ) * 1.8
+
+                    LazyArtwork(
+                        url: library.artworkURL(for: track),
+                        size: size,
+                        cornerRadius: min(16, size * 0.12)
+                    )
+                    .frame(width: size, height: size)
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: min(16, size * 0.12),
+                            style: .continuous
+                        )
+                    )
+                    .scaleEffect(scale)
+                    .rotation3DEffect(
+                        .degrees(rotation),
+                        axis: (x: 0, y: 1, z: 0),
+                        perspective: 0.65
+                    )
+                    .opacity(0.78 + (1 - normalizedDistance) * 0.22)
+                    .offset(y: lift)
+                    .shadow(
+                        color: .black.opacity(
+                            0.10 + (1 - normalizedDistance) * 0.12
+                        ),
+                        radius: 8,
+                        y: 4
+                    )
+                }
+                .frame(width: size, height: size * 1.18)
             }
         }
     }
