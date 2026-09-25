@@ -54,7 +54,11 @@ struct PlaylistHeaderView: View {
         }
         .frame(minHeight: 350, idealHeight: 390, maxHeight: 430)
         .onAppear {
-            startMarqueeIfNeeded()
+            guard tracks.count > 1 else { return }
+            marqueeActive = false
+            DispatchQueue.main.async {
+                marqueeActive = true
+            }
         }
     }
 
@@ -104,7 +108,7 @@ struct PlaylistHeaderView: View {
         ForEach(Array(tracks.enumerated()), id: \.offset) { _, track in
             LazyArtwork(
                 url: library.artworkURL(for: track),
-                size: .custom(Int(coverSize)),
+                size: coverSize,
                 cornerRadius: 16
             )
             .frame(width: coverSize, height: coverSize)
