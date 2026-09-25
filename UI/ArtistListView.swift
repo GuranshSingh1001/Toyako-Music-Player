@@ -81,6 +81,16 @@ struct ArtistListView: View {
         .background(ToyakoDesign.Color.canvas)
     }
 
+    private func artistSidebarWidth(for totalWidth: CGFloat) -> CGFloat {
+        // Keep the sidebar responsive while preserving enough room for the detail pane.
+        // The width scales with the available window instead of becoming fixed at a
+        // single value, which keeps Stage Manager and split-view resizing smooth.
+        let minimum: CGFloat = 240
+        let preferred = totalWidth * 0.28
+        let maximum = max(minimum, totalWidth - 420)
+        return min(max(preferred, minimum), maximum)
+    }
+
     private var artistSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("\(artists.count) Artists")
