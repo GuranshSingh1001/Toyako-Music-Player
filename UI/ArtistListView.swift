@@ -331,39 +331,37 @@ private struct ArtistDetailView: View {
             .tint(ToyakoDesign.Color.accent)
             .background {
                 ZStack {
+                    // One continuous canvas: the artwork is allowed to flow behind the
+                    // complete detail page instead of stopping at a hard horizontal band.
                     ToyakoDesign.Color.canvas
 
                     if let artwork {
                         Image(uiImage: artwork)
                             .resizable()
                             .scaledToFill()
-                            .frame(height: min(430, max(320, proxy.size.height * 0.55)))
-                            .frame(maxWidth: .infinity, alignment: .top)
-                            .blur(radius: 52)
-                            .scaleEffect(1.08)
-                            .opacity(0.20)
-                            .overlay {
-                                LinearGradient(
-                                    colors: [
-                                        ToyakoDesign.Color.canvas.opacity(0.02),
-                                        ToyakoDesign.Color.canvas.opacity(0.52),
-                                        ToyakoDesign.Color.canvas
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            }
-                            .mask {
-                                LinearGradient(
-                                    colors: [.black, .black.opacity(0.82), .black.opacity(0.20), .clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                            .blur(radius: 56)
+                            .scaleEffect(1.10)
+                            .opacity(0.24)
                     }
 
+                    // A single continuous tonal treatment keeps the artwork atmospheric
+                    // without introducing a second solid-colored panel behind the hero.
                     LinearGradient(
-                        colors: [ToyakoDesign.Color.accent.opacity(0.06), .clear, ToyakoDesign.Color.canvas],
+                        stops: [
+                            .init(color: ToyakoDesign.Color.canvas.opacity(0.18), location: 0),
+                            .init(color: ToyakoDesign.Color.canvas.opacity(0.38), location: 0.30),
+                            .init(color: ToyakoDesign.Color.canvas.opacity(0.82), location: 0.62),
+                            .init(color: ToyakoDesign.Color.canvas, location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+
+                    // Subtle edge darkening for legibility, not a separate panel.
+                    LinearGradient(
+                        colors: [.black.opacity(0.08), .clear, .black.opacity(0.12)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )

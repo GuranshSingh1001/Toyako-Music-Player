@@ -120,6 +120,46 @@ struct ToyakoSmallActionButtonStyle: ButtonStyle {
     }
 }
 
+
+struct ToyakoToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                configuration.isOn.toggle()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                configuration.label
+                Spacer(minLength: 12)
+
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule()
+                        .fill(configuration.isOn
+                              ? ToyakoDesign.Color.accent.opacity(0.28)
+                              : SwiftUI.Color.primary.opacity(0.12))
+                        .frame(width: 50, height: 30)
+                        .overlay {
+                            Capsule()
+                                .stroke(SwiftUI.Color.primary.opacity(0.10), lineWidth: 1)
+                        }
+
+                    Circle()
+                        .fill(configuration.isOn ? ToyakoDesign.Color.accent : SwiftUI.Color.secondary.opacity(0.72))
+                        .frame(width: 24, height: 24)
+                        .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                        .padding(3)
+                }
+                .frame(width: 50, height: 30)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(configuration.label)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
+        .accessibilityAddTraits(configuration.isOn ? .isSelected : [])
+    }
+}
+
 // MARK: - Reusable surfaces
 
 struct ToyakoCard<Content: View>: View {

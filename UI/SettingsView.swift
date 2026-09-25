@@ -86,6 +86,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .toggleStyle(ToyakoToggleStyle())
             .confirmationDialog("Remove all downloaded artist artwork?", isPresented: $showClearArtistArtworkConfirmation, titleVisibility: .visible) {
                 Button("Remove Artwork", role: .destructive) {
                     Task {
