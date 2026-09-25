@@ -66,7 +66,6 @@ struct PlaylistHeaderView: View {
 
     private func titleBlock(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(playlist.name)
                 .font(
                     .system(
                         size: compact ? 36 : 52,
