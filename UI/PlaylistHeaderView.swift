@@ -38,31 +38,29 @@ struct PlaylistHeaderView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } else {
-                    // Wide windows: title + metadata and the complete action
-                    // buttons share one horizontal baseline.
-                    HStack(alignment: .center, spacing: 28) {
+                    // Wide windows: keep the controls close to the playlist
+                    // title instead of pushing them to the far edge.
+                    HStack(alignment: .center, spacing: 24) {
                         titleBlock(compact: false)
-                            .layoutPriority(2)
-
-                        Spacer(minLength: 16)
+                            .frame(maxWidth: 480, alignment: .leading)
+                            .layoutPriority(1)
 
                         actionBar
-                            .layoutPriority(1)
                             .fixedSize(horizontal: true, vertical: false)
                     }
                 }
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 2)
             }
             .frame(maxWidth: 1320)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, narrow ? 22 : 34)
-            .padding(.top, narrow ? 8 : 16)
+            .padding(.top, narrow ? 6 : 8)
         }
         .frame(
-            minHeight: 350,
-            idealHeight: 385,
-            maxHeight: 425
+            minHeight: 260,
+            idealHeight: 285,
+            maxHeight: 320
         )
     }
 
@@ -161,14 +159,14 @@ struct PlaylistHeaderView: View {
                     // slightly larger/brighter, while the outer covers turn
                     // away and recede. It stays entirely driven by position,
                     // so it remains smooth at the fixed marquee speed.
-                    let scale = 1.0 - (normalizedDistance * 0.10)
+                    let centerEmphasis = 1.0 - normalizedDistance
+                    let scale = 0.92 + (centerEmphasis * 0.10)
                     let rotation = Double(
                         max(-1, min(1, distanceFromCenter / max(centerX, 1)))
-                    ) * -11
-                    let lift = sin(
-                        Double(index) * 0.85 +
-                        geo.frame(in: .named("playlistMarquee")).midX / 90
-                    ) * 1.8
+                    ) * -8
+                    let wavePhase =
+                        geo.frame(in: .named("playlistMarquee")).midX / 105
+                    let lift = sin(wavePhase) * 3.0
 
                     LazyArtwork(
                         url: library.artworkURL(for: track),
@@ -188,13 +186,13 @@ struct PlaylistHeaderView: View {
                         axis: (x: 0, y: 1, z: 0),
                         perspective: 0.65
                     )
-                    .opacity(0.78 + (1 - normalizedDistance) * 0.22)
+                    .opacity(0.72 + (centerEmphasis * 0.28))
                     .offset(y: lift)
                     .shadow(
                         color: .black.opacity(
-                            0.10 + (1 - normalizedDistance) * 0.12
+                            0.12 + (centerEmphasis * 0.16)
                         ),
-                        radius: 8,
+                        radius: 9 + (centerEmphasis * 5),
                         y: 4
                     )
                 }
@@ -209,6 +207,7 @@ struct PlaylistHeaderView: View {
                 Label("Play", systemImage: "play.fill")
                     .font(.subheadline.bold())
                     .lineLimit(1)
+                    .frame(width: 112)
             }
             .buttonStyle(ToyakoPrimaryButtonStyle())
 
@@ -216,6 +215,7 @@ struct PlaylistHeaderView: View {
                 Label("Shuffle", systemImage: "shuffle")
                     .font(.subheadline.bold())
                     .lineLimit(1)
+                    .frame(width: 132)
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
 
@@ -223,6 +223,7 @@ struct PlaylistHeaderView: View {
                 Label("Add Songs", systemImage: "plus")
                     .font(.subheadline.bold())
                     .lineLimit(1)
+                    .frame(width: 142)
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
         }
