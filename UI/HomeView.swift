@@ -291,26 +291,15 @@ struct HomeView: View {
                     }
 
                     NavigationLink {
-                        SongListView(
+                        PlaylistDetailView(
+                            playlist: playlist,
                             tracks: playlistTracks,
-                            allTracks: playlistTracks,
                             library: library,
-                            playlistID: playlist.id,
-                            headerView: AnyView(
-                                PlaylistHeaderView(
-                                    playlist: playlist,
-                                    tracks: playlistTracks,
-                                    library: library,
-                                    onAddSongs: {
-                                        // Home is a read-only entry point; the
-                                        // existing playlist editor is still owned
-                                        // by the main Playlists destination.
-                                    }
-                                )
-                            )
+                            onAddSongs: {
+                                // Home is a read-only entry point; playlist editing
+                                // remains owned by the main Playlists destination.
+                            }
                         )
-                        .navigationTitle(playlist.name)
-                        .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             PlaylistArtwork(

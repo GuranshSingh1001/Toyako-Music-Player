@@ -537,3 +537,78 @@ private struct ArtworkBleedPalette: Equatable {
         )
     }
 }
+
+// MARK: - Shared page artwork bleed
+
+struct ArtworkBleedPageBackground: View {
+    let artworkURL: URL?
+
+    @State private var artworkData: Data?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black
+
+                if let artworkData, let image = UIImage(data: artworkData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: proxy.size.width * 1.18,
+                            height: proxy.size.height * 1.18
+                        )
+                        .blur(radius: 72)
+                        .saturation(1.18)
+                        .opacity(0.22)
+                        .scaleEffect(1.08)
+
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: proxy.size.width * 1.04,
+                            height: proxy.size.height * 1.04
+                        )
+                        .blur(radius: 115)
+                        .saturation(1.05)
+                        .opacity(0.13)
+                }
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.52),
+                        Color.black.opacity(0.30),
+                        Color.black.opacity(0.62)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                RadialGradient(
+                    colors: [
+                        Color.black.opacity(0.08),
+                        Color.black.opacity(0.34)
+                    ],
+                    center: .center,
+                    startRadius: 80,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.78
+                )
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .task(id: artworkURL) {
+            guard let artworkURL else {
+                artworkData = nil
+                return
+            }
+
+            let loaded = await ArtworkStore.shared.data(for: artworkURL)
+            guard !Task.isCancelled else { return }
+            artworkData = loaded
+        }
+    }
+}

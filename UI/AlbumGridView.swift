@@ -143,36 +143,7 @@ struct AlbumDetailView: View {
     }
 
     private var albumBackground: some View {
-        GeometryReader { proxy in
-            ZStack {
-                Color(uiColor: .systemBackground)
-
-                // Keep the artwork bleed attached to the actual destination
-                // viewport. This avoids the artwork/background becoming an
-                // independently-sized layer when the window is resized.
-                LazyAlbumArtwork(url: album.artworkURL)
-                    .frame(
-                        width: max(proxy.size.width * 1.45, 560),
-                        height: max(proxy.size.height * 0.72, 560)
-                    )
-                    .scaleEffect(1.18)
-                    .blur(radius: 72)
-                    .saturation(1.05)
-                    .brightness(-0.18)
-                    .opacity(0.18)
-                    .position(
-                        x: proxy.size.width * 0.5,
-                        y: min(proxy.size.height * 0.32, 360)
-                    )
-
-                // A single uniform veil. Do not use a vertical gradient here:
-                // that was the source of the visible top/bottom dual-tone.
-                Color.black.opacity(0.24)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-        }
-        .ignoresSafeArea()
+        ArtworkBleedPageBackground(artworkURL: album.artworkURL)
     }
 
     private func playAlbum() {

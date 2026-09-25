@@ -41,32 +41,13 @@ struct AllPlaylistsGridView: View {
                         }
 
                     NavigationLink {
-                        SongListView(
-                            tracks:
-                                playlistTracks,
-                            allTracks:
-                                playlistTracks,
-                            library:
-                                library,
-                            playlistID:
-                                playlist.id,
-                            headerView:
-                                AnyView(
-                                    PlaylistHeaderView(
-                                        playlist:
-                                            playlist,
-                                        tracks:
-                                            playlistTracks,
-                                        library:
-                                            library,
-                                        onAddSongs:
-                                            {
-                                                onAddSongs(
-                                                    playlist
-                                                )
-                                            }
-                                    )
-                                )
+                        PlaylistDetailView(
+                            playlist: playlist,
+                            tracks: playlistTracks,
+                            library: library,
+                            onAddSongs: {
+                                onAddSongs(playlist)
+                            }
                         )
                     } label: {
 
@@ -209,5 +190,42 @@ struct PlaylistArtwork: View {
                 }
                 .foregroundStyle(.secondary)
             }
+    }
+}
+
+
+// MARK: - Playlist Detail
+
+struct PlaylistDetailView: View {
+    let playlist: Playlist
+    let tracks: [LocalTrack]
+    let library: LocalLibrary
+    let onAddSongs: () -> Void
+
+    private var bleedArtworkURL: URL? {
+        tracks.first.flatMap { library.artworkURL(for: $0) }
+    }
+
+    var body: some View {
+        ZStack {
+            ArtworkBleedPageBackground(artworkURL: bleedArtworkURL)
+
+            SongListView(
+                tracks: tracks,
+                allTracks: tracks,
+                library: library,
+                playlistID: playlist.id,
+                headerView: AnyView(
+                    PlaylistHeaderView(
+                        playlist: playlist,
+                        tracks: tracks,
+                        library: library,
+                        onAddSongs: onAddSongs
+                    )
+                )
+            )
+        }
+        .navigationTitle(playlist.name)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
