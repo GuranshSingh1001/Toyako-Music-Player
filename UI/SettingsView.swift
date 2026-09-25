@@ -12,12 +12,21 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
+    @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Appearance") {
+                    Toggle("Artwork Bleeding Effect", isOn: $bleedingEffect)
+
+                    Text("Uses album artwork to create a soft blurred background on Home, Tracks, Albums, Playlists, and other artwork-driven screens.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Lyrics") {
                     Toggle("Show Romanization", isOn: $showRomanization)
                     Toggle("Karaoke Glow", isOn: $karaokeGlow)

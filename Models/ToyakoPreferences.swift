@@ -9,6 +9,7 @@ struct ToyakoPreferences {
     static let showAudioInfoKey = "Toyako.NowPlaying.ShowAudioInfo"
     static let translationKey = "Toyako.Lyrics.Translation"
     static let automaticArtistArtworkKey = "Toyako.ArtistArtwork.AutomaticDownloads"
+    static let bleedingEffectKey = "Toyako.Appearance.BleedingEffect"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -19,7 +20,8 @@ struct ToyakoPreferences {
             lyricsAnimationStyleKey: "dynamic",
             showAudioInfoKey: true,
             translationKey: false,
-            automaticArtistArtworkKey: false
+            automaticArtistArtworkKey: false,
+            bleedingEffectKey: true
         ])
 
         // Classic was removed because it was visually too close to Smooth.

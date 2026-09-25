@@ -506,13 +506,9 @@ struct ContentView: View {
             homeContent
 
         case .tracks:
-            SongListView(
-                tracks:
-                    filteredTracks,
-                allTracks:
-                    library.tracks,
-                library:
-                    library
+            TrackGridView(
+                tracks: filteredTracks,
+                library: library
             )
 
         case .albums:

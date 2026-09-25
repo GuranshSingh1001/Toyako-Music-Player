@@ -17,6 +17,8 @@ struct ColorfulArtworkBleedBackground: View {
     let artworkData: Data?
     let accentColor: Color
 
+    @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
+
     @State private var currentPalette = ArtworkBleedPalette.fallback
     @State private var targetPalette = ArtworkBleedPalette.fallback
     @State private var transitionProgress: CGFloat = 1.0
@@ -24,7 +26,11 @@ struct ColorfulArtworkBleedBackground: View {
 
     var body: some View {
         GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
+            if !bleedingEffect {
+                Color.black
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 let size = geometry.size
 
@@ -81,6 +87,7 @@ struct ColorfulArtworkBleedBackground: View {
                 .frame(width: size.width, height: size.height)
                 .clipped()
                 .drawingGroup()
+                }
             }
         }
         .ignoresSafeArea()
@@ -543,12 +550,15 @@ private struct ArtworkBleedPalette: Equatable {
 struct ArtworkBleedPageBackground: View {
     let artworkURL: URL?
 
+    @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @State private var artworkData: Data?
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
                 Color.black
+
+                if bleedingEffect {
 
                 if let artworkData, let image = UIImage(data: artworkData) {
                     Image(uiImage: image)
@@ -594,6 +604,7 @@ struct ArtworkBleedPageBackground: View {
                     startRadius: 80,
                     endRadius: max(proxy.size.width, proxy.size.height) * 0.78
                 )
+                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()

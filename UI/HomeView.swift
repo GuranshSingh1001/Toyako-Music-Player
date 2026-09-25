@@ -340,6 +340,7 @@ struct HomeView: View {
 private struct HomeArtworkBackdrop: View {
     let artworkURL: URL?
 
+    @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @State private var artworkData: Data?
 
     var body: some View {
@@ -347,7 +348,7 @@ private struct HomeArtworkBackdrop: View {
             ZStack {
                 Color.black
 
-                if let artworkData, let image = UIImage(data: artworkData) {
+                if bleedingEffect, let artworkData, let image = UIImage(data: artworkData) {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()

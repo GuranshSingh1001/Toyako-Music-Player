@@ -107,3 +107,100 @@ struct SongListView: View {
         return String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60)
     }
 }
+import SwiftUI
+
+struct TrackGridView: View {
+    let tracks: [LocalTrack]
+    let library: LocalLibrary
+
+    @EnvironmentObject private var audioManager: AudioEngineManager
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 180), spacing: 18)
+    ]
+
+    private var bleedArtworkURL: URL? {
+        audioManager.currentTrack.flatMap { library.artworkURL(for: $0) }
+            ?? tracks.first.flatMap { library.artworkURL(for: $0) }
+    }
+
+    var body: some View {
+        ZStack {
+            ArtworkBleedPageBackground(artworkURL: bleedArtworkURL)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVGrid(columns: columns, spacing: 24) {
+                    ForEach(tracks) { track in
+                        TrackGridCard(track: track, library: library) {
+                            audioManager.play(track: track)
+                        }
+                    }
+                }
+                .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+                .padding(.top, ToyakoDesign.Metrics.screenTop)
+                .padding(.bottom, ToyakoDesign.Metrics.screenBottom + 24)
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        }
+    }
+}
+
+private struct TrackGridCard: View {
+    let track: LocalTrack
+    let library: LocalLibrary
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 9) {
+                LazyArtwork(
+                    url: library.artworkURL(for: track),
+                    size: 180,
+                    cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius
+                )
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
+
+                Text(track.title)
+                    .font(.headline)
+                    .lineLimit(1)
+
+                Text(track.artist)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text(track.album)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 4)
+
+                    Text(formatDuration(track.duration))
+                        .monospacedDigit()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                action()
+            } label: {
+                Label("Play", systemImage: "play.fill")
+            }
+
+        }
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let seconds = max(0, Int(duration.rounded()))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
