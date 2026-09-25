@@ -337,8 +337,8 @@ private struct ArtistDetailView: View {
             .tint(ToyakoDesign.Color.accent)
             .background {
                 ZStack {
-                    // One continuous canvas: the artwork is allowed to flow behind the
-                    // complete detail page instead of stopping at a hard horizontal band.
+                    // One continuous artwork canvas from the hero through the
+                    // scrolling content. There is no solid-color transition at the bottom.
                     ToyakoDesign.Color.canvas
 
                     if let artwork {
@@ -347,29 +347,21 @@ private struct ArtistDetailView: View {
                             .scaledToFill()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .clipped()
-                            .blur(radius: 56)
-                            .scaleEffect(1.10)
-                            .opacity(0.24)
+                            .blur(radius: 58)
+                            .scaleEffect(1.12)
+                            .opacity(0.20)
                     }
 
-                    // A single continuous tonal treatment keeps the artwork atmospheric
-                    // without introducing a second solid-colored panel behind the hero.
-                    LinearGradient(
-                        stops: [
-                            .init(color: ToyakoDesign.Color.canvas.opacity(0.18), location: 0),
-                            .init(color: ToyakoDesign.Color.canvas.opacity(0.38), location: 0.30),
-                            .init(color: ToyakoDesign.Color.canvas.opacity(0.82), location: 0.62),
-                            .init(color: ToyakoDesign.Color.canvas, location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    // A uniform readability veil prevents the artwork from competing
+                    // with text while keeping the same tone throughout the page.
+                    Color.black.opacity(0.46)
 
-                    // Subtle edge darkening for legibility, not a separate panel.
-                    LinearGradient(
-                        colors: [.black.opacity(0.08), .clear, .black.opacity(0.12)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                    // Edge-only vignette. It has no horizontal boundary.
+                    RadialGradient(
+                        colors: [.clear, .black.opacity(0.16)],
+                        center: .center,
+                        startRadius: 80,
+                        endRadius: 900
                     )
                 }
                 .ignoresSafeArea()
