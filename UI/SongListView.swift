@@ -15,29 +15,60 @@ struct SongListView: View {
                     header.padding(.bottom, 16)
                 }
 
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    HStack(spacing: 12) {
-                        LazyArtwork(url: library.artworkURL(for: track), size: ToyakoArtworkSize.row, cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
+                if !tracks.isEmpty {
+                    HStack {
+                        Text("SONGS")
+                            .font(.caption.weight(.bold))
+                            .tracking(1.1)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(tracks.count)")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+                    .padding(.bottom, 8)
+                }
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(track.title).font(.headline).lineLimit(1)
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    HStack(spacing: 14) {
+                        Text("\(index + 1)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 24, alignment: .trailing)
+
+                        LazyArtwork(
+                            url: library.artworkURL(for: track),
+                            size: ToyakoArtworkSize.row,
+                            cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius
+                        )
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(track.title)
+                                .font(.headline)
+                                .lineLimit(1)
+
                             Text("\(track.artist) — \(track.album)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
-                        Spacer()
+
+                        Spacer(minLength: 8)
+
                         Text(formatTime(track.duration))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
-                    .padding(.vertical, 10)
-                    .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
+                    .padding(.vertical, 11)
+                    .contentShape(
+                        RoundedRectangle(
+                            cornerRadius: ToyakoDesign.Metrics.controlRadius,
+                            style: .continuous
+                        )
+                    )
                     .onTapGesture {
-                        // Playing a track directly from the Tracks tab must not
-                        // rebuild or replace the user's existing queue.
-                        // The current queue remains exactly as it was.
                         audioManager.play(track: track)
                     }
                     .contextMenu {
