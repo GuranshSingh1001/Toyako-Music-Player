@@ -9,7 +9,7 @@ struct PlaylistHeaderView: View {
     @EnvironmentObject private var audioManager: AudioEngineManager
 
     private let coverSpacing: CGFloat = 12
-    private let marqueeDuration: TimeInterval = 22
+    private let marqueeSpeed: CGFloat = 22 // points per second — independent of track count
 
     var body: some View {
         GeometryReader { proxy in
@@ -97,16 +97,15 @@ struct PlaylistHeaderView: View {
 
         return TimelineView(.animation) { context in
             let elapsed = context.date.timeIntervalSinceReferenceDate
-            let progress = tracks.count > 1
-                ? (elapsed.truncatingRemainder(dividingBy: marqueeDuration))
-                    / marqueeDuration
-                : 0
+            let distance = CGFloat(elapsed.truncatingRemainder(
+                dividingBy: TimeInterval(max(sequenceWidth / marqueeSpeed, 0.001))
+            )) * marqueeSpeed
 
             HStack(spacing: coverSpacing) {
                 coverSequence(size: coverSize)
                 coverSequence(size: coverSize)
             }
-            .offset(x: -sequenceWidth * progress)
+            .offset(x: -distance)
             .frame(
                 width: availableWidth,
                 height: coverSize,
