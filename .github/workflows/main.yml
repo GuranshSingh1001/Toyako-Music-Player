@@ -1,12 +1,10 @@
 name: Build Toyako IPA
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "GitHub release tag for the IPA"
-        required: true
-        default: "toyako-ipa"
 
 permissions:
   contents: write
@@ -23,17 +21,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           XCODE_PATH="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort | tail -n 1)"
-
           if [[ -z "$XCODE_PATH" ]]; then
             echo "Xcode 26 was not found."
             xcodebuild -version
             exit 1
           fi
-
           sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
-
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
@@ -47,7 +41,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           xcodebuild archive \
             -project Toyako.xcodeproj \
             -scheme Toyako \
@@ -62,44 +55,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           APP="$RUNNER_TEMP/Toyako.xcarchive/Products/Applications/Toyako.app"
           IPA="$RUNNER_TEMP/Toyako.ipa"
-
           test -d "$APP"
-
           rm -rf "$RUNNER_TEMP/Payload"
           mkdir -p "$RUNNER_TEMP/Payload"
-
           cp -R "$APP" "$RUNNER_TEMP/Payload/Toyako.app"
-
-          # An IPA is itself a ZIP-format package with a .ipa extension.
-          # This creates ONLY Toyako.ipa; there is no outer .zip file.
           (
             cd "$RUNNER_TEMP"
-            /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
-              Payload \
-              "$IPA"
+            /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload "$IPA"
           )
-
           test -f "$IPA"
-          file "$IPA"
           ls -lh "$IPA"
 
       - name: Verify IPA
-        shell: bash
-        run: |
-          set -euo pipefail
+        run: /usr/bin/unzip -t "$RUNNER_TEMP/Toyako.ipa"
 
-          IPA="$RUNNER_TEMP/Toyako.ipa"
-
-          /usr/bin/unzip -t "$IPA"
-          /usr/bin/unzip -l "$IPA" | head -80
-
-      - name: Publish IPA directly as GitHub Release asset
+      - name: Publish IPA as GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag }}-${{ github.run_number }}
-          name: Toyako IPA ${{ github.run_number }}
-          generate_release_notes: true
+          tag_name: "ipa-${{ github.run_number }}"
+          name: "Toyako IPA ${{ github.run_number }}"
+          generate_release_notes: false
+          make_latest: true
           files: ${{ runner.temp }}/Toyako.ipa

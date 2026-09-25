@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct PlaylistHeaderView: View {
+    @EnvironmentObject private var audioManager: AudioEngineManager
+
     let playlist: Playlist
     let tracks: [LocalTrack]
     let library: LocalLibrary
