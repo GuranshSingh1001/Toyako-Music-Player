@@ -1,20 +1,20 @@
 import SwiftUI
 
 struct PlaylistHeaderView: View {
-    @EnvironmentObject private var audioManager: AudioEngineManager
-
     let playlist: Playlist
     let tracks: [LocalTrack]
     let library: LocalLibrary
     let onAddSongs: () -> Void
+
+    @EnvironmentObject private var audioManager: AudioEngineManager
 
     private let coverSpacing: CGFloat = 12
     private let marqueeDuration: TimeInterval = 22
 
     var body: some View {
         GeometryReader { proxy in
-            let compact = proxy.size.width < 760
-            let coverSize = compact
+            let narrow = proxy.size.width < 820
+            let coverSize = narrow
                 ? min(112, max(82, (proxy.size.width - 54) / 3.05))
                 : 132
 
@@ -24,20 +24,31 @@ struct PlaylistHeaderView: View {
                     coverSize: coverSize
                 )
                 .frame(height: coverSize)
-                .padding(.bottom, compact ? 22 : 28)
+                .padding(.bottom, narrow ? 22 : 26)
 
-                if compact {
+                if narrow {
+                    // Stage Manager / narrow windows:
+                    // keep the complete button labels and put the controls
+                    // underneath the playlist information instead of squeezing
+                    // them into a narrow horizontal column.
                     VStack(alignment: .leading, spacing: 16) {
                         titleBlock(compact: true)
-                        compactActionBar
-                    }
-                } else {
-                    HStack(alignment: .bottom, spacing: 24) {
-                        titleBlock(compact: false)
-
-                        Spacer(minLength: 20)
 
                         actionBar
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    // Wide windows: title + metadata and the complete action
+                    // buttons share one horizontal baseline.
+                    HStack(alignment: .center, spacing: 28) {
+                        titleBlock(compact: false)
+                            .layoutPriority(2)
+
+                        Spacer(minLength: 16)
+
+                        actionBar
+                            .layoutPriority(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
 
@@ -45,10 +56,14 @@ struct PlaylistHeaderView: View {
             }
             .frame(maxWidth: 1320)
             .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, compact ? 22 : 34)
-            .padding(.top, compact ? 8 : 16)
+            .padding(.horizontal, narrow ? 22 : 34)
+            .padding(.top, narrow ? 8 : 16)
         }
-        .frame(minHeight: 330, idealHeight: 365, maxHeight: 405)
+        .frame(
+            minHeight: 350,
+            idealHeight: 385,
+            maxHeight: 425
+        )
     }
 
     private func titleBlock(compact: Bool) -> some View {
@@ -56,7 +71,7 @@ struct PlaylistHeaderView: View {
             Text(playlist.name)
                 .font(
                     .system(
-                        size: compact ? 34 : 52,
+                        size: compact ? 36 : 52,
                         weight: .bold
                     )
                 )
@@ -73,9 +88,6 @@ struct PlaylistHeaderView: View {
         }
     }
 
-    // A TimelineView drives the marquee from the current time instead of
-    // relying on a one-shot SwiftUI state animation. This keeps the covers
-    // moving after parent/layout updates and while the window is resized.
     private func coverMarquee(
         availableWidth: CGFloat,
         coverSize: CGFloat
@@ -137,57 +149,28 @@ struct PlaylistHeaderView: View {
 
     private var actionBar: some View {
         HStack(spacing: 10) {
-            Button {
-                playAll()
-            } label: {
+            Button(action: playAll) {
                 Label("Play", systemImage: "play.fill")
                     .font(.subheadline.bold())
+                    .lineLimit(1)
             }
             .buttonStyle(ToyakoPrimaryButtonStyle())
 
-            Button {
-                shuffleAll()
-            } label: {
+            Button(action: shuffleAll) {
                 Label("Shuffle", systemImage: "shuffle")
                     .font(.subheadline.bold())
+                    .lineLimit(1)
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
 
             Button(action: onAddSongs) {
                 Label("Add Songs", systemImage: "plus")
                     .font(.subheadline.bold())
+                    .lineLimit(1)
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
         }
-    }
-
-    // Narrow windows use icon controls rather than allowing button labels
-    // to compress into vertically stacked letters.
-    private var compactActionBar: some View {
-        HStack(spacing: 10) {
-            Button(action: playAll) {
-                Image(systemName: "play.fill")
-            }
-            .accessibilityLabel("Play")
-            .buttonStyle(ToyakoPrimaryButtonStyle())
-            .frame(width: 58)
-
-            Button(action: shuffleAll) {
-                Image(systemName: "shuffle")
-            }
-            .accessibilityLabel("Shuffle")
-            .buttonStyle(ToyakoSecondaryButtonStyle())
-            .frame(width: 58)
-
-            Button(action: onAddSongs) {
-                Image(systemName: "plus")
-            }
-            .accessibilityLabel("Add Songs")
-            .buttonStyle(ToyakoSecondaryButtonStyle())
-            .frame(width: 58)
-
-            Spacer(minLength: 0)
-        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func playAll() {
@@ -197,9 +180,11 @@ struct PlaylistHeaderView: View {
 
     private func shuffleAll() {
         guard !tracks.isEmpty else { return }
+
         if !audioManager.isShuffle {
             audioManager.toggleShuffle()
         }
+
         audioManager.startQueue(
             tracks: tracks,
             startIndex: Int.random(in: 0..<tracks.count)
@@ -215,5 +200,4 @@ struct PlaylistHeaderView: View {
             ? "\(hours) hr \(minutes) min"
             : "\(minutes) min"
     }
-
 }
