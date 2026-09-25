@@ -108,6 +108,7 @@ struct AlbumDetailView: View {
                         AlbumDetailHero(
                             album: album,
                             totalDuration: totalDuration,
+                            isCompact: proxy.size.width < 700,
                             availableWidth: proxy.size.width,
                             artworkVisible: artworkVisible,
                             playAction: playAlbum,
@@ -179,6 +180,7 @@ struct AlbumDetailView: View {
 private struct AlbumDetailHero: View {
     let album: AlbumGroup
     let totalDuration: TimeInterval
+    let isCompact: Bool
     let availableWidth: CGFloat
     let artworkVisible: Bool
     let playAction: () -> Void
@@ -186,44 +188,38 @@ private struct AlbumDetailHero: View {
 
     var body: some View {
         Group {
-            if availableWidth >= 900 {
-                wideHero
-            } else {
+            if isCompact {
                 compactHero
+            } else {
+                wideHero
             }
         }
-        .padding(.horizontal, horizontalPadding)
-        .padding(.top, availableWidth < 500 ? 12 : 22)
-        .padding(.bottom, availableWidth < 500 ? 22 : 28)
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+        .padding(.top, 22)
+        .padding(.bottom, 28)
     }
 
     private var artwork: some View {
         LazyAlbumArtwork(url: album.artworkURL)
             .aspectRatio(1, contentMode: .fit)
             .toyakoArtwork(cornerRadius: 18)
+            .clipped()
             .shadow(color: .black.opacity(0.30), radius: 28, y: 14)
             .scaleEffect(artworkVisible ? 1 : 0.96)
             .opacity(artworkVisible ? 1 : 0)
     }
 
     private var information: some View {
-        let compact = availableWidth < 900
-
-        return VStack(alignment: compact ? .center : .leading, spacing: 8) {
+        VStack(alignment: isCompact ? .center : .leading, spacing: 8) {
             Text(album.name)
-                .font(.system(size: compact ? (availableWidth < 500 ? 27 : 30) : 34, weight: .bold, design: .rounded))
-                .multilineTextAlignment(compact ? .center : .leading)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: compact ? max(0, availableWidth - 36) : 560)
+                .font(.system(size: isCompact ? 30 : 34, weight: .bold, design: .rounded))
+                .multilineTextAlignment(isCompact ? .center : .leading)
+                .lineLimit(3)
 
             Text(album.artist)
-                .font(.system(size: compact ? 18 : 19, weight: .medium, design: .rounded))
+                .font(.system(size: 19, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(compact ? .center : .leading)
                 .lineLimit(2)
-                .frame(maxWidth: compact ? max(0, availableWidth - 36) : 560)
 
             Text("\(album.tracks.count) \(album.tracks.count == 1 ? "Song" : "Tracks")  •  \(formatDuration(totalDuration))")
                 .font(ToyakoDesign.Typography.metadata)
@@ -232,36 +228,20 @@ private struct AlbumDetailHero: View {
     }
 
     private var actions: some View {
-        Group {
-            if availableWidth < 430 {
-                VStack(spacing: 10) {
-                    playButton
-                    shuffleButton
-                }
-            } else {
-                HStack(spacing: 12) {
-                    playButton
-                    shuffleButton
-                }
+        HStack(spacing: 12) {
+            Button(action: playAction) {
+                Label("Play", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
             }
-        }
-        .frame(maxWidth: availableWidth < 900 ? min(430, max(0, availableWidth - 36)) : 430)
-    }
+            .buttonStyle(ToyakoPrimaryButtonStyle())
 
-    private var playButton: some View {
-        Button(action: playAction) {
-            Label("Play", systemImage: "play.fill")
-                .frame(maxWidth: .infinity)
+            Button(action: shuffleAction) {
+                Label("Shuffle", systemImage: "shuffle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(ToyakoSecondaryButtonStyle())
         }
-        .buttonStyle(ToyakoPrimaryButtonStyle())
-    }
-
-    private var shuffleButton: some View {
-        Button(action: shuffleAction) {
-            Label("Shuffle", systemImage: "shuffle")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(ToyakoSecondaryButtonStyle())
+        .frame(maxWidth: 430)
     }
 
     private var wideHero: some View {
@@ -282,23 +262,20 @@ private struct AlbumDetailHero: View {
     }
 
     private var compactHero: some View {
-        VStack(spacing: availableWidth < 500 ? 14 : 20) {
+        let contentWidth = max(0, availableWidth - 36)
+        let artworkSize = min(340, contentWidth)
+
+        return VStack(spacing: 20) {
             artwork
-                .frame(
-                    width: min(availableWidth < 500 ? 280 : 320, max(0, availableWidth - 36)),
-                    height: min(availableWidth < 500 ? 280 : 320, max(0, availableWidth - 36))
-                )
+                .frame(width: artworkSize, height: artworkSize)
 
             information
-                .frame(maxWidth: max(0, availableWidth - 36))
+                .frame(maxWidth: min(520, contentWidth))
 
             actions
+                .frame(maxWidth: min(430, contentWidth))
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var horizontalPadding: CGFloat {
-        availableWidth < 500 ? 18 : ToyakoDesign.Metrics.screenHorizontal
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {

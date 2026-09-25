@@ -81,12 +81,6 @@ struct ArtistListView: View {
         .background(ToyakoDesign.Color.canvas)
     }
 
-    private func artistSidebarWidth(for totalWidth: CGFloat) -> CGFloat {
-        // Keep the library column proportional so Stage Manager / split-view
-        // resizing does not starve the detail pane.
-        min(max(totalWidth * 0.28, 240), 320)
-    }
-
     private var artistSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("\(artists.count) Artists")
@@ -337,8 +331,8 @@ private struct ArtistDetailView: View {
             .tint(ToyakoDesign.Color.accent)
             .background {
                 ZStack {
-                    // One continuous artwork canvas from the hero through the
-                    // scrolling content. There is no solid-color transition at the bottom.
+                    // One continuous canvas: the artwork is allowed to flow behind the
+                    // complete detail page instead of stopping at a hard horizontal band.
                     ToyakoDesign.Color.canvas
 
                     if let artwork {
@@ -347,21 +341,29 @@ private struct ArtistDetailView: View {
                             .scaledToFill()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .clipped()
-                            .blur(radius: 58)
-                            .scaleEffect(1.12)
-                            .opacity(0.20)
+                            .blur(radius: 56)
+                            .scaleEffect(1.10)
+                            .opacity(0.24)
                     }
 
-                    // A uniform readability veil prevents the artwork from competing
-                    // with text while keeping the same tone throughout the page.
-                    Color.black.opacity(0.46)
+                    // A single continuous tonal treatment keeps the artwork atmospheric
+                    // without introducing a second solid-colored panel behind the hero.
+                    LinearGradient(
+                        stops: [
+                            .init(color: ToyakoDesign.Color.canvas.opacity(0.18), location: 0),
+                            .init(color: ToyakoDesign.Color.canvas.opacity(0.38), location: 0.30),
+                            .init(color: ToyakoDesign.Color.canvas.opacity(0.82), location: 0.62),
+                            .init(color: ToyakoDesign.Color.canvas, location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
 
-                    // Edge-only vignette. It has no horizontal boundary.
-                    RadialGradient(
-                        colors: [.clear, .black.opacity(0.16)],
-                        center: .center,
-                        startRadius: 80,
-                        endRadius: 900
+                    // Subtle edge darkening for legibility, not a separate panel.
+                    LinearGradient(
+                        colors: [.black.opacity(0.08), .clear, .black.opacity(0.12)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
                 }
                 .ignoresSafeArea()
@@ -380,10 +382,10 @@ private struct ArtistDetailView: View {
     @ViewBuilder
     private func hero(availableWidth: CGFloat) -> some View {
         let wideHero = availableWidth >= 900
-        let artworkSize = wideHero ? 190.0 : min(180.0, max(150.0, availableWidth * 0.30))
+        let artworkSize = wideHero ? min(210.0, max(180.0, availableWidth * 0.20)) : min(180.0, max(150.0, availableWidth * 0.30))
 
         if wideHero {
-            HStack(alignment: .center, spacing: 26) {
+            HStack(alignment: .center, spacing: 36) {
                 artistArtwork(size: artworkSize)
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -473,7 +475,13 @@ private struct ArtistDetailView: View {
     }
 
     private func heroHorizontalPadding(for width: CGFloat) -> CGFloat {
-        width >= 900 ? 26 : 18
+        width >= 1100 ? 32 : (width >= 900 ? 26 : 18)
+    }
+
+    private func artistSidebarWidth(for width: CGFloat) -> CGFloat {
+        // Keep the sidebar fluid while preserving enough room for the detail view.
+        let proportional = width * 0.28
+        return min(max(proportional, 260), 460)
     }
 
     private var popularTracks: some View {
