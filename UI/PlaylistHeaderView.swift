@@ -16,15 +16,15 @@ struct PlaylistHeaderView: View {
             let narrow = proxy.size.width < 820
             let coverSize = narrow
                 ? min(112, max(82, (proxy.size.width - 54) / 3.05))
-                : 132
+                : 148
 
             VStack(alignment: .leading, spacing: 0) {
                 coverMarquee(
                     availableWidth: proxy.size.width,
                     coverSize: coverSize
                 )
-                .frame(height: coverSize)
-                .padding(.bottom, narrow ? 22 : 26)
+                .frame(height: coverSize * 1.28)
+                .padding(.bottom, narrow ? 16 : 18)
 
                 if narrow {
                     // Stage Manager / narrow windows:
@@ -58,9 +58,9 @@ struct PlaylistHeaderView: View {
             .padding(.top, narrow ? 6 : 8)
         }
         .frame(
-            minHeight: 260,
-            idealHeight: 285,
-            maxHeight: 320
+            minHeight: 285,
+            idealHeight: 310,
+            maxHeight: 340
         )
     }
 
@@ -121,8 +121,8 @@ struct PlaylistHeaderView: View {
             .offset(x: -distance)
             .frame(
                 width: availableWidth,
-                height: coverSize * 1.22,
-                alignment: .leading
+                height: coverSize * 1.28,
+                alignment: .center
             )
             .clipped()
             .coordinateSpace(name: "playlistMarquee")
@@ -166,8 +166,8 @@ struct PlaylistHeaderView: View {
                     // Covers stay at their normal size. Only the cover nearest
                     // the viewport center grows, with a soft falloff so there
                     // is no visible size "snap" as it passes through center.
-                    let centerBoost = pow(max(centerEmphasis, 0), 8)
-                    let scale = 1.0 + (centerBoost * 0.16)
+                    let centerBoost = pow(max(centerEmphasis, 0), 7)
+                    let scale = 1.0 + (centerBoost * 0.24)
 
                     // Avoid per-frame 3D rotation/vertical oscillation. Those
                     // transforms were producing the one-frame vibration seen
@@ -203,7 +203,7 @@ struct PlaylistHeaderView: View {
                         y: 4
                     )
                 }
-                .frame(width: size, height: size * 1.18)
+                .frame(width: size, height: size * 1.28)
             }
         }
     }
@@ -214,7 +214,7 @@ struct PlaylistHeaderView: View {
                 Label("Play", systemImage: "play.fill")
                     .font(.subheadline.bold())
                     .lineLimit(1)
-                    .frame(width: 112)
+                    .frame(width: 100)
             }
             .buttonStyle(ToyakoPrimaryButtonStyle())
 
@@ -222,7 +222,7 @@ struct PlaylistHeaderView: View {
                 Label("Shuffle", systemImage: "shuffle")
                     .font(.subheadline.bold())
                     .lineLimit(1)
-                    .frame(width: 132)
+                    .frame(width: 120)
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
 
@@ -230,7 +230,7 @@ struct PlaylistHeaderView: View {
                 Label("Add Songs", systemImage: "plus")
                     .font(.subheadline.bold())
                     .lineLimit(1)
-                    .frame(width: 142)
+                    .frame(width: 130)
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
         }
