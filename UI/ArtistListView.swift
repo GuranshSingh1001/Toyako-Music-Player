@@ -29,7 +29,7 @@ struct ArtistListView: View {
         GeometryReader { proxy in
             Group {
                 if proxy.size.width >= 700 {
-                    iPadArtistLayout
+                    iPadArtistLayout(availableWidth: proxy.size.width)
                 } else {
                     compactArtistLayout
                 }
@@ -55,10 +55,10 @@ struct ArtistListView: View {
 
     // MARK: - iPad
 
-    private var iPadArtistLayout: some View {
+    private func iPadArtistLayout(availableWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             artistSidebar
-                .frame(minWidth: 300, idealWidth: 340, maxWidth: 380)
+                .frame(width: artistSidebarWidth(for: availableWidth))
 
             Divider()
 
@@ -79,6 +79,12 @@ struct ArtistListView: View {
             }
         }
         .background(ToyakoDesign.Color.canvas)
+    }
+
+    private func artistSidebarWidth(for totalWidth: CGFloat) -> CGFloat {
+        // Keep the library column proportional so Stage Manager / split-view
+        // resizing does not starve the detail pane.
+        min(max(totalWidth * 0.28, 240), 320)
     }
 
     private var artistSidebar: some View {
