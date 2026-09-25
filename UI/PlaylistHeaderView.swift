@@ -9,21 +9,21 @@ struct PlaylistHeaderView: View {
     @EnvironmentObject private var audioManager: AudioEngineManager
 
     private let coverSpacing: CGFloat = 12
-    private let marqueeSpeed: CGFloat = 26
+    private let marqueeSpeed: CGFloat = 18
 
     var body: some View {
         GeometryReader { proxy in
             let narrow = proxy.size.width < 820
             let coverSize = narrow
                 ? min(112, max(82, (proxy.size.width - 54) / 3.05))
-                : 148
+                : 156
 
             VStack(alignment: .leading, spacing: 0) {
                 coverMarquee(
                     availableWidth: proxy.size.width,
                     coverSize: coverSize
                 )
-                .frame(height: coverSize * 1.48)
+                .frame(height: coverSize * 1.22)
                 .padding(.bottom, narrow ? 16 : 18)
 
                 if narrow {
@@ -52,9 +52,9 @@ struct PlaylistHeaderView: View {
             .padding(.top, narrow ? 6 : 8)
         }
         .frame(
-            minHeight: 285,
-            idealHeight: 310,
-            maxHeight: 340
+            minHeight: 265,
+            idealHeight: 292,
+            maxHeight: 320
         )
     }
 
@@ -87,90 +87,87 @@ struct PlaylistHeaderView: View {
         coverSize: CGFloat
     ) -> some View {
         let count = tracks.count
-        let stride = coverSize + coverSpacing
-        let sequenceWidth = max(stride * CGFloat(max(count, 1)), stride)
-        let viewportHeight = coverSize * 1.48
+        let spacing = max(18, coverSize * 0.16)
+        let stride = coverSize + spacing
+        let visibleRadius = 5
 
         return TimelineView(.animation) { context in
             let time = context.date.timeIntervalSinceReferenceDate
-            let cycleDuration = max(sequenceWidth / marqueeSpeed, 0.001)
-            let phase = CGFloat(
-                time.truncatingRemainder(dividingBy: TimeInterval(cycleDuration))
-            )
 
-            // Repeat on the exact distance of one artwork sequence. Because the
-            // phase and the visual seam share the same period, the loop never
-            // jumps when the TimelineView clock wraps around.
-            let travel = phase * marqueeSpeed
+            // The phase is measured in artwork widths, so one complete cycle
+            // is exactly one playlist length. The item that is at phase N is
+            // always centered; there is no independent "focus frame" that can
+            // drift away from the artwork.
+            let phase = count > 0
+                ? (time * marqueeSpeed / stride)
+                    .truncatingRemainder(dividingBy: Double(count))
+                : 0
+
+            let centerIndex = Int(floor(phase))
+            let localPhase = phase - Double(centerIndex)
 
             ZStack {
-                // Soft atmospheric glow behind the center artwork.
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                .white.opacity(0.16),
-                                .clear
-                            ],
-                            center: .center,
-                            startRadius: 4,
-                            endRadius: coverSize * 1.35
-                        )
-                    )
-                    .frame(
-                        width: coverSize * 2.7,
-                        height: coverSize * 1.35
-                    )
-                    .blur(radius: 16)
-                    .opacity(count == 0 ? 0 : 1)
-
+                // A restrained glow makes the center artwork feel like the
+                // "hero" without washing the other covers out.
                 if count > 0 {
-                    // Three copies give the ribbon enough runway on both sides
-                    // of the viewport. The exact same phase drives every copy,
-                    // making the loop visually seamless.
-                    ForEach(0..<(count * 3), id: \.self) { itemIndex in
-                        let trackIndex = itemIndex % count
-                        let copyIndex = itemIndex / count
-                        let baseX =
-                            CGFloat(trackIndex) * stride +
-                            CGFloat(copyIndex - 1) * sequenceWidth
+                    Ellipse()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    .white.opacity(0.11),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: 8,
+                                endRadius: coverSize * 1.65
+                            )
+                        )
+                        .frame(
+                            width: coverSize * 3.0,
+                            height: coverSize * 1.2
+                        )
+                        .blur(radius: 18)
+                        .allowsHitTesting(false)
 
-                        let rawX =
-                            baseX -
-                            travel +
-                            availableWidth / 2 -
-                            sequenceWidth / 2
-
-                        let x = wrappedCenterX(
-                            rawX,
-                            sequenceWidth: sequenceWidth,
-                            viewportWidth: availableWidth
+                    ForEach(
+                        (centerIndex - visibleRadius)...(centerIndex + visibleRadius),
+                        id: \.self
+                    ) { sequenceIndex in
+                        let distance = CGFloat(sequenceIndex - centerIndex) - CGFloat(localPhase)
+                        let x = distance * stride
+                        let normalizedDistance = min(
+                            abs(distance) / CGFloat(visibleRadius + 0.25),
+                            1
                         )
 
-                        let normalized =
+                        // Smooth "cover-flow" focus curve.
+                        let focus = pow(1 - normalizedDistance, 2.0)
+                        let scale = 0.78 + focus * 0.25
+                        let opacity = 0.48 + focus * 0.52
+                        let blur = (1 - focus) * 1.1
+                        let rotation = max(
+                            -14,
                             min(
-                                abs(x - availableWidth / 2) / max(availableWidth / 2, 1),
-                                1
+                                14,
+                                -distance * 7.5
                             )
+                        )
+                        let y = -focus * coverSize * 0.08
 
-                        let focus = pow(1 - normalized, 2.2)
-
-                        // Center cover = larger, sharper and slightly lifted.
-                        // Edge covers = smaller, tilted and more transparent.
-                        let scale = 0.78 + (focus * 0.28)
-                        let rotation = (x - availableWidth / 2)
-                            / max(availableWidth / 2, 1)
-                            * -13
-                        let lift = -focus * coverSize * 0.12
-                        let opacity = 0.55 + (focus * 0.45)
-                        let blur = (1 - focus) * 1.5
+                        let trackIndex = positiveModulo(
+                            sequenceIndex,
+                            count
+                        )
 
                         LazyArtwork(
                             url: library.artworkURL(for: tracks[trackIndex]),
                             size: coverSize,
                             cornerRadius: min(18, coverSize * 0.13)
                         )
-                        .frame(width: coverSize, height: coverSize)
+                        .frame(
+                            width: coverSize,
+                            height: coverSize
+                        )
                         .clipShape(
                             RoundedRectangle(
                                 cornerRadius: min(18, coverSize * 0.13),
@@ -181,17 +178,29 @@ struct PlaylistHeaderView: View {
                         .rotation3DEffect(
                             .degrees(rotation),
                             axis: (x: 0, y: 1, z: 0),
-                            perspective: 0.72
+                            perspective: 0.55
                         )
-                        .offset(x: x, y: lift)
+                        .offset(x: x, y: y)
                         .opacity(opacity)
                         .blur(radius: blur)
                         .shadow(
-                            color: .black.opacity(0.16 + focus * 0.16),
-                            radius: 8 + focus * 10,
-                            y: 5 + focus * 4
+                            color: .black.opacity(0.18 + focus * 0.12),
+                            radius: 7 + focus * 8,
+                            y: 4 + focus * 4
                         )
-                        .zIndex(Double(focus))
+                        .overlay {
+                            if abs(distance) < 0.5 {
+                                RoundedRectangle(
+                                    cornerRadius: min(18, coverSize * 0.13),
+                                    style: .continuous
+                                )
+                                .stroke(
+                                    .white.opacity(0.18 + focus * 0.12),
+                                    lineWidth: 1
+                                )
+                            }
+                        }
+                        .zIndex(Double(100 - abs(distance)))
                         .accessibilityHidden(true)
                     }
                 } else {
@@ -203,63 +212,42 @@ struct PlaylistHeaderView: View {
                     .frame(width: coverSize, height: coverSize)
                     .overlay {
                         Image(systemName: "music.note.list")
-                            .font(.system(size: coverSize * 0.24, weight: .semibold))
+                            .font(
+                                .system(
+                                    size: coverSize * 0.24,
+                                    weight: .semibold
+                                )
+                            )
                             .foregroundStyle(.secondary)
                     }
                 }
             }
             .frame(
                 width: availableWidth,
-                height: viewportHeight
+                height: coverSize * 1.22
             )
             .clipped()
             .mask {
                 LinearGradient(
                     stops: [
                         .init(color: .clear, location: 0),
-                        .init(color: .black, location: 0.055),
-                        .init(color: .black, location: 0.945),
+                        .init(color: .black, location: 0.07),
+                        .init(color: .black, location: 0.93),
                         .init(color: .clear, location: 1)
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
             }
-            .overlay(alignment: .center) {
-                // A tiny focus highlight makes the center position feel intentional
-                // without adding another moving element.
-                RoundedRectangle(
-                    cornerRadius: min(20, coverSize * 0.14),
-                    style: .continuous
-                )
-                .stroke(.white.opacity(0.10), lineWidth: 1)
-                .frame(
-                    width: coverSize * 1.06,
-                    height: coverSize * 1.06
-                )
-                .allowsHitTesting(false)
-            }
         }
     }
 
-    private func wrappedCenterX(
-        _ x: CGFloat,
-        sequenceWidth: CGFloat,
-        viewportWidth: CGFloat
-    ) -> CGFloat {
-        let halfViewport = viewportWidth / 2
-        let minX = -halfViewport - sequenceWidth
-        let maxX = halfViewport + sequenceWidth
-
-        if x < minX {
-            return x + sequenceWidth
-        }
-
-        if x > maxX {
-            return x - sequenceWidth
-        }
-
-        return x
+    private func positiveModulo(
+        _ value: Int,
+        _ modulus: Int
+    ) -> Int {
+        let remainder = value % modulus
+        return remainder >= 0 ? remainder : remainder + modulus
     }
 
     private var actionBar: some View {
