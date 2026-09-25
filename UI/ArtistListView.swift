@@ -89,7 +89,7 @@ struct ArtistListView: View {
                 }
             }
         }
-        .background(ToyakoDesign.Color.canvas)
+        .background(Color.clear)
         .task(id: selectedArtist?.id) {
             guard let artist = selectedArtist else {
                 selectedArtistArtwork = nil
@@ -159,9 +159,13 @@ struct ArtistListView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .background(.thinMaterial)
+        // Keep the sidebar on the same reflected/material layer as the detail
+        // pane. A second opaque/tonal surface here creates the horizontal seam
+        // visible directly beneath the Artists header.
+        .background(.ultraThinMaterial)
         .overlay {
-            Color.black.opacity(0.06)
+            Rectangle()
+                .fill(Color.clear)
                 .allowsHitTesting(false)
         }
     }

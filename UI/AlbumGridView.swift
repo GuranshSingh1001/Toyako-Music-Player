@@ -103,7 +103,7 @@ struct AlbumDetailView: View {
             ZStack {
                 albumBackground
 
-                ScrollView {
+                ScrollView(.vertical) {
                     VStack(spacing: 0) {
                         AlbumDetailHero(
                             album: album,
@@ -120,12 +120,16 @@ struct AlbumDetailView: View {
                             audioManager: audioManager
                         )
                     }
-                    // A vertical ScrollView may give its content only an intrinsic
-                    // width. Pin the content to the viewport so the compact hero is
-                    // genuinely centered inside narrow Stage Manager windows.
-                    .frame(width: proxy.size.width, alignment: .center)
+                    // Never impose a fixed content width on a NavigationStack
+                    // destination. On narrow iPad/Stage Manager widths SwiftUI can
+                    // give the scroll view a different proposed width than its outer
+                    // GeometryReader. A fixed frame then shifts the whole hero to the
+                    // right and clips the title/actions. Let the scroll view's viewport
+                    // determine the content width instead.
+                    .frame(maxWidth: .infinity)
                     .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .scrollIndicators(.hidden)
             }
         }
@@ -139,25 +143,34 @@ struct AlbumDetailView: View {
     }
 
     private var albumBackground: some View {
-        ZStack {
-            Color(uiColor: .systemBackground)
+        GeometryReader { proxy in
+            ZStack {
+                Color(uiColor: .systemBackground)
 
-            LazyAlbumArtwork(url: album.artworkURL)
-                .frame(width: 620, height: 620)
-                .scaleEffect(1.25)
-                .blur(radius: 70)
-                .opacity(0.20)
-                .offset(y: -150)
+                // Keep the artwork bleed attached to the actual destination
+                // viewport. This avoids the artwork/background becoming an
+                // independently-sized layer when the window is resized.
+                LazyAlbumArtwork(url: album.artworkURL)
+                    .frame(
+                        width: max(proxy.size.width * 1.45, 560),
+                        height: max(proxy.size.height * 0.72, 560)
+                    )
+                    .scaleEffect(1.18)
+                    .blur(radius: 72)
+                    .saturation(1.05)
+                    .brightness(-0.18)
+                    .opacity(0.18)
+                    .position(
+                        x: proxy.size.width * 0.5,
+                        y: min(proxy.size.height * 0.32, 360)
+                    )
 
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.18),
-                    Color(uiColor: .systemBackground).opacity(0.76),
-                    Color(uiColor: .systemBackground)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+                // A single uniform veil. Do not use a vertical gradient here:
+                // that was the source of the visible top/bottom dual-tone.
+                Color.black.opacity(0.24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .ignoresSafeArea()
     }
@@ -269,17 +282,22 @@ private struct AlbumDetailHero: View {
         let contentWidth = max(0, availableWidth - (ToyakoDesign.Metrics.screenHorizontal * 2))
         let artworkSize = min(320, contentWidth)
 
+        let heroWidth = min(520, contentWidth)
+        let buttonWidth = min(430, contentWidth)
+
         return VStack(spacing: 20) {
             artwork
                 .frame(width: artworkSize, height: artworkSize)
 
+            // Use a real width constraint rather than only maxWidth. Text otherwise
+            // keeps its intrinsic one-line width and gets clipped on narrow windows.
             information
-                .frame(maxWidth: min(520, contentWidth))
+                .frame(width: heroWidth)
 
             actions
-                .frame(maxWidth: min(430, contentWidth))
+                .frame(width: buttonWidth)
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(width: contentWidth, alignment: .center)
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
