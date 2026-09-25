@@ -5,14 +5,10 @@ struct ArtistListView: View {
     let artists: [ArtistGroup]
     let library: LocalLibrary
     @EnvironmentObject var audioManager: AudioEngineManager
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var selectedArtistID: String?
     @State private var artistSearch = ""
 
-    private var isRegular: Bool {
-        horizontalSizeClass == .regular
-    }
 
     private var visibleArtists: [ArtistGroup] {
         guard !artistSearch.isEmpty else { return artists }
@@ -30,11 +26,13 @@ struct ArtistListView: View {
     }
 
     var body: some View {
-        Group {
-            if isRegular {
-                iPadArtistLayout
-            } else {
-                compactArtistLayout
+        GeometryReader { proxy in
+            Group {
+                if proxy.size.width >= 700 {
+                    iPadArtistLayout
+                } else {
+                    compactArtistLayout
+                }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -308,65 +306,72 @@ private struct ArtistDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 28) {
-                hero
-                popularTracks
-                albumSection
-            }
-            .toyakoScreenPadding()
-        }
-        .scrollIndicators(.hidden)
-        .tint(ToyakoDesign.Color.accent)
-        .background {
-            ZStack {
-                ToyakoDesign.Color.canvas
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                hero(availableWidth: proxy.size.width)
+                    .padding(.horizontal, heroHorizontalPadding(for: proxy.size.width))
+                    .padding(.top, 10)
+                    .padding(.bottom, 18)
 
-                // The hero background is derived from the real artist photo:
-                // enlarged, heavily blurred, darkened and faded into the page.
-                // It gives the detail page atmosphere without competing with
-                // the content or looking like a separate full-screen poster.
-                if let artwork {
-                    Image(uiImage: artwork)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(height: 500)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                        .blur(radius: 55)
-                        .scaleEffect(1.08)
-                        .opacity(0.26)
-                        .overlay {
-                            LinearGradient(
-                                colors: [
-                                    ToyakoDesign.Color.canvas.opacity(0.05),
-                                    ToyakoDesign.Color.canvas.opacity(0.52),
-                                    ToyakoDesign.Color.canvas
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
-                        .mask {
-                            LinearGradient(
-                                colors: [.black, .black.opacity(0.8), .black.opacity(0.25), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
+                Divider()
+                    .opacity(0.45)
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: ToyakoDesign.Metrics.sectionSpacing) {
+                        popularTracks
+                        albumSection
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, heroHorizontalPadding(for: proxy.size.width))
+                    .padding(.top, 20)
+                    .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
                 }
-
-                LinearGradient(
-                    colors: [ToyakoDesign.Color.accent.opacity(0.08), .clear, ToyakoDesign.Color.canvas],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                .scrollIndicators(.hidden)
             }
-            .ignoresSafeArea()
+            .tint(ToyakoDesign.Color.accent)
+            .background {
+                ZStack {
+                    ToyakoDesign.Color.canvas
+
+                    if let artwork {
+                        Image(uiImage: artwork)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(height: min(430, max(320, proxy.size.height * 0.55)))
+                            .frame(maxWidth: .infinity, alignment: .top)
+                            .blur(radius: 52)
+                            .scaleEffect(1.08)
+                            .opacity(0.20)
+                            .overlay {
+                                LinearGradient(
+                                    colors: [
+                                        ToyakoDesign.Color.canvas.opacity(0.02),
+                                        ToyakoDesign.Color.canvas.opacity(0.52),
+                                        ToyakoDesign.Color.canvas
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            }
+                            .mask {
+                                LinearGradient(
+                                    colors: [.black, .black.opacity(0.82), .black.opacity(0.20), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            }
+                    }
+
+                    LinearGradient(
+                        colors: [ToyakoDesign.Color.accent.opacity(0.06), .clear, ToyakoDesign.Color.canvas],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+                .ignoresSafeArea()
+            }
         }
         .task(id: "\(artist.name)|\(automaticArtistArtwork)") {
-            // Reuse Toyako's existing artwork provider instead of the MusicKit
-            // provider. This is the same source used by the artist list, so
-            // the detail page and sidebar stay consistent.
             let data = await ArtistArtworkService.shared.imageData(
                 for: artist.name,
                 allowNetwork: true
@@ -376,69 +381,103 @@ private struct ArtistDetailView: View {
         }
     }
 
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .center, spacing: 28) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.07))
+    @ViewBuilder
+    private func hero(availableWidth: CGFloat) -> some View {
+        let wideHero = availableWidth >= 900
+        let artworkSize = wideHero ? 190.0 : min(180.0, max(150.0, availableWidth * 0.30))
 
-                    if let artwork {
-                        Image(uiImage: artwork)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 56, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
+        if wideHero {
+            HStack(alignment: .center, spacing: 26) {
+                artistArtwork(size: artworkSize)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    artistTitleBlock
+                    heroActions(compact: false)
                 }
-                .frame(width: 210, height: 210)
-                .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .stroke(ToyakoDesign.Color.accent.opacity(0.75), lineWidth: 3)
-                }
-                .shadow(color: ToyakoDesign.Color.accent.opacity(0.25), radius: 28, y: 12)
-
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(artist.name)
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .lineLimit(2)
-
-                    Text(artistMeta)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 12) {
-                        Button(action: playArtist) {
-                            Label("Play", systemImage: "play.fill")
-                                .frame(minWidth: 142)
-                        }
-                        .buttonStyle(ToyakoPrimaryButtonStyle())
-
-                        Button(action: shuffleArtist) {
-                            Label("Shuffle", systemImage: "shuffle")
-                                .frame(minWidth: 142)
-                        }
-                        .buttonStyle(ToyakoSecondaryButtonStyle())
-
-                        Menu {
-                            Button {
-                                audioManager.enqueue(artist.tracks)
-                            } label: {
-                                Label("Add to Queue", systemImage: "text.badge.plus")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                        }
-                        .buttonStyle(ToyakoIconButtonStyle(size: ToyakoDesign.Metrics.largeControlHeight))
-                    }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .center, spacing: 18) {
+                    artistArtwork(size: artworkSize)
+                    artistTitleBlock
                 }
 
-                Spacer(minLength: 0)
+                heroActions(compact: true)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var artistTitleBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(artist.name)
+                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+
+            Text(artistMeta)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func heroActions(compact: Bool) -> some View {
+        HStack(spacing: 10) {
+            Button(action: playArtist) {
+                Label("Play", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(ToyakoPrimaryButtonStyle())
+
+            Button(action: shuffleArtist) {
+                Label("Shuffle", systemImage: "shuffle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(ToyakoSecondaryButtonStyle())
+
+            Menu {
+                Button {
+                    audioManager.enqueue(artist.tracks)
+                } label: {
+                    Label("Add to Queue", systemImage: "text.badge.plus")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .buttonStyle(ToyakoIconButtonStyle(size: ToyakoDesign.Metrics.largeControlHeight))
+            .accessibilityLabel("More artist actions")
+        }
+        .frame(maxWidth: compact ? .infinity : 600)
+    }
+
+    private func artistArtwork(size: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.06))
+
+            if let artwork {
+                Image(uiImage: artwork)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: size * 0.27, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
         }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay {
+            Circle()
+                .stroke(ToyakoDesign.Color.accent.opacity(0.78), lineWidth: 3)
+        }
+        .shadow(color: ToyakoDesign.Color.accent.opacity(0.22), radius: 22, y: 8)
+    }
+
+    private func heroHorizontalPadding(for width: CGFloat) -> CGFloat {
+        width >= 900 ? 26 : 18
     }
 
     private var popularTracks: some View {
