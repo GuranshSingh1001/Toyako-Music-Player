@@ -9,61 +9,88 @@ struct PlaylistHeaderView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let compact = proxy.size.width < 720
-            let artworkSize = min(
-                compact ? 190 : 240,
-                max(150, proxy.size.width * (compact ? 0.52 : 0.26))
-            )
+            let compact = proxy.size.width < 700
+            let artworkSize = compact ? 170.0 : min(250.0, proxy.size.height * 0.62)
 
-            VStack(spacing: compact ? 16 : 20) {
-                PlaylistArtwork(
-                    tracks: tracks,
-                    playlistName: playlist.name
-                )
+            Group {
+                if compact {
+                    compactHero(artworkSize: artworkSize)
+                } else {
+                    wideHero(artworkSize: artworkSize)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, compact ? 22 : 34)
+            .padding(.top, compact ? 12 : 20)
+            .padding(.bottom, 16)
+        }
+        .frame(minHeight: 300, idealHeight: 335, maxHeight: 370)
+    }
+
+    @ViewBuilder
+    private func wideHero(artworkSize: CGFloat) -> some View {
+        HStack(spacing: 28) {
+            PlaylistArtwork(tracks: tracks, playlistName: playlist.name)
                 .frame(width: artworkSize, height: artworkSize)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: ToyakoDesign.Metrics.artworkRadius,
-                        style: .continuous
-                    )
-                )
-                .shadow(color: .black.opacity(0.30), radius: 22, y: 12)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.34), radius: 24, y: 12)
 
-                VStack(spacing: 7) {
-                    Text("PLAYLIST")
-                        .font(.caption.weight(.semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("PLAYLIST")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
 
-                    Text(playlist.name)
-                        .font(
-                            compact
-                                ? .system(size: 30, weight: .bold)
-                                : ToyakoDesign.Typography.screenTitle
-                        )
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.78)
+                Text(playlist.name)
+                    .font(.system(size: 42, weight: .bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.72)
 
-                    Text(
-                        "\(tracks.count) \(tracks.count == 1 ? "Song" : "Tracks") • \(totalDurationString)"
-                    )
+                Text("\(tracks.count) \(tracks.count == 1 ? "Song" : "Tracks") • \(totalDurationString)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: 620)
+
+                Spacer(minLength: 4)
+
+                actionBar
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, compact ? 20 : ToyakoDesign.Metrics.screenHorizontal)
-            .padding(.top, compact ? 16 : 22)
-            .padding(.bottom, 78)
+            .frame(maxWidth: 650, alignment: .leading)
+
+            Spacer(minLength: 0)
         }
-        .frame(minHeight: 360, idealHeight: 410, maxHeight: 450)
-        .overlay(alignment: .bottom) {
-            actionBar
-                .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
-                .padding(.bottom, 14)
+        .frame(maxWidth: 1120)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    @ViewBuilder
+    private func compactHero(artworkSize: CGFloat) -> some View {
+        HStack(spacing: 18) {
+            PlaylistArtwork(tracks: tracks, playlistName: playlist.name)
+                .frame(width: artworkSize, height: artworkSize)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: .black.opacity(0.32), radius: 18, y: 9)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("PLAYLIST")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+
+                Text(playlist.name)
+                    .font(.system(size: 28, weight: .bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+
+                Text("\(tracks.count) \(tracks.count == 1 ? "Song" : "Tracks") • \(totalDurationString)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 3)
+
+                actionBar
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var actionBar: some View {
@@ -96,19 +123,13 @@ struct PlaylistHeaderView: View {
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
         }
-        .frame(maxWidth: 760)
-        .frame(maxWidth: .infinity)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var totalDurationString: String {
         let seconds = max(0, Int(tracks.reduce(0) { $0 + $1.duration }))
         let hours = seconds / 3600
         let minutes = (seconds % 3600) / 60
-
-        if hours > 0 {
-            return "\(hours) hr \(minutes) min"
-        }
-
-        return "\(minutes) min"
+        return hours > 0 ? "\(hours) hr \(minutes) min" : "\(minutes) min"
     }
 }
