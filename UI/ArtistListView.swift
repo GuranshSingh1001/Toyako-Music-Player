@@ -59,8 +59,10 @@ struct ArtistListView: View {
         HStack(spacing: 0) {
             artistSidebar
                 .frame(width: artistSidebarWidth(for: availableWidth))
+                .zIndex(2)
 
             Divider()
+                .zIndex(3)
 
             if let artist = selectedArtist {
                 ArtistDetailView(
@@ -69,6 +71,7 @@ struct ArtistListView: View {
                 )
                 .id(artist.id)
                 .transition(.opacity)
+                .zIndex(1)
             } else {
                 ContentUnavailableView(
                     "No Artists",
@@ -76,6 +79,7 @@ struct ArtistListView: View {
                     description: Text("Import music to start building your artist library.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .zIndex(1)
             }
         }
         .background(ToyakoDesign.Color.canvas)
@@ -376,7 +380,6 @@ private struct ArtistDetailView: View {
                         endPoint: .bottomTrailing
                     )
                 }
-                .ignoresSafeArea()
             }
         }
         .task(id: "\(artist.name)|\(automaticArtistArtwork)") {
