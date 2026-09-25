@@ -1,10 +1,6 @@
 import SwiftUI
 
 struct HomeView: View {
-    @Namespace private var homeAlbumTransitionNamespace
-    @Namespace private var homeArtistTransitionNamespace
-    @Namespace private var homePlaylistTransitionNamespace
-
     let tracks: [LocalTrack]
     let albums: [AlbumGroup]
     let artists: [ArtistGroup]
@@ -13,8 +9,6 @@ struct HomeView: View {
     let library: LocalLibrary
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
-    let onAddSongsToPlaylist: (Playlist) -> Void
-    let onDeletePlaylist: (Playlist) -> Void
     let currentTrack: LocalTrack?
     let isPlaying: Bool
     let onPlayTrack: (Int) -> Void
@@ -220,19 +214,14 @@ struct HomeView: View {
             HStack(spacing: 14) {
                 ForEach(items) { album in
                     NavigationLink {
-                        AlbumDetailView(album: album, library: library, transitionNamespace: homeAlbumTransitionNamespace)
-                            .navigationTitle("")
+                        AlbumDetailView(album: album, library: library)
+                            .navigationTitle(album.name)
                             .navigationBarTitleDisplayMode(.inline)
-                            .navigationTransition(.zoom(sourceID: album.id, in: homeAlbumTransitionNamespace))
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyAlbumArtwork(url: album.artworkURL)
                                 .frame(width: 145, height: 145)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .matchedTransitionSource(id: album.id, in: homeAlbumTransitionNamespace) { source in
-                                    source
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
                             Text(album.name)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
@@ -255,12 +244,15 @@ struct HomeView: View {
             HStack(spacing: 16) {
                 ForEach(items) { artist in
                     NavigationLink {
-                        ArtistDetailView(artist: artist, library: library, transitionNamespace: homeArtistTransitionNamespace)
-                            .navigationTransition(.zoom(sourceID: artist.id, in: homeArtistTransitionNamespace))
+                        SongListView(
+                            tracks: artist.tracks,
+                            allTracks: artist.tracks,
+                            library: library
+                        )
+                        .navigationTitle(artist.name)
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
-                                .matchedTransitionSource(id: artist.id, in: homeArtistTransitionNamespace)
 
                             Text(artist.name)
                                 .font(.subheadline.weight(.semibold))
@@ -299,33 +291,17 @@ struct HomeView: View {
                             tracks: playlistTracks,
                             allTracks: playlistTracks,
                             library: library,
-                            playlistID: playlist.id,
-                            headerView: AnyView(
-                                PlaylistHeaderView(
-                                    playlist: playlist,
-                                    tracks: playlistTracks,
-                                    onAddSongs: {
-                                        onAddSongsToPlaylist(playlist)
-                                    }
-                                )
-                            )
+                            playlistID: playlist.id
                         )
-                        .navigationTitle("")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .navigationTransition(.zoom(sourceID: playlist.id, in: homePlaylistTransitionNamespace))
+                        .navigationTitle(playlist.name)
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             PlaylistArtwork(
                                 tracks: playlistTracks,
-                                playlistName: playlist.name,
-                                playlistID: playlist.id
+                                playlistName: playlist.name
                             )
                             .frame(width: 145, height: 145)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .matchedTransitionSource(id: playlist.id, in: homePlaylistTransitionNamespace) { source in
-                                    source
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
 
                             Text(playlist.name)
                                 .font(.subheadline.weight(.semibold))
@@ -338,19 +314,6 @@ struct HomeView: View {
                         .frame(width: 145, alignment: .leading)
                     }
                     .buttonStyle(.plain)
-                    .contextMenu {
-                        Button {
-                            onAddSongsToPlaylist(playlist)
-                        } label: {
-                            Label("Add Songs", systemImage: "plus")
-                        }
-
-                        Button(role: .destructive) {
-                            onDeletePlaylist(playlist)
-                        } label: {
-                            Label("Delete Playlist", systemImage: "trash")
-                        }
-                    }
                 }
             }
         }

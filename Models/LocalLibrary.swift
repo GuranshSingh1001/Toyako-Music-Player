@@ -1154,22 +1154,6 @@ class LocalLibrary:
         savePlaylists()
     }
 
-    func deletePlaylist(
-        id:
-            UUID
-    ) {
-
-        guard playlists.contains(where: { $0.id == id }) else {
-            return
-        }
-
-        playlists.removeAll {
-            $0.id == id
-        }
-
-        savePlaylists()
-    }
-
     func renamePlaylist(
         id:
             UUID,

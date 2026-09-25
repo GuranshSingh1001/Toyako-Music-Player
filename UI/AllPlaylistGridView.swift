@@ -1,267 +1,233 @@
 import SwiftUI
 
 struct AllPlaylistsGridView: View {
-    @Namespace private var playlistTransitionNamespace
-
     let playlists: [Playlist]
     let library: LocalLibrary
 
-    var onAddSongs: (Playlist) -> Void
-    var onRename: (Playlist) -> Void
-    var onDelete: (Playlist) -> Void
+    var onAddSongs:
+        (Playlist) -> Void
+
+    var onRename:
+        (Playlist) -> Void
 
     private let columns = [
-        GridItem(.adaptive(minimum: 170), spacing: 22)
+        GridItem(
+            .adaptive(
+                minimum: 160
+            ),
+            spacing: 20
+        )
     ]
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 28) {
-                ForEach(playlists) { playlist in
-                    let playlistTracks = library.tracks.filter { playlist.trackURLs.contains($0.url) }
+            LazyVGrid(
+                columns:
+                    columns,
+                spacing:
+                    24
+            ) {
+
+                ForEach(
+                    playlists
+                ) { playlist in
+
+                    let playlistTracks =
+                        library.tracks.filter {
+                            playlist.trackURLs
+                                .contains(
+                                    $0.url
+                                )
+                        }
 
                     NavigationLink {
                         SongListView(
-                            tracks: playlistTracks,
-                            allTracks: playlistTracks,
-                            library: library,
-                            playlistID: playlist.id,
-                            headerView: AnyView(
-                                PlaylistHeaderView(
-                                    playlist: playlist,
-                                    tracks: playlistTracks,
-                                    onAddSongs: { onAddSongs(playlist) }
+                            tracks:
+                                playlistTracks,
+                            allTracks:
+                                playlistTracks,
+                            library:
+                                library,
+                            playlistID:
+                                playlist.id,
+                            headerView:
+                                AnyView(
+                                    PlaylistHeaderView(
+                                        playlist:
+                                            playlist,
+                                        tracks:
+                                            playlistTracks,
+                                        onAddSongs:
+                                            {
+                                                onAddSongs(
+                                                    playlist
+                                                )
+                                            }
+                                    )
+                                )
+                        )
+                        .navigationTitle(
+                            playlist.name
+                        )
+                        .navigationBarTitleDisplayMode(
+                            .inline
+                        )
+
+                    } label: {
+
+                        VStack(
+                            alignment:
+                                .leading,
+                            spacing:
+                                8
+                        ) {
+
+                            PlaylistArtwork(
+                                tracks:
+                                    playlistTracks,
+                                playlistName:
+                                    playlist.name
+                            )
+                            .frame(
+                                width:
+                                    160,
+                                height:
+                                    160
+                            )
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius:
+                                        12,
+                                    style:
+                                        .continuous
                                 )
                             )
-                        )
-                        .navigationTitle("")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .navigationTransition(.zoom(sourceID: playlist.id, in: playlistTransitionNamespace))
-                    } label: {
-                        VStack(alignment: .leading, spacing: 9) {
-                            PlaylistArtwork(
-                                tracks: playlistTracks,
-                                playlistName: playlist.name,
-                                playlistID: playlist.id
+                            .shadow(
+                                color:
+                                    .black.opacity(
+                                        0.16
+                                    ),
+                                radius:
+                                    9,
+                                y:
+                                    4
                             )
-                            .aspectRatio(1, contentMode: .fit)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .matchedTransitionSource(id: playlist.id, in: playlistTransitionNamespace) { source in
-                                source
-                                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                    .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
-                            }
 
-                            Text(playlist.name)
-                                .font(.headline)
-                                .lineLimit(1)
-
-                            Text("\(playlistTracks.count) \(playlistTracks.count == 1 ? "track" : "tracks")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                playlist.name
+                            )
+                            .font(
+                                .headline
+                            )
+                            .foregroundColor(
+                                .primary
+                            )
+                            .lineLimit(
+                                1
+                            )
                         }
+                        .frame(
+                            width:
+                                160,
+                            alignment:
+                                .leading
+                        )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(
+                        .plain
+                    )
                     .contextMenu {
+
                         Button {
-                            onAddSongs(playlist)
+                            onAddSongs(
+                                playlist
+                            )
                         } label: {
-                            Label("Add Songs", systemImage: "plus")
+                            Label(
+                                "Add Songs",
+                                systemImage:
+                                    "plus"
+                            )
                         }
 
                         Button {
-                            onRename(playlist)
+                            onRename(
+                                playlist
+                            )
                         } label: {
-                            Label("Edit Name", systemImage: "pencil")
-                        }
-
-                        Button(role: .destructive) {
-                            onDelete(playlist)
-                        } label: {
-                            Label("Delete Playlist", systemImage: "trash")
+                            Label(
+                                "Edit Name",
+                                systemImage:
+                                    "pencil"
+                            )
                         }
                     }
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 12)
-            .padding(.bottom, 100)
+            .padding()
+            .padding(
+                .bottom,
+                80
+            )
         }
-        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-            .scrollDisabled(false)
     }
 }
 
-// MARK: - Animated Playlist Artwork
+// MARK: - Playlist Artwork
 
 struct PlaylistArtwork: View {
     let tracks: [LocalTrack]
     let playlistName: String
-    var playlistID: UUID? = nil
 
-
-    private var seed: Int {
-        stableSeed(for: playlistID ?? UUID())
-    }
-
-    private var artworkURLs: [URL] {
-        guard !tracks.isEmpty else { return [] }
-        var generator = SeededRandom(seed: seed)
-        var indices = Array(0..<tracks.count)
-        generator.shuffle(&indices)
-
-        return (0..<9).map { index in
-            tracks[indices[index % indices.count]].url
-        }
+    private var urls: [URL] {
+        Array(tracks.prefix(4)).map(\.url)
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let side = min(proxy.size.width, proxy.size.height)
+            let width = proxy.size.width / 2
+            let height = proxy.size.height / 2
 
-            ZStack {
-                if artworkURLs.isEmpty {
-                    emptyArtwork
-                } else {
-                    staticCollage(side: side)
+            if urls.isEmpty {
+                emptyArtwork
+            } else {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        tile(index: 0, width: width, height: height)
+                        tile(index: 1, width: width, height: height)
+                    }
+                    HStack(spacing: 0) {
+                        tile(index: 2, width: width, height: height)
+                        tile(index: 3, width: width, height: height)
+                    }
                 }
-
-                LinearGradient(
-                    colors: [
-                        .black.opacity(0.02),
-                        .clear,
-                        .black.opacity(0.16)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .allowsHitTesting(false)
             }
-            .clipped()
-            .contentShape(Rectangle())
         }
     }
 
-    @ViewBuilder
-    private func staticCollage(side: CGFloat) -> some View {
-        let cards = collageCards(side: side)
-
-        ZStack {
-            ForEach(cards) { card in
-                LazyArtwork(
-                    url: card.url,
-                    size: card.size,
-                    cornerRadius: card.size * 0.075
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: card.size * 0.075, style: .continuous)
-                        .stroke(.white.opacity(0.22), lineWidth: 0.8)
-                }
-                .shadow(color: .black.opacity(0.28), radius: 6, y: 3)
-                .rotationEffect(.degrees(card.rotation))
-                .offset(card.position)
-                .zIndex(Double(card.index))
-            }
-        }
-        .frame(width: side * 1.12, height: side * 1.12)
-        .position(x: side * 0.50, y: side * 0.50)
-    }
-
-    private func collageCards(side: CGFloat) -> [CollageCard] {
-        var generator = SeededRandom(seed: seed)
-        let cardSide = side * 0.255
-        let step = side * 0.267
-        let totalSpan = cardSide + step * 3
-        let origin = -totalSpan * 0.50 + cardSide * 0.50
-
-        var cards: [CollageCard] = []
-        cards.reserveCapacity(16)
-
-        for row in 0..<4 {
-            for column in 0..<4 {
-                let index = row * 4 + column
-                let jitterX = CGFloat(generator.nextDouble(in: -0.012...0.012)) * side
-                let jitterY = CGFloat(generator.nextDouble(in: -0.012...0.012)) * side
-                let rotation = generator.nextDouble(in: -5.0...5.0)
-
-                cards.append(
-                    CollageCard(
-                        index: index,
-                        url: artworkURLs[index % artworkURLs.count],
-                        size: cardSide,
-                        position: CGSize(
-                            width: origin + CGFloat(column) * step + jitterX,
-                            height: origin + CGFloat(row) * step + jitterY
-                        ),
-                        rotation: rotation,
-                        drift: .zero
-                    )
-                )
-            }
-        }
-
-        return cards
+    private func tile(index: Int, width: CGFloat, height: CGFloat) -> some View {
+        LazyArtwork(
+            url: urls[index % urls.count],
+            size: max(width, height),
+            cornerRadius: 0
+        )
+        .frame(width: width, height: height)
+        .clipped()
     }
 
     private var emptyArtwork: some View {
-        AbstractPlaylistCover(playlistID: playlistID ?? UUID())
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(.thinMaterial)
             .overlay {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     Image(systemName: "music.note.list")
-                        .font(.system(size: 34, weight: .semibold))
+                        .font(.system(size: 38, weight: .medium))
                     Text(playlistName)
-                        .font(.headline)
+                        .font(.caption.weight(.semibold))
+                        .multilineTextAlignment(.center)
                         .lineLimit(2)
                 }
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.secondary)
             }
-    }
-
-    private func stableSeed(for id: UUID) -> Int {
-        var value = 0
-        for byte in id.uuidString.utf8 {
-            value = (value &* 31) &+ Int(byte)
-        }
-        return value == Int.min ? 0 : value
-    }
-}
-
-private struct CollageCard: Identifiable {
-    let index: Int
-    let url: URL
-    let size: CGFloat
-    let position: CGSize
-    let rotation: Double
-    let drift: CGSize
-
-    var id: Int { index }
-}
-
-private struct SeededRandom {
-    private var state: UInt64
-
-    init(seed: Int) {
-        let unsigned = UInt64(bitPattern: Int64(seed))
-        state = unsigned == 0 ? 0x9E3779B97F4A7C15 : unsigned
-    }
-
-    mutating func nextUInt() -> UInt64 {
-        state ^= state << 13
-        state ^= state >> 7
-        state ^= state << 17
-        return state
-    }
-
-    mutating func nextDouble(in range: ClosedRange<Double>) -> Double {
-        let value = Double(nextUInt() % 1_000_000) / 1_000_000.0
-        return range.lowerBound + value * (range.upperBound - range.lowerBound)
-    }
-
-    mutating func shuffle<T>(_ array: inout [T]) {
-        guard array.count > 1 else { return }
-        for index in stride(from: array.count - 1, through: 1, by: -1) {
-            let target = Int(nextUInt() % UInt64(index + 1))
-            array.swapAt(index, target)
-        }
     }
 }

@@ -16,8 +16,6 @@ targets:
     sources:
       - path: App
       - path: Audio
-        excludes:
-          - UI/AbstructPlaylistCover.swift
       - path: Models
       - path: UI
 
@@ -29,7 +27,7 @@ targets:
 
       PRODUCT_BUNDLE_IDENTIFIER: com.local.Toyako
 
-      MARKETING_VERSION: "1.3.5"
+      MARKETING_VERSION: "1.3.4"
 
       INFOPLIST_KEY_CFBundleDisplayName: "Toyako"
 
