@@ -139,7 +139,7 @@ struct ArtistListView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .background(ToyakoDesign.Color.surface.opacity(0.42))
+        .background(ToyakoDesign.Color.canvas)
     }
 
     private func artistRow(_ artist: ArtistGroup) -> some View {
@@ -345,10 +345,12 @@ private struct ArtistDetailView: View {
             .tint(ToyakoDesign.Color.accent)
             .background {
                 ZStack {
-                    // One continuous canvas: the artwork is allowed to flow behind the
-                    // complete detail page instead of stopping at a hard horizontal band.
+                    // Use one uniform canvas tone for the entire detail page.
+                    // The previous vertical gradient created the visible dual-tone band.
                     ToyakoDesign.Color.canvas
 
+                    // Keep the artist artwork as subtle ambient texture without changing
+                    // the base tone between the hero and the album/track sections.
                     if let artwork {
                         Image(uiImage: artwork)
                             .resizable()
@@ -357,28 +359,10 @@ private struct ArtistDetailView: View {
                             .clipped()
                             .blur(radius: 56)
                             .scaleEffect(1.10)
-                            .opacity(0.24)
+                            .opacity(0.12)
                     }
 
-                    // A single continuous tonal treatment keeps the artwork atmospheric
-                    // without introducing a second solid-colored panel behind the hero.
-                    LinearGradient(
-                        stops: [
-                            .init(color: ToyakoDesign.Color.canvas.opacity(0.18), location: 0),
-                            .init(color: ToyakoDesign.Color.canvas.opacity(0.38), location: 0.30),
-                            .init(color: ToyakoDesign.Color.canvas.opacity(0.82), location: 0.62),
-                            .init(color: ToyakoDesign.Color.canvas, location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-
-                    // Subtle edge darkening for legibility, not a separate panel.
-                    LinearGradient(
-                        colors: [.black.opacity(0.08), .clear, .black.opacity(0.12)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    Color.black.opacity(0.18)
                 }
             }
         }
