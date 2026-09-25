@@ -176,6 +176,16 @@ struct PlaylistHeaderView: View {
                         )
                         let y = -focus * coverSize * 0.08
 
+                        // A tiny damped "tick" happens once as each new cover
+                        // reaches the center. It gives the marquee a tactile
+                        // feeling without making the artwork visibly wobble
+                        // during the entire movement.
+                        let tickEnvelope = exp(-localPhase * 42.0)
+                        let tickWave = sin(localPhase * .pi * 14.0) * tickEnvelope
+                        let tickStrength = min(1, max(0, focus))
+                        let microShakeX = tickWave * 2.2 * tickStrength
+                        let microShakeRotation = tickWave * 0.65 * tickStrength
+
                         let trackIndex = positiveModulo(
                             sequenceIndex,
                             count
@@ -202,7 +212,8 @@ struct PlaylistHeaderView: View {
                             axis: (x: 0, y: 1, z: 0),
                             perspective: 0.55
                         )
-                        .offset(x: x, y: y)
+                        .rotationEffect(.degrees(microShakeRotation))
+                        .offset(x: x + microShakeX, y: y)
                         .opacity(opacity)
                         .blur(radius: blur)
                         .shadow(
@@ -210,18 +221,6 @@ struct PlaylistHeaderView: View {
                             radius: 7 + focus * 8,
                             y: 4 + focus * 4
                         )
-                        .overlay {
-                            if abs(distance) < 0.5 {
-                                RoundedRectangle(
-                                    cornerRadius: min(18, coverSize * 0.13),
-                                    style: .continuous
-                                )
-                                .stroke(
-                                    .white.opacity(0.18 + focus * 0.12),
-                                    lineWidth: 1
-                                )
-                            }
-                        }
                         .zIndex(Double(100 - abs(distance)))
                         .accessibilityHidden(true)
                     }
