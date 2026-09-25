@@ -98,13 +98,15 @@ struct PlaylistHeaderView: View {
 
         return TimelineView(.animation) { context in
             let elapsed = context.date.timeIntervalSinceReferenceDate
-            let distance = CGFloat(
+            let cycleDuration = max(
+                sequenceWidth / marqueeSpeed,
+                0.001
+            )
+            let cycleProgress =
                 elapsed.truncatingRemainder(
-                    dividingBy: TimeInterval(
-                        max(sequenceWidth / marqueeSpeed, 0.001)
-                    )
-                )
-            ) * marqueeSpeed
+                    dividingBy: TimeInterval(cycleDuration)
+                ) / TimeInterval(cycleDuration)
+            let distance = CGFloat(cycleProgress) * sequenceWidth
 
             HStack(spacing: coverSpacing) {
                 coverSequence(
@@ -160,13 +162,18 @@ struct PlaylistHeaderView: View {
                     // away and recede. It stays entirely driven by position,
                     // so it remains smooth at the fixed marquee speed.
                     let centerEmphasis = 1.0 - normalizedDistance
-                    let scale = 0.92 + (centerEmphasis * 0.10)
-                    let rotation = Double(
-                        max(-1, min(1, distanceFromCenter / max(centerX, 1)))
-                    ) * -8
-                    let wavePhase =
-                        geo.frame(in: .named("playlistMarquee")).midX / 105
-                    let lift = sin(wavePhase) * 3.0
+
+                    // Covers stay at their normal size. Only the cover nearest
+                    // the viewport center grows, with a soft falloff so there
+                    // is no visible size "snap" as it passes through center.
+                    let centerBoost = pow(max(centerEmphasis, 0), 8)
+                    let scale = 1.0 + (centerBoost * 0.16)
+
+                    // Avoid per-frame 3D rotation/vertical oscillation. Those
+                    // transforms were producing the one-frame vibration seen
+                    // while the marquee crossed the center/loop boundary.
+                    let rotation = 0.0
+                    let lift = 0.0
 
                     LazyArtwork(
                         url: library.artworkURL(for: track),
@@ -186,13 +193,13 @@ struct PlaylistHeaderView: View {
                         axis: (x: 0, y: 1, z: 0),
                         perspective: 0.65
                     )
-                    .opacity(0.72 + (centerEmphasis * 0.28))
+                    .opacity(0.94 + (centerBoost * 0.06))
                     .offset(y: lift)
                     .shadow(
                         color: .black.opacity(
-                            0.12 + (centerEmphasis * 0.16)
+                            0.10 + (centerBoost * 0.16)
                         ),
-                        radius: 9 + (centerEmphasis * 5),
+                        radius: 8 + (centerBoost * 7),
                         y: 4
                     )
                 }
