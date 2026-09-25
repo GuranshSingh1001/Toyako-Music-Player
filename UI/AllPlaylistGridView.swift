@@ -57,6 +57,8 @@ struct AllPlaylistsGridView: View {
                                             playlist,
                                         tracks:
                                             playlistTracks,
+                                        library:
+                                            library,
                                         onAddSongs:
                                             {
                                                 onAddSongs(
