@@ -8,7 +8,7 @@ enum ToyakoDesign {
     enum Color {
         /// Toyako's primary accent. Keep this consistent across navigation, actions,
         /// selected states, sliders and playback affordances.
-        static let accent = SwiftUI.Color(red: 0.90, green: 0.28, blue: 0.62)
+        static let accent = SwiftUI.Color.white
         static let canvas = SwiftUI.Color(uiColor: .systemBackground)
         static let surface = SwiftUI.Color(uiColor: .secondarySystemBackground)
         static let subtleSurface = SwiftUI.Color(uiColor: .tertiarySystemBackground)
@@ -49,7 +49,7 @@ struct ToyakoPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(ToyakoDesign.Typography.button)
-            .foregroundStyle(.white)
+            .foregroundStyle(.black)
             .frame(minHeight: ToyakoDesign.Metrics.largeControlHeight)
             .padding(.horizontal, 20)
             .background(ToyakoDesign.Color.accent, in: Capsule())
