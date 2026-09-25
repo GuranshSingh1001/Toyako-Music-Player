@@ -363,7 +363,7 @@ private struct ArtistReflectionBackground: View {
     }
 }
 
-private struct ArtistDetailView: View {
+struct ArtistDetailView: View {
     let artist: ArtistGroup
     let library: LocalLibrary
     let usesSharedBackground: Bool

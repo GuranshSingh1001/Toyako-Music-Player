@@ -42,8 +42,14 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 28) {
+        ZStack {
+            HomeArtworkBackdrop(
+                artworkURL: currentTrack.flatMap { library.artworkURL(for: $0) }
+                    ?? recentlyPlayed.first.flatMap { library.artworkURL(for: $0) }
+            )
+
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 28) {
                 header
                 quickActions
 
@@ -83,10 +89,11 @@ struct HomeView: View {
                 }
 
                 libraryOverview
+                }
+                .toyakoScreenPadding()
             }
-            .toyakoScreenPadding()
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
-        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
 
@@ -241,12 +248,12 @@ struct HomeView: View {
             HStack(spacing: 16) {
                 ForEach(items) { artist in
                     NavigationLink {
-                        SongListView(
-                            tracks: artist.tracks,
-                            allTracks: artist.tracks,
+                        ArtistDetailView(
+                            artist: artist,
                             library: library
                         )
                         .navigationTitle(artist.name)
+                        .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(spacing: 8) {
                             ArtistArtworkView(artistName: artist.name, size: 100)
@@ -288,9 +295,22 @@ struct HomeView: View {
                             tracks: playlistTracks,
                             allTracks: playlistTracks,
                             library: library,
-                            playlistID: playlist.id
+                            playlistID: playlist.id,
+                            headerView: AnyView(
+                                PlaylistHeaderView(
+                                    playlist: playlist,
+                                    tracks: playlistTracks,
+                                    library: library,
+                                    onAddSongs: {
+                                        // Home is a read-only entry point; the
+                                        // existing playlist editor is still owned
+                                        // by the main Playlists destination.
+                                    }
+                                )
+                            )
                         )
                         .navigationTitle(playlist.name)
+                        .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             PlaylistArtwork(
@@ -323,6 +343,85 @@ struct HomeView: View {
             HomeStatCard(title: "Albums", value: albums.count, systemImage: "square.stack")
             HomeStatCard(title: "Artists", value: artists.count, systemImage: "music.mic")
             HomeStatCard(title: "Playlists", value: playlists.count, systemImage: "rectangle.stack")
+        }
+    }
+}
+
+
+private struct HomeArtworkBackdrop: View {
+    let artworkURL: URL?
+
+    @State private var artworkData: Data?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black
+
+                if let artworkData, let image = UIImage(data: artworkData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: proxy.size.width * 1.18,
+                            height: proxy.size.height * 1.18
+                        )
+                        .blur(radius: 72)
+                        .saturation(1.18)
+                        .opacity(0.22)
+                        .scaleEffect(1.08)
+
+                    // A second, softer bleed keeps the artwork's colour close to
+                    // the content instead of turning the entire screen into a
+                    // flat colour wash.
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: proxy.size.width * 1.04,
+                            height: proxy.size.height * 1.04
+                        )
+                        .blur(radius: 115)
+                        .saturation(1.05)
+                        .opacity(0.13)
+                }
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.52),
+                        Color.black.opacity(0.30),
+                        Color.black.opacity(0.62)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                // Keep text and controls readable while preserving the artwork
+                // bleed around the edges of the home content.
+                RadialGradient(
+                    colors: [
+                        Color.black.opacity(0.08),
+                        Color.black.opacity(0.34)
+                    ],
+                    center: .center,
+                    startRadius: 80,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.78
+                )
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .task(id: artworkURL) {
+            guard let artworkURL else {
+                artworkData = nil
+                return
+            }
+
+            let loaded = await ArtworkStore.shared.data(for: artworkURL)
+            guard !Task.isCancelled else { return }
+            artworkData = loaded
         }
     }
 }
