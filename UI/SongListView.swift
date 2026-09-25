@@ -114,6 +114,7 @@ struct TrackGridView: View {
     let library: LocalLibrary
 
     @EnvironmentObject private var audioManager: AudioEngineManager
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
 
     private let columns = [
         GridItem(.adaptive(minimum: 180), spacing: 18)
@@ -133,11 +134,11 @@ struct TrackGridView: View {
                     CenteredLibraryGrid(
                     items: tracks,
                     availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
-                    minimumItemWidth: ToyakoArtworkSize.libraryCardWidth,
+                    minimumItemWidth: CGFloat(libraryArtworkSize) + 24,
                     rowSpacing: 24,
                     columnSpacing: 18
                 ) { track in
-                    TrackGridCard(track: track, library: library) {
+                    TrackGridCard(track: track, library: library, artworkSize: CGFloat(libraryArtworkSize)) {
                         audioManager.play(track: track)
                     }
                 }
@@ -154,6 +155,7 @@ struct TrackGridView: View {
 private struct TrackGridCard: View {
     let track: LocalTrack
     let library: LocalLibrary
+    let artworkSize: CGFloat
     let action: () -> Void
 
     var body: some View {
@@ -161,12 +163,12 @@ private struct TrackGridCard: View {
             VStack(alignment: .leading, spacing: 9) {
                 LazyArtwork(
                     url: library.artworkURL(for: track),
-                    size: ToyakoArtworkSize.libraryArtwork,
+                    size: artworkSize,
                     cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius
                 )
                 .frame(
-                    width: ToyakoArtworkSize.libraryArtwork,
-                    height: ToyakoArtworkSize.libraryArtwork
+                    width: artworkSize,
+                    height: artworkSize
                 )
                 .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
@@ -193,6 +195,7 @@ private struct TrackGridCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
+            .frame(width: artworkSize + 24, alignment: .leading)
             .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
         }
         .buttonStyle(.plain)

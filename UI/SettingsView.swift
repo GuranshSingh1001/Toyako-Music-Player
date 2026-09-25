@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
@@ -25,6 +26,36 @@ struct SettingsView: View {
                     Text("Uses album artwork to create a soft blurred background on Home, Tracks, Albums, Playlists, and other artwork-driven screens.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Library Cover Art Size")
+                            Spacer()
+                            Text("\(Int(libraryArtworkSize)) pt")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Slider(
+                            value: $libraryArtworkSize,
+                            in: 120...220,
+                            step: 5
+                        ) {
+                            Text("Library Cover Art Size")
+                        } minimumValueLabel: {
+                            Text("120")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } maximumValueLabel: {
+                            Text("220")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text("Controls the square cover size on Home, Tracks, Albums, and Playlists.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Lyrics") {

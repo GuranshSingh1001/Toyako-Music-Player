@@ -8,6 +8,7 @@ struct AllPlaylistsGridView: View {
     var onRename: (Playlist) -> Void
 
     @EnvironmentObject private var audioManager: AudioEngineManager
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
 
     private let columns = [
         GridItem(.adaptive(minimum: 180), spacing: 18)
@@ -32,7 +33,7 @@ struct AllPlaylistsGridView: View {
                     CenteredLibraryGrid(
                     items: playlists,
                     availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
-                    minimumItemWidth: ToyakoArtworkSize.libraryCardWidth,
+                    minimumItemWidth: CGFloat(libraryArtworkSize) + 24,
                     rowSpacing: 24,
                     columnSpacing: 18
                 ) { playlist in
@@ -50,7 +51,8 @@ struct AllPlaylistsGridView: View {
                     } label: {
                         PlaylistCard(
                             playlist: playlist,
-                            tracks: playlistTracks
+                            tracks: playlistTracks,
+                            artworkSize: CGFloat(libraryArtworkSize)
                         )
                     }
                     .buttonStyle(.plain)
@@ -83,6 +85,7 @@ struct AllPlaylistsGridView: View {
 private struct PlaylistCard: View {
     let playlist: Playlist
     let tracks: [LocalTrack]
+    let artworkSize: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -91,8 +94,8 @@ private struct PlaylistCard: View {
                 playlistName: playlist.name
             )
             .frame(
-                width: ToyakoArtworkSize.libraryArtwork,
-                height: ToyakoArtworkSize.libraryArtwork
+                width: artworkSize,
+                height: artworkSize
             )
             .clipShape(
                 RoundedRectangle(
@@ -126,6 +129,7 @@ private struct PlaylistCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
+        .frame(width: artworkSize + 24, alignment: .leading)
         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
     }
 

@@ -16,6 +16,7 @@ struct HomeView: View {
     let onShuffleAll: () -> Void
 
     @State private var recommendationSeed = UInt64.random(in: 1...UInt64.max)
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
 
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 16)
@@ -198,9 +199,9 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyArtwork(
                                 url: library.artworkURL(for: track),
-                                size: ToyakoArtworkSize.libraryArtwork
+                                size: CGFloat(libraryArtworkSize)
                             )
-                            .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
+                            .frame(width: CGFloat(libraryArtworkSize), height: CGFloat(libraryArtworkSize))
                             .toyakoArtwork()
                             Text(track.title)
                                 .font(.subheadline.weight(.semibold))
@@ -211,7 +212,7 @@ struct HomeView: View {
                                 .lineLimit(1)
                         }
                         .padding(12)
-                        .frame(width: ToyakoArtworkSize.libraryCardWidth, height: 270, alignment: .topLeading)
+                        .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
                         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                     }
                     .buttonStyle(.plain)
@@ -232,7 +233,7 @@ struct HomeView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             LazyAlbumArtwork(url: album.artworkURL)
-                                .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
+                                .frame(width: CGFloat(libraryArtworkSize), height: CGFloat(libraryArtworkSize))
                                 .toyakoArtwork()
                             Text(album.name)
                                 .font(.subheadline.weight(.semibold))
@@ -243,7 +244,7 @@ struct HomeView: View {
                                 .lineLimit(1)
                         }
                         .padding(12)
-                        .frame(width: ToyakoArtworkSize.libraryCardWidth, height: 270, alignment: .topLeading)
+                        .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
                         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                     }
                     .buttonStyle(.plain)
@@ -316,7 +317,7 @@ struct HomeView: View {
                                 tracks: playlistTracks,
                                 playlistName: playlist.name
                             )
-                            .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
+                            .frame(width: CGFloat(libraryArtworkSize), height: CGFloat(libraryArtworkSize))
                             .toyakoArtwork()
 
                             Text(playlist.name)
@@ -328,7 +329,7 @@ struct HomeView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding(12)
-                        .frame(width: ToyakoArtworkSize.libraryCardWidth, height: 270, alignment: .topLeading)
+                        .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
                         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                     }
                     .buttonStyle(.plain)
