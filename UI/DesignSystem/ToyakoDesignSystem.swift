@@ -154,7 +154,7 @@ struct ToyakoToggleStyle: ToggleStyle {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(configuration.label)
+        .accessibilityElement(children: .combine)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
         .accessibilityAddTraits(configuration.isOn ? .isSelected : [])
     }
