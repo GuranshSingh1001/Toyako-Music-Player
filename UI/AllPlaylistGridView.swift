@@ -68,13 +68,6 @@ struct AllPlaylistsGridView: View {
                                     )
                                 )
                         )
-                        .navigationTitle(
-                            playlist.name
-                        )
-                        .navigationBarTitleDisplayMode(
-                            .inline
-                        )
-
                     } label: {
 
                         VStack(
