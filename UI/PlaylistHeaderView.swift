@@ -23,7 +23,7 @@ struct PlaylistHeaderView: View {
                     availableWidth: proxy.size.width,
                     coverSize: coverSize
                 )
-                .frame(height: coverSize * 1.28)
+                .frame(height: coverSize * 1.42)
                 .padding(.bottom, narrow ? 16 : 18)
 
                 if narrow {
@@ -121,7 +121,7 @@ struct PlaylistHeaderView: View {
             .offset(x: -distance)
             .frame(
                 width: availableWidth,
-                height: coverSize * 1.28,
+                height: coverSize * 1.42,
                 alignment: .center
             )
             .clipped()
@@ -138,7 +138,7 @@ struct PlaylistHeaderView: View {
                     endPoint: .trailing
                 )
             }
-            .frame(height: coverSize)
+            .frame(height: coverSize * 1.42)
         }
     }
 
@@ -167,7 +167,7 @@ struct PlaylistHeaderView: View {
                     // the viewport center grows, with a soft falloff so there
                     // is no visible size "snap" as it passes through center.
                     let centerBoost = pow(max(centerEmphasis, 0), 7)
-                    let scale = 1.0 + (centerBoost * 0.24)
+                    let scale = 1.0 + (centerBoost * 0.32)
 
                     // Avoid per-frame 3D rotation/vertical oscillation. Those
                     // transforms were producing the one-frame vibration seen
@@ -194,6 +194,7 @@ struct PlaylistHeaderView: View {
                         perspective: 0.65
                     )
                     .opacity(0.94 + (centerBoost * 0.06))
+                    .zIndex(centerBoost)
                     .offset(y: lift)
                     .shadow(
                         color: .black.opacity(
