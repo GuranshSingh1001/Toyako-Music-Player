@@ -108,7 +108,6 @@ struct AlbumDetailView: View {
                         AlbumDetailHero(
                             album: album,
                             totalDuration: totalDuration,
-                            isCompact: proxy.size.width < 700,
                             availableWidth: proxy.size.width,
                             artworkVisible: artworkVisible,
                             playAction: playAlbum,
@@ -180,20 +179,18 @@ struct AlbumDetailView: View {
 private struct AlbumDetailHero: View {
     let album: AlbumGroup
     let totalDuration: TimeInterval
-    let isCompact: Bool
     let availableWidth: CGFloat
     let artworkVisible: Bool
     let playAction: () -> Void
     let shuffleAction: () -> Void
 
     var body: some View {
-        Group {
-            if isCompact {
-                compactHero
-            } else {
-                wideHero
-            }
+        ViewThatFits(in: .horizontal) {
+            wideHero
+            compactHero
         }
+        .frame(maxWidth: 1100)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
         .padding(.top, 22)
         .padding(.bottom, 28)
@@ -210,10 +207,10 @@ private struct AlbumDetailHero: View {
     }
 
     private var information: some View {
-        VStack(alignment: isCompact ? .center : .leading, spacing: 8) {
+        VStack(alignment: .center, spacing: 8) {
             Text(album.name)
-                .font(.system(size: isCompact ? 30 : 34, weight: .bold, design: .rounded))
-                .multilineTextAlignment(isCompact ? .center : .leading)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
                 .lineLimit(3)
 
             Text(album.artist)
@@ -262,19 +259,23 @@ private struct AlbumDetailHero: View {
     }
 
     private var compactHero: some View {
-        let contentWidth = max(0, availableWidth - 36)
-        let artworkSize = min(340, contentWidth)
+        let horizontalInset = ToyakoDesign.Metrics.screenHorizontal * 2
+        let contentWidth = max(0, availableWidth - horizontalInset)
+        let artworkSize = min(320, max(220, contentWidth))
+        let textWidth = min(560, contentWidth)
+        let actionWidth = min(430, contentWidth)
 
         return VStack(spacing: 20) {
             artwork
                 .frame(width: artworkSize, height: artworkSize)
 
             information
-                .frame(maxWidth: min(520, contentWidth))
+                .frame(maxWidth: textWidth)
 
             actions
-                .frame(maxWidth: min(430, contentWidth))
+                .frame(maxWidth: actionWidth)
         }
+        .frame(maxWidth: contentWidth)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 

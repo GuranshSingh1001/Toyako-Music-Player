@@ -344,25 +344,61 @@ private struct ArtistDetailView: View {
             }
             .tint(ToyakoDesign.Color.accent)
             .background {
-                ZStack {
-                    // Use one uniform canvas tone for the entire detail page.
-                    // The previous vertical gradient created the visible dual-tone band.
-                    ToyakoDesign.Color.canvas
+                // Full-page artwork reflection. Do not introduce an opaque canvas
+                // layer here: the artwork-derived tone should continue seamlessly
+                // from the hero through Popular Tracks and Albums.
+                GeometryReader { backgroundProxy in
+                    ZStack {
+                        if let artwork {
+                            Image(uiImage: artwork)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(
+                                    width: backgroundProxy.size.width * 1.35,
+                                    height: backgroundProxy.size.height * 1.35
+                                )
+                                .position(
+                                    x: backgroundProxy.size.width * 0.52,
+                                    y: backgroundProxy.size.height * 0.34
+                                )
+                                .blur(radius: 78)
+                                .saturation(1.12)
+                                .brightness(-0.28)
+                                .opacity(0.28)
 
-                    // Keep the artist artwork as subtle ambient texture without changing
-                    // the base tone between the hero and the album/track sections.
-                    if let artwork {
-                        Image(uiImage: artwork)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .clipped()
-                            .blur(radius: 56)
-                            .scaleEffect(1.10)
-                            .opacity(0.12)
+                            // A second, softer reflection layer restores the
+                            // side-bleed appearance without creating a hard band.
+                            Image(uiImage: artwork)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(
+                                    width: backgroundProxy.size.width * 1.55,
+                                    height: backgroundProxy.size.height * 0.92
+                                )
+                                .position(
+                                    x: backgroundProxy.size.width * 0.50,
+                                    y: backgroundProxy.size.height * 0.54
+                                )
+                                .blur(radius: 105)
+                                .saturation(1.08)
+                                .brightness(-0.34)
+                                .opacity(0.16)
+                        }
+
+                        // Only translucent shading is used. There is no opaque
+                        // rectangle separating the hero from the content below.
+                        LinearGradient(
+                            colors: [
+                                Color.black.opacity(0.18),
+                                Color.black.opacity(0.08),
+                                Color.black.opacity(0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     }
-
-                    Color.black.opacity(0.18)
+                    .frame(width: backgroundProxy.size.width, height: backgroundProxy.size.height)
+                    .clipped()
                 }
             }
         }
