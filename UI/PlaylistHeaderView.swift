@@ -12,51 +12,48 @@ struct PlaylistHeaderView: View {
     private let marqueeSpeed: CGFloat = 18
 
     var body: some View {
-        GeometryReader { proxy in
-            let narrow = proxy.size.width < 820
-            // Fixed artwork geometry: window resizing changes layout, not the
-            // cover size. This keeps Playlist Detail consistent with the
-            // square library artwork used by Tracks/Albums/Playlists.
-            let coverSize: CGFloat = ToyakoArtworkSize.libraryArtwork
+        let coverSize = ToyakoArtworkSize.libraryArtwork
 
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+            // Keep the marquee in its own measured region. The old outer
+            // GeometryReader had a fixed 265...320pt height while its content
+            // could become taller during Stage Manager/window resizing. That
+            // allowed the action bar and the first song row to overlap.
+            GeometryReader { proxy in
                 coverMarquee(
                     availableWidth: proxy.size.width,
                     coverSize: coverSize
                 )
-                .frame(height: coverSize * 1.22)
-                .padding(.bottom, narrow ? 16 : 18)
+            }
+            .frame(height: coverSize * 1.22)
+            .padding(.bottom, 18)
 
-                if narrow {
-                    VStack(alignment: .leading, spacing: 16) {
-                        titleBlock(compact: true)
+            // ViewThatFits changes between the wide two-column header and the
+            // stacked header using the actual available width. No hard width
+            // breakpoint is needed, so resizing does not leave controls
+            // partially outside the playlist surface.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 24) {
+                    titleBlock(compact: false)
+                        .frame(width: 430, alignment: .leading)
+                        .layoutPriority(1)
 
-                        actionBar
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                } else {
-                    HStack(alignment: .center, spacing: 24) {
-                        titleBlock(compact: false)
-                            .frame(maxWidth: 480, alignment: .leading)
-                            .layoutPriority(1)
-
-                        actionBar
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
+                    actionBar
+                        .fixedSize(horizontal: true, vertical: false)
                 }
 
-                Spacer(minLength: 2)
+                VStack(alignment: .leading, spacing: 16) {
+                    titleBlock(compact: true)
+                    actionBar
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            .frame(maxWidth: 1320)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, narrow ? 22 : 34)
-            .padding(.top, narrow ? 6 : 8)
         }
-        .frame(
-            minHeight: 265,
-            idealHeight: 292,
-            maxHeight: 320
-        )
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func titleBlock(compact: Bool) -> some View {
@@ -251,32 +248,51 @@ struct PlaylistHeaderView: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: 10) {
-            Button(action: playAll) {
-                Label("Play", systemImage: "play.fill")
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
-                    .frame(width: 100)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                playButton.frame(minWidth: 96, maxWidth: 110)
+                shuffleButton.frame(minWidth: 112, maxWidth: 126)
+                addSongsButton.frame(minWidth: 122, maxWidth: 138)
             }
-            .buttonStyle(ToyakoPrimaryButtonStyle())
 
-            Button(action: shuffleAll) {
-                Label("Shuffle", systemImage: "shuffle")
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
-                    .frame(width: 120)
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    playButton
+                    shuffleButton
+                }
+                addSongsButton
             }
-            .buttonStyle(ToyakoSecondaryButtonStyle())
-
-            Button(action: onAddSongs) {
-                Label("Add Songs", systemImage: "plus")
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
-                    .frame(width: 130)
-            }
-            .buttonStyle(ToyakoSecondaryButtonStyle())
         }
-        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var playButton: some View {
+        Button(action: playAll) {
+            Label("Play", systemImage: "play.fill")
+                .font(.subheadline.bold())
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(ToyakoPrimaryButtonStyle())
+    }
+
+    private var shuffleButton: some View {
+        Button(action: shuffleAll) {
+            Label("Shuffle", systemImage: "shuffle")
+                .font(.subheadline.bold())
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(ToyakoSecondaryButtonStyle())
+    }
+
+    private var addSongsButton: some View {
+        Button(action: onAddSongs) {
+            Label("Add Songs", systemImage: "plus")
+                .font(.subheadline.bold())
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(ToyakoSecondaryButtonStyle())
     }
 
     private func playAll() {

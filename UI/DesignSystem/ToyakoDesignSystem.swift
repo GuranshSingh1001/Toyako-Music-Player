@@ -244,7 +244,7 @@ enum ToyakoArtworkSize {
     // Keeping this independent from the window width prevents artwork from
     // growing/shrinking during Stage Manager or split-view resizing.
     static let libraryArtwork: CGFloat = 180
-    static let libraryCardWidth: CGFloat = 220
+    static let libraryCardWidth: CGFloat = libraryArtwork + 24
     static let homeCard: CGFloat = libraryArtwork
     static let albumCard: CGFloat = libraryArtwork
     static let playlistCard: CGFloat = libraryArtwork
