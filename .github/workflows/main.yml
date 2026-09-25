@@ -22,14 +22,15 @@ jobs:
         run: |
           set -euo pipefail
           XCODE_PATH="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort | tail -n 1)"
+
           if [[ -z "$XCODE_PATH" ]]; then
             echo "Xcode 26 was not found."
             xcodebuild -version
             exit 1
           fi
+
           sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -41,6 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           xcodebuild archive \
             -project Toyako.xcodeproj \
             -scheme Toyako \
@@ -55,27 +57,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           APP="$RUNNER_TEMP/Toyako.xcarchive/Products/Applications/Toyako.app"
           IPA="$RUNNER_TEMP/Toyako.ipa"
+
           test -d "$APP"
+
           rm -rf "$RUNNER_TEMP/Payload"
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$APP" "$RUNNER_TEMP/Payload/Toyako.app"
-          (
-            cd "$RUNNER_TEMP"
-            /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload "$IPA"
-          )
+
+          cd "$RUNNER_TEMP"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            Payload \
+            "$IPA"
+
           test -f "$IPA"
           ls -lh "$IPA"
 
       - name: Verify IPA
-        run: /usr/bin/unzip -t "$RUNNER_TEMP/Toyako.ipa"
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/unzip -t "$RUNNER_TEMP/Toyako.ipa"
 
-      - name: Publish IPA as GitHub Release
+      # GitHub's Actions artifact service always presents artifacts as a
+      # downloadable ZIP. The file INSIDE is the real Toyako.ipa.
+      - name: Upload IPA as Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Toyako-IPA
+          path: ${{ runner.temp }}/Toyako.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      # The Release asset is the raw .ipa and is NOT wrapped in another ZIP.
+      - name: Publish raw IPA to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "ipa-${{ github.run_number }}"
-          name: "Toyako IPA ${{ github.run_number }}"
+          tag_name: toyako-ipa-${{ github.run_number }}
+          name: Toyako IPA ${{ github.run_number }}
           generate_release_notes: false
-          make_latest: true
           files: ${{ runner.temp }}/Toyako.ipa
