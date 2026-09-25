@@ -1,9 +1,15 @@
-name: Build Toyako Unsigned IPA
+name: Build Toyako IPA
 
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "GitHub release tag for the IPA"
+        required: true
+        default: "toyako-ipa"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -13,22 +19,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show available Xcodes
-        run: |
-          ls -la /Applications | grep Xcode || true
-          xcodebuild -version
-
       - name: Select Xcode 26
+        shell: bash
         run: |
-          XCODE_PATH=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort | tail -n 1)
+          set -euo pipefail
 
-          if [ -z "$XCODE_PATH" ]; then
+          XCODE_PATH="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort | tail -n 1)"
+
+          if [[ -z "$XCODE_PATH" ]]; then
             echo "Xcode 26 was not found."
+            xcodebuild -version
             exit 1
           fi
-
-          echo "Using Xcode:"
-          echo "$XCODE_PATH"
 
           sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
 
@@ -36,46 +38,16 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build unsigned archive
+        shell: bash
         run: |
-          brew install xcodegen
+          set -euo pipefail
 
-      - name: Generate Xcode Project
-        run: |
-          xcodegen generate
-
-      - name: Verify Generated Project
-        run: |
-          echo "=== GENERATED PROJECT ==="
-          find . -maxdepth 3 -name "*.xcodeproj" -print
-
-          echo "=== ASSET CATALOG ==="
-          find App/Assets.xcassets -maxdepth 3 -type f -print
-
-          echo "=== SCHEME ==="
-          xcodebuild \
-            -project Toyako.xcodeproj \
-            -list
-            
-
-      - name: Check Asset Catalog
-        run: |
-          echo "Checking AppIcon..."
-
-          test -f "App/Assets.xcassets/AppIcon.appiconset/Contents.json"
-
-          test -f "App/Assets.xcassets/AppIcon.appiconset/Toyako.png"
-
-          echo "AppIcon source files found."
-
-          file "App/Assets.xcassets/AppIcon.appiconset/Toyako.png"
-
-          sips \
-            -g pixelWidth \
-            -g pixelHeight \
-            "App/Assets.xcassets/AppIcon.appiconset/Toyako.png"
-
-      - name: Build Unsigned Archive
-        run: |
           xcodebuild archive \
             -project Toyako.xcodeproj \
             -scheme Toyako \
@@ -86,60 +58,48 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER=""
 
-      - name: Verify Compiled App
+      - name: Create IPA
+        shell: bash
         run: |
-          APP_PATH="$RUNNER_TEMP/Toyako.xcarchive/Products/Applications/Toyako.app"
+          set -euo pipefail
 
-          if [ ! -d "$APP_PATH" ]; then
-            echo "ERROR: Toyako.app was not created."
-            exit 1
-          fi
+          APP="$RUNNER_TEMP/Toyako.xcarchive/Products/Applications/Toyako.app"
+          IPA="$RUNNER_TEMP/Toyako.ipa"
 
-          echo "=== APP CONTENTS ==="
-          find "$APP_PATH" -maxdepth 2 -print
+          test -d "$APP"
 
-          echo "=== ASSETS.CAR ==="
+          rm -rf "$RUNNER_TEMP/Payload"
+          mkdir -p "$RUNNER_TEMP/Payload"
 
-          if [ -f "$APP_PATH/Assets.car" ]; then
-            echo "SUCCESS: Assets.car exists."
-          else
-            echo "ERROR: Assets.car is missing."
-            exit 1
-          fi
+          cp -R "$APP" "$RUNNER_TEMP/Payload/Toyako.app"
 
-          echo "=== ICON INFORMATION IN INFO.PLIST ==="
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleIcons" \
-            "$APP_PATH/Info.plist" || true
+          # An IPA is itself a ZIP-format package with a .ipa extension.
+          # This creates ONLY Toyako.ipa; there is no outer .zip file.
+          (
+            cd "$RUNNER_TEMP"
+            /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+              Payload \
+              "$IPA"
+          )
 
-          echo "=== IPAD ICON INFORMATION ==="
-          /usr/libexec/PlistBuddy \
-            -c "Print :CFBundleIcons~ipad" \
-            "$APP_PATH/Info.plist" || true
-
-      - name: Package into IPA
-        run: |
-          cd "$RUNNER_TEMP"
-
-          rm -rf Payload
-          mkdir -p Payload
-
-          cp -R \
-            "Toyako.xcarchive/Products/Applications/Toyako.app" \
-            "Payload/Toyako.app"
-
-          zip -r "Toyako.ipa" Payload
+          test -f "$IPA"
+          file "$IPA"
+          ls -lh "$IPA"
 
       - name: Verify IPA
+        shell: bash
         run: |
-          echo "=== IPA ==="
-          ls -lh "$RUNNER_TEMP/Toyako.ipa"
+          set -euo pipefail
 
-          echo "=== IPA CONTENTS ==="
-          unzip -l "$RUNNER_TEMP/Toyako.ipa" | head -100
+          IPA="$RUNNER_TEMP/Toyako.ipa"
 
-      - name: Upload Unsigned IPA
-        uses: actions/upload-artifact@v4
+          /usr/bin/unzip -t "$IPA"
+          /usr/bin/unzip -l "$IPA" | head -80
+
+      - name: Publish IPA directly as GitHub Release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: Toyako-Unsigned-IPA
-          path: ${{ runner.temp }}/Toyako.ipa
+          tag_name: ${{ inputs.release_tag }}-${{ github.run_number }}
+          name: Toyako IPA ${{ github.run_number }}
+          generate_release_notes: true
+          files: ${{ runner.temp }}/Toyako.ipa
