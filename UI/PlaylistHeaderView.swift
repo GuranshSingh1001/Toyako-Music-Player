@@ -158,7 +158,7 @@ struct PlaylistHeaderView: View {
                         let distance = CGFloat(sequenceIndex - centerIndex) - CGFloat(localPhase)
                         let x = distance * stride
                         let normalizedDistance = min(
-                            abs(distance) / CGFloat(visibleRadius + 0.25),
+                            abs(distance) / (CGFloat(visibleRadius) + 0.25),
                             1
                         )
 
