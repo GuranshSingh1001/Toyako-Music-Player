@@ -108,6 +108,7 @@ struct AlbumDetailView: View {
                         AlbumDetailHero(
                             album: album,
                             totalDuration: totalDuration,
+                            isCompact: proxy.size.width < 700,
                             availableWidth: proxy.size.width,
                             artworkVisible: artworkVisible,
                             playAction: playAlbum,
@@ -119,6 +120,10 @@ struct AlbumDetailView: View {
                             audioManager: audioManager
                         )
                     }
+                    // A vertical ScrollView may give its content only an intrinsic
+                    // width. Pin the content to the viewport so the compact hero is
+                    // genuinely centered inside narrow Stage Manager windows.
+                    .frame(width: proxy.size.width, alignment: .center)
                     .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
                 }
                 .scrollIndicators(.hidden)
@@ -179,18 +184,20 @@ struct AlbumDetailView: View {
 private struct AlbumDetailHero: View {
     let album: AlbumGroup
     let totalDuration: TimeInterval
+    let isCompact: Bool
     let availableWidth: CGFloat
     let artworkVisible: Bool
     let playAction: () -> Void
     let shuffleAction: () -> Void
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            wideHero
-            compactHero
+        Group {
+            if isCompact {
+                compactHero
+            } else {
+                wideHero
+            }
         }
-        .frame(maxWidth: 1100)
-        .frame(maxWidth: .infinity)
         .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
         .padding(.top, 22)
         .padding(.bottom, 28)
@@ -207,10 +214,10 @@ private struct AlbumDetailHero: View {
     }
 
     private var information: some View {
-        VStack(alignment: .center, spacing: 8) {
+        VStack(alignment: isCompact ? .center : .leading, spacing: 8) {
             Text(album.name)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .multilineTextAlignment(.center)
+                .font(.system(size: isCompact ? 30 : 34, weight: .bold, design: .rounded))
+                .multilineTextAlignment(isCompact ? .center : .leading)
                 .lineLimit(3)
 
             Text(album.artist)
@@ -259,23 +266,19 @@ private struct AlbumDetailHero: View {
     }
 
     private var compactHero: some View {
-        let horizontalInset = ToyakoDesign.Metrics.screenHorizontal * 2
-        let contentWidth = max(0, availableWidth - horizontalInset)
-        let artworkSize = min(320, max(220, contentWidth))
-        let textWidth = min(560, contentWidth)
-        let actionWidth = min(430, contentWidth)
+        let contentWidth = max(0, availableWidth - (ToyakoDesign.Metrics.screenHorizontal * 2))
+        let artworkSize = min(320, contentWidth)
 
         return VStack(spacing: 20) {
             artwork
                 .frame(width: artworkSize, height: artworkSize)
 
             information
-                .frame(maxWidth: textWidth)
+                .frame(maxWidth: min(520, contentWidth))
 
             actions
-                .frame(maxWidth: actionWidth)
+                .frame(maxWidth: min(430, contentWidth))
         }
-        .frame(maxWidth: contentWidth)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 

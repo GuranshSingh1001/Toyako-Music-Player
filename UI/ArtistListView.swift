@@ -8,6 +8,7 @@ struct ArtistListView: View {
 
     @State private var selectedArtistID: String?
     @State private var artistSearch = ""
+    @State private var selectedArtistArtwork: UIImage?
 
 
     private var visibleArtists: [ArtistGroup] {
@@ -56,33 +57,52 @@ struct ArtistListView: View {
     // MARK: - iPad
 
     private func iPadArtistLayout(availableWidth: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            artistSidebar
-                .frame(width: artistSidebarWidth(for: availableWidth))
-                .zIndex(2)
+        ZStack {
+            ArtistReflectionBackground(artwork: selectedArtistArtwork)
+                .zIndex(0)
 
-            Divider()
-                .zIndex(3)
+            HStack(spacing: 0) {
+                artistSidebar
+                    .frame(width: artistSidebarWidth(for: availableWidth))
+                    .zIndex(2)
 
-            if let artist = selectedArtist {
-                ArtistDetailView(
-                    artist: artist,
-                    library: library
-                )
-                .id(artist.id)
-                .transition(.opacity)
-                .zIndex(1)
-            } else {
-                ContentUnavailableView(
-                    "No Artists",
-                    systemImage: "music.mic",
-                    description: Text("Import music to start building your artist library.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .zIndex(1)
+                Divider()
+                    .zIndex(3)
+
+                if let artist = selectedArtist {
+                    ArtistDetailView(
+                        artist: artist,
+                        library: library,
+                        usesSharedBackground: true
+                    )
+                    .id(artist.id)
+                    .transition(.opacity)
+                    .zIndex(1)
+                } else {
+                    ContentUnavailableView(
+                        "No Artists",
+                        systemImage: "music.mic",
+                        description: Text("Import music to start building your artist library.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .zIndex(1)
+                }
             }
         }
         .background(ToyakoDesign.Color.canvas)
+        .task(id: selectedArtist?.id) {
+            guard let artist = selectedArtist else {
+                selectedArtistArtwork = nil
+                return
+            }
+
+            let data = await ArtistArtworkService.shared.imageData(
+                for: artist.name,
+                allowNetwork: true
+            )
+            guard !Task.isCancelled else { return }
+            selectedArtistArtwork = data.flatMap(UIImage.init(data:))
+        }
     }
 
     private func artistSidebarWidth(for totalWidth: CGFloat) -> CGFloat {
@@ -139,7 +159,11 @@ struct ArtistListView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .background(ToyakoDesign.Color.canvas)
+        .background(.thinMaterial)
+        .overlay {
+            Color.black.opacity(0.06)
+                .allowsHitTesting(false)
+        }
     }
 
     private func artistRow(_ artist: ArtistGroup) -> some View {
@@ -282,15 +306,81 @@ struct ArtistListView: View {
 
 // MARK: - Artist Detail
 
+// MARK: - Shared Artist Reflection Background
+
+private struct ArtistReflectionBackground: View {
+    let artwork: UIImage?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                if let artwork {
+                    Image(uiImage: artwork)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: proxy.size.width * 1.28,
+                            height: proxy.size.height * 1.28
+                        )
+                        .position(
+                            x: proxy.size.width * 0.50,
+                            y: proxy.size.height * 0.50
+                        )
+                        .blur(radius: 68)
+                        .saturation(1.15)
+                        .brightness(-0.20)
+                        .opacity(0.34)
+
+                    // Wider, lower-frequency colour bleed keeps the artist list and
+                    // the detail pane on the same reflected artwork field.
+                    Image(uiImage: artwork)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: proxy.size.width * 1.65,
+                            height: proxy.size.height * 1.05
+                        )
+                        .position(
+                            x: proxy.size.width * 0.48,
+                            y: proxy.size.height * 0.54
+                        )
+                        .blur(radius: 112)
+                        .saturation(1.10)
+                        .brightness(-0.30)
+                        .opacity(0.18)
+                }
+
+                // One uniform translucent dark veil. No top/bottom gradient and no
+                // opaque panel, so the reflected artwork continues through the page.
+                Color.black.opacity(0.43)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
 private struct ArtistDetailView: View {
     let artist: ArtistGroup
     let library: LocalLibrary
+    let usesSharedBackground: Bool
 
     @EnvironmentObject private var audioManager: AudioEngineManager
     @State private var artwork: UIImage?
     @State private var showAllTracks = false
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
 
+    init(
+        artist: ArtistGroup,
+        library: LocalLibrary,
+        usesSharedBackground: Bool = false
+    ) {
+        self.artist = artist
+        self.library = library
+        self.usesSharedBackground = usesSharedBackground
+    }
 
     private var albums: [ArtistAlbum] {
         var grouped: [String: [LocalTrack]] = [:]
@@ -344,61 +434,10 @@ private struct ArtistDetailView: View {
             }
             .tint(ToyakoDesign.Color.accent)
             .background {
-                // Full-page artwork reflection. Do not introduce an opaque canvas
-                // layer here: the artwork-derived tone should continue seamlessly
-                // from the hero through Popular Tracks and Albums.
-                GeometryReader { backgroundProxy in
-                    ZStack {
-                        if let artwork {
-                            Image(uiImage: artwork)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(
-                                    width: backgroundProxy.size.width * 1.35,
-                                    height: backgroundProxy.size.height * 1.35
-                                )
-                                .position(
-                                    x: backgroundProxy.size.width * 0.52,
-                                    y: backgroundProxy.size.height * 0.34
-                                )
-                                .blur(radius: 78)
-                                .saturation(1.12)
-                                .brightness(-0.28)
-                                .opacity(0.28)
-
-                            // A second, softer reflection layer restores the
-                            // side-bleed appearance without creating a hard band.
-                            Image(uiImage: artwork)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(
-                                    width: backgroundProxy.size.width * 1.55,
-                                    height: backgroundProxy.size.height * 0.92
-                                )
-                                .position(
-                                    x: backgroundProxy.size.width * 0.50,
-                                    y: backgroundProxy.size.height * 0.54
-                                )
-                                .blur(radius: 105)
-                                .saturation(1.08)
-                                .brightness(-0.34)
-                                .opacity(0.16)
-                        }
-
-                        // Only translucent shading is used. There is no opaque
-                        // rectangle separating the hero from the content below.
-                        LinearGradient(
-                            colors: [
-                                Color.black.opacity(0.18),
-                                Color.black.opacity(0.08),
-                                Color.black.opacity(0.18)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    }
-                    .frame(width: backgroundProxy.size.width, height: backgroundProxy.size.height)
-                    .clipped()
+                if usesSharedBackground {
+                    Color.clear
+                } else {
+                    ArtistReflectionBackground(artwork: artwork)
                 }
             }
         }
