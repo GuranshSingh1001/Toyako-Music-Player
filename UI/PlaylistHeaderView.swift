@@ -9,7 +9,7 @@ struct PlaylistHeaderView: View {
     @EnvironmentObject private var audioManager: AudioEngineManager
 
     private let coverSpacing: CGFloat = 12
-    private let marqueeSpeed: CGFloat = 22 // points per second — independent of track count
+    private let marqueeSpeed: CGFloat = 26
 
     var body: some View {
         GeometryReader { proxy in
@@ -23,14 +23,10 @@ struct PlaylistHeaderView: View {
                     availableWidth: proxy.size.width,
                     coverSize: coverSize
                 )
-                .frame(height: coverSize * 1.42)
+                .frame(height: coverSize * 1.48)
                 .padding(.bottom, narrow ? 16 : 18)
 
                 if narrow {
-                    // Stage Manager / narrow windows:
-                    // keep the complete button labels and put the controls
-                    // underneath the playlist information instead of squeezing
-                    // them into a narrow horizontal column.
                     VStack(alignment: .leading, spacing: 16) {
                         titleBlock(compact: true)
 
@@ -38,8 +34,6 @@ struct PlaylistHeaderView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } else {
-                    // Wide windows: keep the controls close to the playlist
-                    // title instead of pushing them to the far edge.
                     HStack(alignment: .center, spacing: 24) {
                         titleBlock(compact: false)
                             .frame(maxWidth: 480, alignment: .leading)
@@ -86,46 +80,139 @@ struct PlaylistHeaderView: View {
         }
     }
 
+    // MARK: - Kinetic cover marquee
+
     private func coverMarquee(
         availableWidth: CGFloat,
         coverSize: CGFloat
     ) -> some View {
-        let count = max(tracks.count, 1)
-        let singleSequenceWidth =
-            CGFloat(count) * coverSize +
-            CGFloat(max(count - 1, 0)) * coverSpacing
-        let sequenceWidth = singleSequenceWidth + coverSpacing
+        let count = tracks.count
+        let stride = coverSize + coverSpacing
+        let sequenceWidth = max(stride * CGFloat(max(count, 1)), stride)
+        let viewportHeight = coverSize * 1.48
 
         return TimelineView(.animation) { context in
-            let elapsed = context.date.timeIntervalSinceReferenceDate
-            let cycleDuration = max(
-                sequenceWidth / marqueeSpeed,
-                0.001
+            let time = context.date.timeIntervalSinceReferenceDate
+            let cycleDuration = max(sequenceWidth / marqueeSpeed, 0.001)
+            let phase = CGFloat(
+                time.truncatingRemainder(dividingBy: TimeInterval(cycleDuration))
             )
-            let cycleProgress =
-                elapsed.truncatingRemainder(
-                    dividingBy: TimeInterval(cycleDuration)
-                ) / TimeInterval(cycleDuration)
-            let distance = CGFloat(cycleProgress) * sequenceWidth
 
-            HStack(spacing: coverSpacing) {
-                coverSequence(
-                    size: coverSize,
-                    availableWidth: availableWidth
-                )
-                coverSequence(
-                    size: coverSize,
-                    availableWidth: availableWidth
-                )
+            // Repeat on the exact distance of one artwork sequence. Because the
+            // phase and the visual seam share the same period, the loop never
+            // jumps when the TimelineView clock wraps around.
+            let travel = phase * marqueeSpeed
+
+            ZStack {
+                // Soft atmospheric glow behind the center artwork.
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                .white.opacity(0.16),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 4,
+                            endRadius: coverSize * 1.35
+                        )
+                    )
+                    .frame(
+                        width: coverSize * 2.7,
+                        height: coverSize * 1.35
+                    )
+                    .blur(radius: 16)
+                    .opacity(count == 0 ? 0 : 1)
+
+                if count > 0 {
+                    // Three copies give the ribbon enough runway on both sides
+                    // of the viewport. The exact same phase drives every copy,
+                    // making the loop visually seamless.
+                    ForEach(0..<(count * 3), id: \.self) { itemIndex in
+                        let trackIndex = itemIndex % count
+                        let copyIndex = itemIndex / count
+                        let baseX =
+                            CGFloat(trackIndex) * stride +
+                            CGFloat(copyIndex - 1) * sequenceWidth
+
+                        let rawX =
+                            baseX -
+                            travel +
+                            availableWidth / 2 -
+                            sequenceWidth / 2
+
+                        let x = wrappedCenterX(
+                            rawX,
+                            sequenceWidth: sequenceWidth,
+                            viewportWidth: availableWidth
+                        )
+
+                        let normalized =
+                            min(
+                                abs(x - availableWidth / 2) / max(availableWidth / 2, 1),
+                                1
+                            )
+
+                        let focus = pow(1 - normalized, 2.2)
+
+                        // Center cover = larger, sharper and slightly lifted.
+                        // Edge covers = smaller, tilted and more transparent.
+                        let scale = 0.78 + (focus * 0.28)
+                        let rotation = (x - availableWidth / 2)
+                            / max(availableWidth / 2, 1)
+                            * -13
+                        let lift = -focus * coverSize * 0.12
+                        let opacity = 0.55 + (focus * 0.45)
+                        let blur = (1 - focus) * 1.5
+
+                        LazyArtwork(
+                            url: library.artworkURL(for: tracks[trackIndex]),
+                            size: coverSize,
+                            cornerRadius: min(18, coverSize * 0.13)
+                        )
+                        .frame(width: coverSize, height: coverSize)
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: min(18, coverSize * 0.13),
+                                style: .continuous
+                            )
+                        )
+                        .scaleEffect(scale)
+                        .rotation3DEffect(
+                            .degrees(rotation),
+                            axis: (x: 0, y: 1, z: 0),
+                            perspective: 0.72
+                        )
+                        .offset(x: x, y: lift)
+                        .opacity(opacity)
+                        .blur(radius: blur)
+                        .shadow(
+                            color: .black.opacity(0.16 + focus * 0.16),
+                            radius: 8 + focus * 10,
+                            y: 5 + focus * 4
+                        )
+                        .zIndex(Double(focus))
+                        .accessibilityHidden(true)
+                    }
+                } else {
+                    RoundedRectangle(
+                        cornerRadius: min(18, coverSize * 0.13),
+                        style: .continuous
+                    )
+                    .fill(.quaternary)
+                    .frame(width: coverSize, height: coverSize)
+                    .overlay {
+                        Image(systemName: "music.note.list")
+                            .font(.system(size: coverSize * 0.24, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
-            .offset(x: -distance)
             .frame(
                 width: availableWidth,
-                height: coverSize * 1.42,
-                alignment: .center
+                height: viewportHeight
             )
             .clipped()
-            .coordinateSpace(name: "playlistMarquee")
             .mask {
                 LinearGradient(
                     stops: [
@@ -138,75 +225,41 @@ struct PlaylistHeaderView: View {
                     endPoint: .trailing
                 )
             }
-            .frame(height: coverSize * 1.42)
+            .overlay(alignment: .center) {
+                // A tiny focus highlight makes the center position feel intentional
+                // without adding another moving element.
+                RoundedRectangle(
+                    cornerRadius: min(20, coverSize * 0.14),
+                    style: .continuous
+                )
+                .stroke(.white.opacity(0.10), lineWidth: 1)
+                .frame(
+                    width: coverSize * 1.06,
+                    height: coverSize * 1.06
+                )
+                .allowsHitTesting(false)
+            }
         }
     }
 
-    private func coverSequence(
-        size: CGFloat,
-        availableWidth: CGFloat
-    ) -> some View {
-        HStack(spacing: coverSpacing) {
-            ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
-                GeometryReader { geo in
-                    let frame = geo.frame(in: .named("playlistMarquee"))
-                    let centerX = availableWidth / 2
-                    let distanceFromCenter = frame.midX - centerX
-                    let normalizedDistance = min(
-                        abs(distanceFromCenter) / max(centerX, 1),
-                        1
-                    )
+    private func wrappedCenterX(
+        _ x: CGFloat,
+        sequenceWidth: CGFloat,
+        viewportWidth: CGFloat
+    ) -> CGFloat {
+        let halfViewport = viewportWidth / 2
+        let minX = -halfViewport - sequenceWidth
+        let maxX = halfViewport + sequenceWidth
 
-                    // A subtle Cover Flow treatment: the center artwork is
-                    // slightly larger/brighter, while the outer covers turn
-                    // away and recede. It stays entirely driven by position,
-                    // so it remains smooth at the fixed marquee speed.
-                    let centerEmphasis = 1.0 - normalizedDistance
-
-                    // Covers stay at their normal size. Only the cover nearest
-                    // the viewport center grows, with a soft falloff so there
-                    // is no visible size "snap" as it passes through center.
-                    let centerBoost = pow(max(centerEmphasis, 0), 7)
-                    let scale = 1.0 + (centerBoost * 0.32)
-
-                    // Avoid per-frame 3D rotation/vertical oscillation. Those
-                    // transforms were producing the one-frame vibration seen
-                    // while the marquee crossed the center/loop boundary.
-                    let rotation = 0.0
-                    let lift = 0.0
-
-                    LazyArtwork(
-                        url: library.artworkURL(for: track),
-                        size: size,
-                        cornerRadius: min(16, size * 0.12)
-                    )
-                    .frame(width: size, height: size)
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: min(16, size * 0.12),
-                            style: .continuous
-                        )
-                    )
-                    .scaleEffect(scale)
-                    .rotation3DEffect(
-                        .degrees(rotation),
-                        axis: (x: 0, y: 1, z: 0),
-                        perspective: 0.65
-                    )
-                    .opacity(0.94 + (centerBoost * 0.06))
-                    .zIndex(centerBoost)
-                    .offset(y: lift)
-                    .shadow(
-                        color: .black.opacity(
-                            0.10 + (centerBoost * 0.16)
-                        ),
-                        radius: 8 + (centerBoost * 7),
-                        y: 4
-                    )
-                }
-                .frame(width: size, height: size * 1.28)
-            }
+        if x < minX {
+            return x + sequenceWidth
         }
+
+        if x > maxX {
+            return x - sequenceWidth
+        }
+
+        return x
     }
 
     private var actionBar: some View {
