@@ -66,9 +66,6 @@ struct ArtistListView: View {
                     .frame(width: artistSidebarWidth(for: availableWidth))
                     .zIndex(2)
 
-                Divider()
-                    .zIndex(3)
-
                 if let artist = selectedArtist {
                     ArtistDetailView(
                         artist: artist,
