@@ -195,6 +195,13 @@ private struct AlbumDetailHero: View {
     let playAction: () -> Void
     let shuffleAction: () -> Void
 
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey)
+    private var libraryArtworkSize = 180.0
+
+    private var artworkSize: CGFloat {
+        CGFloat(libraryArtworkSize)
+    }
+
     var body: some View {
         Group {
             if isCompact {
