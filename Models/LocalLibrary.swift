@@ -93,6 +93,16 @@ class LocalLibrary:
         guard let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
         let music = documents.appendingPathComponent("Music", isDirectory: true)
         try? fileManager.createDirectory(at: music, withIntermediateDirectories: true)
+
+        // iOS exposes the app's Documents container to Files when file sharing is
+        // enabled, but an entirely empty Documents container can be omitted from
+        // the Files UI. Keep a tiny user-visible placeholder inside Music so the
+        // app folder and Music folder are present immediately after installation.
+        let placeholder = music.appendingPathComponent("Drop Music Here.txt")
+        if !fileManager.fileExists(atPath: placeholder.path) {
+            let text = "Put your music files in this folder."
+            try? text.write(to: placeholder, atomically: true, encoding: .utf8)
+        }
     }
 
     // MARK: - Scanning

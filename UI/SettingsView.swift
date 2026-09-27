@@ -126,15 +126,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Music Files") {
-                    LabeledContent("Music Folder", value: "Documents/Music")
-                        .textSelection(.enabled)
-
-                    Text("Toyako creates this folder automatically. In a normally installed or sideloaded build it appears in the app's Files folder. When running through LiveContainer, use LiveContainer's app data folder and place music inside the Music folder.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 Section("Remote Control") {
                     Toggle("Allow Local Network Remote", isOn: Binding(
                         get: { remoteServer.isRunning },
@@ -148,17 +139,10 @@ struct SettingsView: View {
                         LabeledContent("Web Remote", value: "http://\(address):\(remoteServer.port)")
                             .textSelection(.enabled)
 
-                        Text("Open this address on another device connected to the same Wi-Fi network. The remote uses a plain local TCP connection so it can also work when Toyako is running inside LiveContainer. Toyako remains the playback source; the remote mirrors Now Playing, artwork, queue, and lyrics.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     } else if let error = remoteServer.lastError {
                         Text("Remote server error: \(error)")
                             .font(.caption)
                             .foregroundStyle(.red)
-                    } else {
-                        Text("Turn this on to control Toyako from a phone, Mac, Windows PC, Linux computer, or Android device on the same local network.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                 }
 
