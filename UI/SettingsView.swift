@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var audioManager: AudioEngineManager
+    @EnvironmentObject private var remoteServer: RemoteServer
 
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
     @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
@@ -120,6 +121,33 @@ struct SettingsView: View {
 
                     if let artistArtworkStatus {
                         Text(artistArtworkStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Remote Control") {
+                    Toggle("Allow Local Network Remote", isOn: Binding(
+                        get: { remoteServer.isRunning },
+                        set: { enabled in
+                            if enabled { remoteServer.start() } else { remoteServer.stop() }
+                        }
+                    ))
+                    .tint(.green)
+
+                    if remoteServer.isRunning, let address = remoteServer.address, remoteServer.port > 0 {
+                        LabeledContent("Web Remote", value: "http://\(address):\(remoteServer.port)")
+                            .textSelection(.enabled)
+
+                        Text("Open this address on another device connected to the same Wi-Fi network. Toyako remains the playback source; the remote controls playback and mirrors Now Playing, artwork, queue, and lyrics.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if let error = remoteServer.lastError {
+                        Text("Remote server error: \(error)")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else {
+                        Text("Turn this on to control Toyako from a phone, Mac, Windows PC, Linux computer, or Android device on the same local network.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

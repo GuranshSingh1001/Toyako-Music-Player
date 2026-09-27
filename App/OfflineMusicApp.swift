@@ -4,6 +4,7 @@ import AVFoundation
 @main
 struct OfflineMusicApp: App {
     @StateObject private var audioManager = AudioEngineManager()
+    @StateObject private var remoteServer = RemoteServer()
 
     init() {
         ToyakoPreferences.registerDefaults()
@@ -17,6 +18,11 @@ struct OfflineMusicApp: App {
             ContentView()
                 .environmentObject(audioManager)
                 .environmentObject(audioManager.clock)
+                .environmentObject(remoteServer)
+                .onAppear {
+                    remoteServer.attach(to: audioManager)
+                    remoteServer.start()
+                }
         }
     }
 }

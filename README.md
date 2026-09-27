@@ -7,6 +7,10 @@ Built with SwiftUI and AVFoundation, Toyako is designed around a simple idea: yo
 > Your music. Your device. No internet required.
 
 ## Features
+
+### Toyako Remote
+
+Toyako includes an optional local-network web remote. When enabled, another device on the same Wi-Fi network can open the Toyako Remote web interface to control playback and mirror the current Now Playing experience. The remote can show album artwork, playback state, queue, timed lyrics, and Japanese romaji, and can send play/pause, next, previous, seek, volume, shuffle, repeat, and lyric-display setting changes back to the iPad. Music files remain on the iPad.
 - Fully offline music playback
 - Local music library stored and managed on-device
 - Import music through the iPad Files app

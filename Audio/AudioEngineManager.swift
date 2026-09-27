@@ -2015,6 +2015,30 @@ class AudioEngineManager: ObservableObject {
     }
 
 
+    // MARK: - Remote Playback Helpers
+
+    func playFromRemote() {
+        guard currentTrack != nil, !isPlaying else { return }
+        guard activateAudioSessionForPlayback() else { return }
+        player.play()
+        isPlaying = true
+        updatePlaybackState()
+        savePlaybackState(force: true)
+    }
+
+    func pauseFromRemote() {
+        guard isPlaying else { return }
+        player.pause()
+        isPlaying = false
+        updatePlaybackState()
+        savePlaybackState(force: true)
+    }
+
+    func cycleRepeatMode(to mode: RepeatMode) {
+        repeatMode = mode
+        savePlaybackState(force: true)
+    }
+
     // MARK: - Deinitialization
 
     deinit {
