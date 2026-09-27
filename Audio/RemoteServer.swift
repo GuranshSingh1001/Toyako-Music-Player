@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Network
 import UIKit
 import Combine
@@ -151,7 +152,10 @@ final class RemoteServer: ObservableObject {
                 return
             }
             Task {
-                let artwork = track.artworkData ?? await ArtworkStore.shared.data(for: track.url)
+                var artwork = track.artworkData
+                if artwork == nil {
+                    artwork = await ArtworkStore.shared.data(for: track.url)
+                }
                 guard let artwork else {
                     self.sendError(connection, status: 404, message: "No artwork")
                     return

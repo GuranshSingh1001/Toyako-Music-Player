@@ -28,11 +28,14 @@ targets:
       INFOPLIST_FILE: App/Info.plist
 
       PRODUCT_BUNDLE_IDENTIFIER: com.local.Toyako
+      EXECUTABLE_NAME: "$(PRODUCT_NAME)"
 
       MARKETING_VERSION: "1.4"
       CURRENT_PROJECT_VERSION: "1"
 
       INFOPLIST_KEY_CFBundleDisplayName: "Toyako"
+      INFOPLIST_KEY_UIFileSharingEnabled: "YES"
+      INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: "YES"
 
       INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
 
