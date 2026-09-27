@@ -56,6 +56,15 @@ class LocalLibrary:
             .appendingPathComponent("tracks_index_manifest.json")
     }
 
+    /// User-visible music folder inside the app's Documents container.
+    /// Creating this folder on launch makes it appear in Files for installed
+    /// or sideloaded builds and gives LiveContainer a stable drop location.
+    private var musicDirectoryURL: URL {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Music", isDirectory: true)
+    }
+
     private var artworkCacheDirectoryURL: URL {
         FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -63,6 +72,7 @@ class LocalLibrary:
     }
 
     init() {
+        Self.ensureUserFoldersExist()
         loadUnifiedCache()
 
         // Never make the first rendered library screen wait for a filesystem scan.
@@ -75,6 +85,14 @@ class LocalLibrary:
 
     deinit {
         scanTask?.cancel()
+    }
+
+    nonisolated
+    private static func ensureUserFoldersExist() {
+        let fileManager = FileManager.default
+        guard let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let music = documents.appendingPathComponent("Music", isDirectory: true)
+        try? fileManager.createDirectory(at: music, withIntermediateDirectories: true)
     }
 
     // MARK: - Scanning
@@ -941,6 +959,9 @@ class LocalLibrary:
             return 0
         }
 
+        let musicDirectory = documents.appendingPathComponent("Music", isDirectory: true)
+        try? fileManager.createDirectory(at: musicDirectory, withIntermediateDirectories: true)
+
         var importedCount =
             0
 
@@ -966,7 +987,7 @@ class LocalLibrary:
                         for:
                             sourceURL,
                         in:
-                            documents,
+                            musicDirectory,
                         fileManager:
                             fileManager
                     )

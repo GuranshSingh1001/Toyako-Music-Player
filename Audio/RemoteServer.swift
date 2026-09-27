@@ -29,7 +29,12 @@ final class RemoteServer: ObservableObject {
 
         do {
             let listener = try NWListener(using: .tcp, on: .any)
-            listener.service = NWListener.Service(name: "Toyako", type: "_toyako._tcp")
+            // Bonjour advertising is intentionally optional. LiveContainer
+            // hosts guest apps and does not apply guest entitlements exactly
+            // like a normally installed app, so requiring service registration
+            // can prevent the TCP server from starting there. The web remote
+            // uses the LAN address shown in Settings, which works without
+            // Bonjour.
             listener.stateUpdateHandler = { [weak self] state in
                 DispatchQueue.main.async {
                     switch state {
