@@ -7,8 +7,9 @@ struct OfflineMusicApp: App {
 
     init() {
         ToyakoPreferences.registerDefaults()
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [])
+        try? session.setActive(true)
     }
 
     var body: some Scene {

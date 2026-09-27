@@ -212,9 +212,9 @@ enum ToyakoArtworkSize {
     static let playlistCard: CGFloat = libraryArtwork
 }
 
-// MARK: - Leading adaptive library grid
+// MARK: - Centered adaptive library grid
 
-/// An adaptive library grid whose rows stay pinned to the leading edge.
+/// An adaptive library grid whose rows are centered.
 /// Card widths remain consistent across rows while the column count adapts.
 struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
     let items: [Item]
@@ -258,13 +258,8 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
                             .frame(width: itemWidth)
                     }
                 }
-                // Keep full rows leading-aligned, but center incomplete rows
-                // (three cards or fewer) so narrow windows do not leave a
-                // single card stranded against the left edge.
-                .frame(
-                    maxWidth: .infinity,
-                    alignment: row.count <= 3 ? .center : .leading
-                )
+                // Center every row, regardless of how many cards it contains.
+                .frame(maxWidth: .infinity, alignment: .center)
             }
         }
     }

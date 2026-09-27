@@ -53,6 +53,7 @@ class AudioEngineManager: ObservableObject {
 
     private var interruptionObserverToken: NSObjectProtocol?
     private var remoteCommandTargets: [(command: MPRemoteCommand, token: Any)] = []
+    private var wasPlayingBeforeInterruption = false
 
     private var lastPersistedTime:
         TimeInterval = -100
@@ -1214,6 +1215,10 @@ class AudioEngineManager: ObservableObject {
 
     func togglePlayPause() {
 
+        guard currentTrack != nil else {
+            return
+        }
+
         if isPlaying {
 
             player.pause()
@@ -1222,6 +1227,14 @@ class AudioEngineManager: ObservableObject {
                 false
 
         } else {
+
+            // A Smart Folio can cause the system to deactivate the audio
+            // session while the iPad is covered. Re-activate it immediately
+            // before accepting a remote play/toggle command so a Bluetooth
+            // headset can wake playback without opening the cover.
+            guard activateAudioSessionForPlayback() else {
+                return
+            }
 
             player.play()
 
@@ -1692,7 +1705,11 @@ class AudioEngineManager: ObservableObject {
 
         let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
             guard let self, !self.isPlaying else { return .commandFailed }
-            self.togglePlayPause()
+            guard self.activateAudioSessionForPlayback() else { return .commandFailed }
+            self.player.play()
+            self.isPlaying = true
+            self.updatePlaybackState()
+            self.savePlaybackState(force: true)
             return .success
         }
         remoteCommandTargets.append((commandCenter.playCommand, playTarget))
@@ -1700,11 +1717,27 @@ class AudioEngineManager: ObservableObject {
 
         let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
             guard let self, self.isPlaying else { return .commandFailed }
-            self.togglePlayPause()
+            self.player.pause()
+            self.isPlaying = false
+            self.updatePlaybackState()
+            self.savePlaybackState(force: true)
             return .success
         }
         remoteCommandTargets.append((commandCenter.pauseCommand, pauseTarget))
         commandCenter.pauseCommand.isEnabled = true
+
+        // Many Bluetooth headsets send the single toggle command rather than
+        // separate play/pause commands. Register it explicitly; otherwise the
+        // headset button can appear to stop working while the iPad is covered
+        // or locked.
+        let toggleTarget = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            guard self.currentTrack != nil else { return .commandFailed }
+            self.togglePlayPause()
+            return .success
+        }
+        remoteCommandTargets.append((commandCenter.togglePlayPauseCommand, toggleTarget))
+        commandCenter.togglePlayPauseCommand.isEnabled = true
 
         let nextTarget = commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             self?.forward()
@@ -1767,15 +1800,56 @@ class AudioEngineManager: ObservableObject {
             }
 
 
+            guard let self else { return }
+
             if type == .began {
 
-                self?.player.pause()
+                self.wasPlayingBeforeInterruption = self.isPlaying
+                self.player.pause()
 
-                self?.isPlaying =
+                self.isPlaying =
                     false
 
-                self?.updatePlaybackState()
+                self.updatePlaybackState()
+                self.savePlaybackState(force: true)
+
+            } else {
+
+                // The system may deactivate the session when the Smart Folio
+                // closes or when the app is suspended. Re-activate it when
+                // the interruption ends, but only resume if playback was
+                // actually active before the interruption. A user-initiated
+                // pause must remain paused.
+                guard self.activateAudioSessionForPlayback() else { return }
+
+                if self.wasPlayingBeforeInterruption {
+                    self.player.play()
+                    self.isPlaying = true
+                }
+
+                self.wasPlayingBeforeInterruption = false
+                self.updatePlaybackState()
+                self.savePlaybackState(force: true)
             }
+        }
+    }
+
+
+    // MARK: - Audio Session
+
+    @discardableResult
+    private func activateAudioSessionForPlayback() -> Bool {
+        let session = AVAudioSession.sharedInstance()
+
+        do {
+            // Keep the session configured for media playback. Re-setting the
+            // category is intentional: after a Smart Folio interruption or
+            // suspension the system can leave the session inactive.
+            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setActive(true)
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -1956,6 +2030,7 @@ class AudioEngineManager: ObservableObject {
         if let interruptionObserverToken {
             NotificationCenter.default.removeObserver(interruptionObserverToken)
         }
+
 
         for target in remoteCommandTargets {
             target.command.removeTarget(target.token)
