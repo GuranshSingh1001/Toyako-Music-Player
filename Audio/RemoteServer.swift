@@ -171,6 +171,12 @@ final class RemoteServer: ObservableObject {
             send(connection, status: 200, contentType: "text/html; charset=utf-8", body: Self.html)
         case ("GET", "/manifest.json"):
             send(connection, status: 200, contentType: "application/manifest+json; charset=utf-8", body: Self.manifest)
+        case ("GET", "/sw.js"):
+            send(connection, status: 200, contentType: "application/javascript; charset=utf-8", body: Self.serviceWorker)
+        case ("GET", "/icon-192.png"):
+            sendWebIcon(connection, resource: "WebIcon-192", status: 200)
+        case ("GET", "/icon-512.png"):
+            sendWebIcon(connection, resource: "WebIcon-512", status: 200)
         case ("GET", "/api/state"):
             sendJSON(connection, object: statePayload())
         case ("GET", "/api/artwork"):
@@ -357,6 +363,15 @@ final class RemoteServer: ObservableObject {
         return [extensionName, sampleRate, channels].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
+    private func sendWebIcon(_ connection: NWConnection, resource: String, status: Int) {
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "png"),
+              let data = try? Data(contentsOf: url) else {
+            sendError(connection, status: 404, message: "Icon not found")
+            return
+        }
+        send(connection, status: status, contentType: "image/png", bodyData: data)
+    }
+
     private func sendJSON(_ connection: NWConnection, object: Any) {
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: []) else {
             sendError(connection, status: 500, message: "Could not encode response")
@@ -429,6 +444,7 @@ final class RemoteServer: ObservableObject {
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Toyako">
 <link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <title>Toyako</title>
 <style>
 :root{color-scheme:dark;--white:#fff;--muted:rgba(255,255,255,.62);--faint:rgba(255,255,255,.28);--line:rgba(255,255,255,.22)}
@@ -438,41 +454,41 @@ body{position:relative;min-height:100vh;min-height:100svh;min-height:100dvh}
 #backdrop{position:fixed;inset:-8%;width:116%;height:116%;object-fit:cover;filter:blur(55px) saturate(.72);opacity:.48;transform:scale(1.05);display:none;pointer-events:none}
 #backdrop.visible{display:block}
 .backdrop-shade{position:fixed;inset:0;background:linear-gradient(90deg,rgba(5,7,10,.55),rgba(5,7,10,.36) 48%,rgba(5,7,10,.48)),rgba(6,8,11,.34);pointer-events:none}
-.shell{position:relative;width:100%;height:100vh;height:100svh;height:100dvh;min-height:100svh;padding:clamp(14px,2.5vh,28px) clamp(20px,4vw,48px) clamp(16px,3vh,34px);display:flex;flex-direction:column;overflow:hidden}
-.topbar{height:clamp(34px,5vh,42px);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
+.shell{position:relative;width:100%;height:100vh;height:100svh;height:100dvh;min-height:0;padding:clamp(12px,2.2vh,26px) clamp(20px,4vw,48px) clamp(12px,2.2vh,26px);display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:clamp(32px,4.5vh,42px);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
 .icon-btn{border:0;background:transparent;color:white;padding:10px;margin:-10px;cursor:pointer;display:grid;place-items:center;opacity:.94;flex:0 0 auto}
-.icon-btn svg{width:clamp(22px,2.2vw,25px);height:clamp(22px,2.2vw,25px);fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(360px,46vw) minmax(0,1fr);gap:clamp(24px,5vw,72px);align-items:center;padding:clamp(4px,1vh,12px) 0;overflow:hidden}
-.left{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;max-width:min(42vw,760px);width:100%;margin:auto}
-.art-wrap{width:min(100%,42vw,62vh,760px);aspect-ratio:1/1;display:grid;place-items:center}
+.icon-btn svg{width:clamp(22px,2.2vw,25px);height:clamp(22px,2.2vw,25px);fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.install-btn{display:none}.install-btn.visible{display:grid}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,0.9fr) minmax(0,1.1fr);gap:clamp(28px,5vw,72px);align-items:stretch;padding:clamp(2px,1vh,10px) 0;overflow:hidden}
+.left{min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;max-width:760px;width:100%;margin:auto}
+.art-wrap{width:min(100%,42vw,60dvh,calc(100dvh - 430px),760px);aspect-ratio:1/1;flex:0 1 auto;display:grid;place-items:center;margin:0 auto}
 .art{width:100%;height:100%;object-fit:cover;border-radius:18px;display:block;box-shadow:0 26px 60px rgba(0,0,0,.26);transition:transform .42s cubic-bezier(.22,.8,.2,1),opacity .25s}
 .art.paused{transform:scale(.70)}
 .fallback{width:100%;height:100%;border-radius:18px;background:rgba(255,255,255,.055);display:grid;place-items:center;color:rgba(255,255,255,.15);font-size:72px}
-.info{margin-top:24px;width:100%;text-align:left}
-.title{font-size:28px;font-weight:750;letter-spacing:-.035em;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.artist{font-size:18px;font-weight:500;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.audio-info{font-size:14px;color:rgba(255,255,255,.47);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scrub{width:100%;margin-top:28px}
+.info{margin-top:clamp(12px,2.2vh,24px);width:100%;text-align:left}
+.title{font-size:clamp(22px,2.2vw,28px);font-weight:750;letter-spacing:-.035em;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artist{font-size:clamp(15px,1.45vw,18px);font-weight:500;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.audio-info{font-size:clamp(12px,1.15vw,14px);color:rgba(255,255,255,.47);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scrub{width:100%;margin-top:clamp(14px,2.2vh,28px)}
 .range{width:100%;height:5px;appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.23);border-radius:999px;outline:none;margin:0;padding:0;display:block;touch-action:none}
 .range::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:white;border:0;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .range::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:white;border:0}
-.times{display:flex;justify-content:space-between;margin-top:9px;font-size:13px;color:rgba(255,255,255,.56);font-variant-numeric:tabular-nums}
-.controls{width:100%;display:flex;align-items:center;justify-content:center;gap:clamp(18px,3.5vw,48px);margin-top:clamp(14px,2.8vh,25px)}
+.times{display:flex;justify-content:space-between;margin-top:7px;font-size:clamp(11px,1vw,13px);color:rgba(255,255,255,.56);font-variant-numeric:tabular-nums}
+.controls{width:100%;display:flex;align-items:center;justify-content:center;gap:clamp(16px,3vw,48px);margin-top:clamp(10px,2.2vh,25px)}
 .control{border:0;background:transparent;color:white;display:grid;place-items:center;padding:8px;cursor:pointer;opacity:.96;flex:0 0 auto}
 .control.dim{color:rgba(255,255,255,.35)}
-.control svg{width:clamp(23px,2.5vw,27px);height:clamp(23px,2.5vw,27px);fill:currentColor;stroke:none}
-.control.play{width:clamp(50px,5vw,58px);height:clamp(50px,5vw,58px);padding:0}
-.control.play svg{width:clamp(37px,4vw,43px);height:clamp(37px,4vw,43px)}
+.control svg{width:clamp(22px,2.4vw,27px);height:clamp(22px,2.4vw,27px);fill:currentColor;stroke:none}
+.control.play{width:clamp(46px,4.8vw,58px);height:clamp(46px,4.8vw,58px);padding:0}
+.control.play svg{width:clamp(34px,3.8vw,43px);height:clamp(34px,3.8vw,43px)}
 .control:active{transform:scale(.91)}
-.volume{width:100%;display:flex;align-items:center;gap:12px;margin-top:18px}
+.volume{width:100%;display:flex;align-items:center;gap:12px;margin-top:clamp(8px,1.8vh,18px)}
 .volume svg{width:21px;height:21px;fill:white;opacity:.9;flex:0 0 auto}
 .volume .range{height:5px}
-.bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:14px}
+.bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:10px}
 .chip{border:0;background:transparent;color:white;font-size:15px;font-weight:600;padding:8px 10px;cursor:pointer;opacity:.9}
 .chip.off{opacity:.34}
-.right{min-width:0;height:min(82vh,820px);display:flex;align-items:center;overflow:hidden}
-.lyrics{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 28px;mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
-.lyrics-inner{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:30px;padding:36vh 0;transition:none}
+.right{min-width:0;min-height:0;height:100%;display:flex;align-items:stretch;overflow:hidden}
+.lyrics{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 clamp(8px,2.2vw,28px);mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
+.lyrics-inner{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:clamp(20px,3vh,30px);padding:clamp(120px,30%,260px) 0;transition:none}
 .line{font-size:50px;font-weight:750;line-height:1.1;letter-spacing:-.025em;color:white;opacity:.27;filter:blur(1.6px);transform:scale(.985);transform-origin:left center;cursor:pointer;transition:opacity .4s,filter .4s,transform .4s}
 .line.past{opacity:.12;filter:blur(3.8px);transform:scale(.972)}
 .line.active{opacity:1;filter:none;transform:scale(1)}
@@ -487,20 +503,6 @@ input[type="range"]{accent-color:white}
 .queue-panel{position:fixed;z-index:10;right:24px;top:70px;width:min(430px,calc(100vw - 48px));max-height:72vh;overflow:auto;background:rgba(20,22,25,.88);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.11);border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.5);display:none}
 .queue-panel.open{display:block}.queue-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-weight:700}.queue-item{display:block;width:100%;padding:12px 10px;border-radius:12px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}.queue-item:hover{background:rgba(255,255,255,.07)}.queue-item:active{background:rgba(255,255,255,.12);transform:scale(.995)}.queue-item.active{background:rgba(255,255,255,.10)}.queue-item small{display:block;color:var(--muted);margin-top:3px;pointer-events:none}.queue-item div{pointer-events:none}
 .error{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);color:#ffb3b3;font-size:13px;background:rgba(30,8,8,.75);padding:8px 12px;border-radius:10px;display:none;z-index:20}
-@media (max-width:1100px) and (min-width:701px){
-  .shell{padding:18px 28px 22px}
-  .main{grid-template-columns:minmax(300px,42vw) minmax(0,1fr);gap:clamp(20px,4vw,48px)}
-  .left{max-width:520px}
-  .art-wrap{width:min(100%,500px,54vh,42vw)}
-  .info{margin-top:18px}
-  .title{font-size:clamp(22px,2.4vw,28px)}
-  .artist{font-size:clamp(16px,1.7vw,18px)}
-  .scrub{margin-top:18px}
-  .right{height:min(78vh,680px)}
-  .lyrics{padding:0 clamp(8px,2vw,28px)}
-  .line{font-size:clamp(30px,4vw,46px)}
-  .roman{font-size:clamp(15px,1.8vw,21px)}
-}
 @media(max-width:700px){
   .shell{padding:12px 18px max(16px,env(safe-area-inset-bottom))}
   .main{display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;position:relative;overflow:hidden;gap:0;padding:8px 0 0}
@@ -525,33 +527,7 @@ input[type="range"]{accent-color:white}
   .main.lyrics-mode .lyrics-toggle-icon{transform:rotate(180deg)}
 }
 @media(min-width:701px){.portrait-lyrics-button{display:none}}
-@media (orientation:landscape) and (max-height:760px) and (min-width:701px){
-  .shell{padding:10px 24px 14px}
-  .topbar{height:30px}
-  .main{grid-template-columns:minmax(330px,46vw) minmax(0,1fr);gap:clamp(18px,4vw,48px);padding:2px 0}
-  .left{max-width:480px}
-  .art-wrap{width:min(52vh,42vw,460px)}
-  .info{margin-top:9px}
-  .title{font-size:clamp(20px,2.5vw,23px)}
-  .artist{font-size:15px;margin-top:4px}
-  .audio-info{font-size:11px;margin-top:2px}
-  .scrub{margin-top:10px}
-  .times{margin-top:6px;font-size:11px}
-  .controls{margin-top:8px;gap:clamp(16px,2.8vw,28px)}
-  .volume{margin-top:6px}
-  .right{height:min(78dvh,620px)}
-  .lyrics{padding:0 clamp(8px,2vw,24px)}
-  .lyrics-inner{gap:22px;padding:30vh 0}
-  .line{font-size:clamp(27px,4.2vw,40px)}
-  .roman{font-size:clamp(14px,1.8vw,17px)}
-}
-@media (max-height:600px) and (min-width:701px){
-  .art-wrap{width:min(45vh,36vw,360px)}
-  .info{margin-top:6px}
-  .scrub{margin-top:7px}
-  .controls{margin-top:5px}
-  .volume{margin-top:4px}
-}
+
 
 </style>
 </head>
@@ -566,6 +542,9 @@ input[type="range"]{accent-color:white}
     <div style="display:flex;align-items:center;gap:18px">
       <button class="icon-btn portrait-lyrics-button" onclick="togglePortraitLyrics()" aria-label="Show lyrics">
         <svg class="lyrics-toggle-icon" viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>
+      </button>
+      <button class="icon-btn install-btn" id="installBtn" onclick="installWebApp()" aria-label="Install Toyako">
+        <svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M5 15v4h14v-4"/></svg>
       </button>
       <button class="icon-btn" onclick="toggleQueue()" aria-label="Queue">
       <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h9"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
@@ -605,20 +584,33 @@ input[type="range"]{accent-color:white}
 <div class="queue-panel" id="queuePanel"><div class="queue-head"><span>Queue</span><button class="icon-btn" onclick="toggleQueue()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div id="queue"></div></div>
 <div class="error" id="error"></div>
 <script>
-let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',manualLyricsScroll=false,portraitLyrics=false;
+let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',lastLyricsSignature='',manualLyricsScroll=false,portraitLyrics=false,deferredInstallPrompt=null;
 const $=id=>document.getElementById(id);
 const fmt=s=>{s=Math.max(0,Math.floor(s||0));let m=Math.floor(s/60),sec=String(s%60).padStart(2,'0');return `${m}:${sec}`};
 async function api(path,options={}){let r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
 async function cmd(command,extra={}){try{await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){showError(e)}}
 function showError(e){$('error').textContent=e?.message||String(e);$('error').style.display='block';setTimeout(()=>$('error').style.display='none',3500)}
 function renderArtwork(){let wrap=$('artWrap');if(state?.track?.artworkURL){let img=wrap.querySelector('img');if(!img){img=document.createElement('img');img.className='art';wrap.replaceChildren(img)}let url=state.track.artworkURL+'?t='+encodeURIComponent(state.track.id);if(img.src!==location.origin+url)img.src=url;img.classList.toggle('paused',!state.playing);let bg=$('backdrop');bg.src=url;bg.classList.add('visible')}else{wrap.innerHTML='<div class="fallback">♪</div>';let bg=$('backdrop');bg.removeAttribute('src');bg.classList.remove('visible')}}
+function lyricsSignature(){
+  const lines=state?.lyrics||[];
+  const source=state?.lyricsSource||'';
+  return source+'|'+lines.length+'|'+lines.map(l=>String(l.time)+':'+String(l.text)).join('\n');
+}
 function renderLyrics(force=false){
   let box=$('lyrics'),lines=state?.lyrics||[];
-  if(!lines.length){box.innerHTML='<div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div>';return}
+  const signature=lyricsSignature();
+  if(!lines.length){
+    if(force||signature!==lastLyricsSignature){box.innerHTML='<div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div>';}
+    activeIndex=-1;
+    lastLyricsSignature=signature;
+    return;
+  }
   let idx=0;
   for(let i=0;i<lines.length;i++){if(lines[i].time<=localPosition)idx=i}
-  if(!force&&idx===activeIndex)return;
+  if(!force&&idx===activeIndex&&signature===lastLyricsSignature)return;
+  if(signature!==lastLyricsSignature){activeIndex=-1;manualLyricsScroll=false;}
   activeIndex=idx;
+  lastLyricsSignature=signature;
   let inner=document.createElement('div');inner.className='lyrics-inner';
   lines.forEach((l,i)=>{
     let d=document.createElement('div');d.className='line '+(i<idx?'past':i===idx?'active':'future');d.dataset.i=i;
@@ -634,7 +626,7 @@ function renderLyrics(force=false){
 }
 
 function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map((x,i)=>`<button type="button" class="queue-item ${x.id===state.track.id?'active':''}" data-index="${i}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></button>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>';document.querySelectorAll('#queue .queue-item').forEach(el=>el.addEventListener('click',async()=>{await cmd('playQueue',{index:Number(el.dataset.index)});toggleQueue();}))}
-function render(){if(!state?.available)return;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.volume??1;$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');renderArtwork();renderLyrics(lastTrackId!==state.track.id);renderQueue();lastTrackId=state.track.id}
+function render(){if(!state?.available)return;const trackChanged=lastTrackId!==state.track.id;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.volume??1;$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');if(trackChanged){activeIndex=-1;lastLyricsSignature='';manualLyricsScroll=false;}renderArtwork();renderLyrics(trackChanged);renderQueue();lastTrackId=state.track.id}
 async function refresh(){try{let next=await api('/api/state');let wasPlaying=state?.playing;state=next;let now=Date.now();if(!wasPlaying||!state.playing)localPosition=state.position||0;else{localPosition=Math.max(0,state.position||0)}lastTick=now;render();$('error').style.display='none'}catch(e){showError(e)}}
 function toggleShuffle(){cmd('shuffle',{value:!state.shuffle})}
 function cycleRepeat(){let modes=['off','all','one'];let i=modes.indexOf(state.repeat);cmd('repeat',{value:modes[(i+1)%modes.length]})}
@@ -644,6 +636,22 @@ function togglePortraitLyrics(){portraitLyrics=!portraitLyrics;manualLyricsScrol
 function updateOrientation(){if(window.innerWidth>600){portraitLyrics=false;document.querySelector('.main')?.classList.remove('lyrics-mode')}else{render()}}
 window.addEventListener('resize',updateOrientation,{passive:true});
 window.addEventListener('orientationchange',()=>setTimeout(updateOrientation,120),{passive:true});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('installBtn').classList.add('visible');});
+window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;$('installBtn').classList.remove('visible');});
+async function installWebApp(){
+  if(!deferredInstallPrompt){
+    showError(location.protocol==='http:'?'Install is available only when this remote is served from a secure browser context (HTTPS or localhost).':'Use your browser menu and choose Install Toyako if your browser provides it.');
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt=null;
+  $('installBtn').classList.remove('visible');
+}
+if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
 document.addEventListener('keydown',e=>{
   if(e.target instanceof HTMLInputElement) return;
   if(e.code==='Space'){e.preventDefault();cmd('toggle')}
@@ -671,8 +679,41 @@ function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;',
   "display": "standalone",
   "background_color": "#08090b",
   "theme_color": "#0b0d10",
-  "orientation": "any"
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    {"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
 }
+"""#
+
+    static let serviceWorker = #"""
+const CACHE = 'toyako-remote-v1';
+const APP_SHELL = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png'];
+
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  if (url.pathname.startsWith('/api/')) return;
+  event.respondWith(
+    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+      const copy = response.clone();
+      caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      return response;
+    }))
+  );
+});
 """#
 
 }
