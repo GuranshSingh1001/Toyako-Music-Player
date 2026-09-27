@@ -5,6 +5,10 @@ import UIKit
 import Combine
 import Darwin
 
+extension Notification.Name {
+    static let toyakoRemoteSystemVolume = Notification.Name("Toyako.RemoteSystemVolume")
+}
+
 /// Local-network remote control server for Toyako.
 ///
 /// The iPad remains the playback source of truth. The browser receives the
@@ -197,7 +201,17 @@ final class RemoteServer: ObservableObject {
             case "seek":
                 if let position = object["position"] as? Double { manager.seek(to: position) }
             case "volume":
-                if let value = object["value"] as? Double { manager.setVolume(Float(value)) }
+                if let value = object["value"] as? Double {
+                    // The Now Playing slider controls the iPad's actual output
+                    // volume, not AVPlayer's per-player attenuation. Forward
+                    // the request to the same MPVolumeView bridge used by the
+                    // native Now Playing screen.
+                    NotificationCenter.default.post(
+                        name: .toyakoRemoteSystemVolume,
+                        object: nil,
+                        userInfo: ["value": Float(value)]
+                    )
+                }
             case "shuffle":
                 if let value = object["value"] as? Bool, value != manager.isShuffle { manager.toggleShuffle() }
             case "repeat":
@@ -279,7 +293,7 @@ final class RemoteServer: ObservableObject {
             "playing": manager.isPlaying,
             "position": manager.currentTime,
             "duration": track?.duration ?? 0,
-            "volume": manager.volume,
+            "volume": AVAudioSession.sharedInstance().outputVolume,
             "shuffle": manager.isShuffle,
             "repeat": manager.repeatMode.rawValue,
             "track": [
@@ -387,7 +401,7 @@ final class RemoteServer: ObservableObject {
 <style>
 :root{color-scheme:dark;--white:#fff;--muted:rgba(255,255,255,.62);--faint:rgba(255,255,255,.28);--line:rgba(255,255,255,.22)}
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#08090b;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#08090b;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
 body{position:relative}
 #backdrop{position:fixed;inset:-8%;width:116%;height:116%;object-fit:cover;filter:blur(55px) saturate(.72);opacity:.48;transform:scale(1.05);display:none}
 #backdrop.visible{display:block}
@@ -425,8 +439,8 @@ body{position:relative}
 .chip{border:0;background:transparent;color:white;font-size:15px;font-weight:600;padding:8px 10px;cursor:pointer;opacity:.9}
 .chip.off{opacity:.34}
 .right{min-width:0;height:min(76vh,820px);display:flex;align-items:center;overflow:hidden}
-.lyrics{width:100%;height:100%;overflow:hidden;position:relative;padding:0 28px;mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
-.lyrics-inner{height:100%;display:flex;flex-direction:column;justify-content:center;gap:30px;transition:transform .62s cubic-bezier(.22,.72,.25,1)}
+.lyrics{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 28px;mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
+.lyrics-inner{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:30px;padding:36vh 0;transition:none}
 .line{font-size:50px;font-weight:750;line-height:1.1;letter-spacing:-.025em;color:white;opacity:.27;filter:blur(1.6px);transform:scale(.985);transform-origin:left center;cursor:pointer;transition:opacity .4s,filter .4s,transform .4s}
 .line.past{opacity:.12;filter:blur(3.8px);transform:scale(.972)}
 .line.active{opacity:1;filter:none;transform:scale(1)}
@@ -437,7 +451,10 @@ body{position:relative}
 .queue-panel.open{display:block}.queue-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-weight:700}.queue-item{padding:12px 10px;border-radius:12px}.queue-item.active{background:rgba(255,255,255,.10)}.queue-item small{display:block;color:var(--muted);margin-top:3px}
 .error{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);color:#ffb3b3;font-size:13px;background:rgba(30,8,8,.75);padding:8px 12px;border-radius:10px;display:none;z-index:20}
 @media(max-width:900px){.shell{padding:20px 28px 24px}.main{grid-template-columns:1fr;gap:12px;overflow:auto;padding-top:12px}.left{max-width:520px}.art-wrap{width:min(76vw,480px)}.right{height:48vh;min-height:300px}.lyrics{padding:0 12px}.line{font-size:38px}.roman{font-size:18px}.controls{gap:30px}}
-@media(max-width:600px){.shell{padding:14px 20px 18px}.main{display:flex;flex-direction:column;justify-content:flex-start}.left{max-width:none}.art-wrap{width:min(86vw,390px)}.info{margin-top:17px}.title{font-size:23px}.artist{font-size:16px}.audio-info{font-size:12px}.scrub{margin-top:20px}.controls{margin-top:18px;gap:24px}.volume{margin-top:12px}.right{height:42vh;min-height:250px}.line{font-size:32px}.roman{font-size:16px}.bottom-actions{display:none}}
+@media(max-width:600px){.shell{padding:14px 20px 18px}.main{display:flex;flex-direction:column;justify-content:flex-start;position:relative;overflow:hidden}.left{max-width:none;display:flex}.art-wrap{width:min(86vw,390px)}.info{margin-top:17px}.title{font-size:23px}.artist{font-size:16px}.audio-info{font-size:12px}.scrub{margin-top:20px}.controls{margin-top:18px;gap:24px}.volume{margin-top:12px}.right{height:min(54vh,430px);min-height:250px;width:100%;display:none;order:0}.line{font-size:32px}.roman{font-size:16px}.bottom-actions{display:none}.portrait-lyrics-button{display:grid}.main.lyrics-mode .art-wrap{display:none}.main.lyrics-mode .right{display:flex;position:absolute;left:0;right:0;top:0;height:min(54vh,430px);min-height:250px}.main.lyrics-mode .info{margin-top:10px}.main.lyrics-mode .left{max-width:none;padding-top:min(54vh,430px)}.main.lyrics-mode .lyrics-toggle-icon{transform:rotate(180deg)}}
+@media(min-width:601px){.portrait-lyrics-button{display:none}}
+@media (orientation:landscape) and (max-height:700px){.shell{padding:14px 28px 18px}.main{gap:4%}.left{max-width:500px}.art-wrap{width:min(38vh,390px)}.info{margin-top:12px}.title{font-size:23px}.artist{font-size:16px}.audio-info{font-size:12px}.scrub{margin-top:14px}.controls{margin-top:14px;gap:28px}.volume{margin-top:10px}.right{height:78vh}.line{font-size:38px}.roman{font-size:17px}}
+
 </style>
 </head>
 <body>
@@ -448,11 +465,16 @@ body{position:relative}
     <button class="icon-btn" onclick="window.history.back()" aria-label="Close">
       <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
     </button>
-    <button class="icon-btn" onclick="toggleQueue()" aria-label="Queue">
+    <div style="display:flex;align-items:center;gap:18px">
+      <button class="icon-btn portrait-lyrics-button" onclick="togglePortraitLyrics()" aria-label="Show lyrics">
+        <svg class="lyrics-toggle-icon" viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>
+      </button>
+      <button class="icon-btn" onclick="toggleQueue()" aria-label="Queue">
       <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h9"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-    </button>
+      </button>
+    </div>
   </div>
-  <div class="main">
+  <div class="main" id="main">
     <section class="left">
       <div class="art-wrap" id="artWrap"><div class="fallback">♪</div></div>
       <div class="info">
@@ -485,21 +507,45 @@ body{position:relative}
 <div class="queue-panel" id="queuePanel"><div class="queue-head"><span>Queue</span><button class="icon-btn" onclick="toggleQueue()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div id="queue"></div></div>
 <div class="error" id="error"></div>
 <script>
-let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='';
+let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',manualLyricsScroll=false,portraitLyrics=false;
 const $=id=>document.getElementById(id);
 const fmt=s=>{s=Math.max(0,Math.floor(s||0));let m=Math.floor(s/60),sec=String(s%60).padStart(2,'0');return `${m}:${sec}`};
 async function api(path,options={}){let r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
 async function cmd(command,extra={}){try{await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){showError(e)}}
 function showError(e){$('error').textContent=e?.message||String(e);$('error').style.display='block';setTimeout(()=>$('error').style.display='none',3500)}
 function renderArtwork(){let wrap=$('artWrap');if(state?.track?.artworkURL){let img=wrap.querySelector('img');if(!img){img=document.createElement('img');img.className='art';wrap.replaceChildren(img)}let url=state.track.artworkURL+'?t='+encodeURIComponent(state.track.id);if(img.src!==location.origin+url)img.src=url;img.classList.toggle('paused',!state.playing);let bg=$('backdrop');bg.src=url;bg.classList.add('visible')}else{wrap.innerHTML='<div class="fallback">♪</div>';let bg=$('backdrop');bg.removeAttribute('src');bg.classList.remove('visible')}}
-function renderLyrics(force=false){let box=$('lyrics'),lines=state?.lyrics||[];if(!lines.length){box.innerHTML='<div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div>';return}let idx=0;for(let i=0;i<lines.length;i++){if(lines[i].time<=localPosition)idx=i}if(!force&&idx===activeIndex)return;activeIndex=idx;let inner=document.createElement('div');inner.className='lyrics-inner';lines.forEach((l,i)=>{let d=document.createElement('div');d.className='line '+(i<idx?'past':i===idx?'active':'future');d.dataset.i=i;d.innerHTML=escapeHTML(l.text)+(state.settings['Toyako.Lyrics.ShowRomanization']&&l.romanized?`<div class="roman">${escapeHTML(l.romanized)}</div>`:'');d.onclick=()=>cmd('seek',{position:l.time});inner.appendChild(d)});box.replaceChildren(inner);requestAnimationFrame(()=>{let active=inner.querySelector('.active');if(active){let y=active.offsetTop+active.offsetHeight/2-box.clientHeight/2;inner.style.transform=`translateY(${-Math.max(0,y)}px)`}})}
+function renderLyrics(force=false){
+  let box=$('lyrics'),lines=state?.lyrics||[];
+  if(!lines.length){box.innerHTML='<div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div>';return}
+  let idx=0;
+  for(let i=0;i<lines.length;i++){if(lines[i].time<=localPosition)idx=i}
+  if(!force&&idx===activeIndex)return;
+  activeIndex=idx;
+  let inner=document.createElement('div');inner.className='lyrics-inner';
+  lines.forEach((l,i)=>{
+    let d=document.createElement('div');d.className='line '+(i<idx?'past':i===idx?'active':'future');d.dataset.i=i;
+    d.innerHTML=escapeHTML(l.text)+(state.settings['Toyako.Lyrics.ShowRomanization']&&l.romanized?`<div class="roman">${escapeHTML(l.romanized)}</div>`:'');
+    d.onclick=()=>cmd('seek',{position:l.time});
+    inner.appendChild(d);
+  });
+  box.replaceChildren(inner);
+  requestAnimationFrame(()=>{
+    let active=inner.querySelector('.active');
+    if(active && !manualLyricsScroll){active.scrollIntoView({block:'center',behavior:force?'auto':'smooth'});}
+  });
+}
+
 function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map(x=>`<div class="queue-item ${x.id===state.track.id?'active':''}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></div>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>'}
-function render(){if(!state?.available)return;$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.volume??1;$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');renderArtwork();renderLyrics(lastTrackId!==state.track.id);renderQueue();lastTrackId=state.track.id}
+function render(){if(!state?.available)return;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.volume??1;$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');renderArtwork();renderLyrics(lastTrackId!==state.track.id);renderQueue();lastTrackId=state.track.id}
 async function refresh(){try{let next=await api('/api/state');let wasPlaying=state?.playing;state=next;let now=Date.now();if(!wasPlaying||!state.playing)localPosition=state.position||0;else{localPosition=Math.max(0,state.position||0)}lastTick=now;render();$('error').style.display='none'}catch(e){showError(e)}}
 function toggleShuffle(){cmd('shuffle',{value:!state.shuffle})}
 function cycleRepeat(){let modes=['off','all','one'];let i=modes.indexOf(state.repeat);cmd('repeat',{value:modes[(i+1)%modes.length]})}
 function toggleQueue(){$('queuePanel').classList.toggle('open')}
 $('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));renderLyrics()});$('seek').addEventListener('change',e=>cmd('seek',{position:Number(e.target.value)}));$('volume').addEventListener('input',e=>{if(state)state.volume=Number(e.target.value)});$('volume').addEventListener('change',e=>cmd('volume',{value:Number(e.target.value)}));
+function togglePortraitLyrics(){portraitLyrics=!portraitLyrics;manualLyricsScroll=false;render();if(portraitLyrics)requestAnimationFrame(()=>renderLyrics(true));}
+function updateOrientation(){if(window.innerWidth>600){portraitLyrics=false;document.querySelector('.main')?.classList.remove('lyrics-mode')}else{render()}}
+window.addEventListener('resize',updateOrientation);
+$('lyrics').addEventListener('scroll',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
 setInterval(()=>{let now=Date.now(),dt=(now-lastTick)/1000;lastTick=now;if(state?.playing){localPosition=Math.min(state.duration||Infinity,localPosition+dt);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').value=Math.min(state.duration||1,localPosition);renderLyrics()}},250);
 setInterval(refresh,1000);refresh();
 function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}

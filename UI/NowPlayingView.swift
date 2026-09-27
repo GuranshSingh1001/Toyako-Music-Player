@@ -1452,6 +1452,7 @@ private struct SystemVolumeBridge: UIViewRepresentable {
         var value: Binding<Float>
         weak var slider: UISlider?
         private var volumeObservation: NSKeyValueObservation?
+        private var remoteVolumeObserver: NSObjectProtocol?
 
         init(value: Binding<Float>) {
             self.value = value
@@ -1473,6 +1474,16 @@ private struct SystemVolumeBridge: UIViewRepresentable {
                     self.value.wrappedValue = newValue
                 }
             }
+
+            remoteVolumeObserver = NotificationCenter.default.addObserver(
+                forName: .toyakoRemoteSystemVolume,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self, let number = notification.userInfo?["value"] as? Float else { return }
+                self.setSystemVolume(number)
+                self.value.wrappedValue = min(1, max(0, number))
+            }
         }
 
         func setSystemVolume(_ volume: Float) {
@@ -1484,6 +1495,10 @@ private struct SystemVolumeBridge: UIViewRepresentable {
         func stopObservingSystemVolume() {
             volumeObservation?.invalidate()
             volumeObservation = nil
+            if let remoteVolumeObserver {
+                NotificationCenter.default.removeObserver(remoteVolumeObserver)
+                self.remoteVolumeObserver = nil
+            }
         }
     }
 }
