@@ -25,9 +25,24 @@ final class RemoteServer: ObservableObject {
     private let queue = DispatchQueue(label: "com.toyako.remote-server")
     // Keep the remote on one stable port so toggling it off/on does not change the URL.
     private let fixedPort: UInt16 = 8787
+    private let enabledKey = "Toyako.RemoteServerEnabled"
 
     func attach(to manager: AudioEngineManager) {
         audioManager = manager
+    }
+
+    func autoStartIfEnabled() {
+        guard UserDefaults.standard.bool(forKey: enabledKey) else { return }
+        start()
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: enabledKey)
+        if enabled {
+            start()
+        } else {
+            stop()
+        }
     }
 
     func start() {
@@ -154,6 +169,8 @@ final class RemoteServer: ObservableObject {
         switch (method, path) {
         case ("GET", "/"):
             send(connection, status: 200, contentType: "text/html; charset=utf-8", body: Self.html)
+        case ("GET", "/manifest.json"):
+            send(connection, status: 200, contentType: "application/manifest+json; charset=utf-8", body: Self.manifest)
         case ("GET", "/api/state"):
             sendJSON(connection, object: statePayload())
         case ("GET", "/api/artwork"):
@@ -405,24 +422,29 @@ final class RemoteServer: ObservableObject {
 <!doctype html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b0d10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Toyako">
+<link rel="manifest" href="/manifest.json">
 <title>Toyako</title>
 <style>
 :root{color-scheme:dark;--white:#fff;--muted:rgba(255,255,255,.62);--faint:rgba(255,255,255,.28);--line:rgba(255,255,255,.22)}
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;background:#08090b;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
-body{position:relative;min-height:100dvh}
+html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;background:#08090b;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+body{position:relative;min-height:100vh;min-height:100svh;min-height:100dvh}
 #backdrop{position:fixed;inset:-8%;width:116%;height:116%;object-fit:cover;filter:blur(55px) saturate(.72);opacity:.48;transform:scale(1.05);display:none;pointer-events:none}
 #backdrop.visible{display:block}
 .backdrop-shade{position:fixed;inset:0;background:linear-gradient(90deg,rgba(5,7,10,.55),rgba(5,7,10,.36) 48%,rgba(5,7,10,.48)),rgba(6,8,11,.34);pointer-events:none}
-.shell{position:relative;width:100%;height:100dvh;min-height:100svh;padding:clamp(14px,2.5vh,28px) clamp(20px,4vw,48px) clamp(16px,3vh,34px);display:flex;flex-direction:column;overflow:hidden}
+.shell{position:relative;width:100%;height:100vh;height:100svh;height:100dvh;min-height:100svh;padding:clamp(14px,2.5vh,28px) clamp(20px,4vw,48px) clamp(16px,3vh,34px);display:flex;flex-direction:column;overflow:hidden}
 .topbar{height:clamp(34px,5vh,42px);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
 .icon-btn{border:0;background:transparent;color:white;padding:10px;margin:-10px;cursor:pointer;display:grid;place-items:center;opacity:.94;flex:0 0 auto}
 .icon-btn svg{width:clamp(22px,2.2vw,25px);height:clamp(22px,2.2vw,25px);fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,44vw) minmax(0,1fr);gap:clamp(24px,5vw,72px);align-items:center;padding:clamp(4px,1vh,12px) 0;overflow:hidden}
-.left{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;max-width:560px;width:100%;margin:auto}
-.art-wrap{width:min(100%,560px,42vh);aspect-ratio:1/1;display:grid;place-items:center}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(360px,46vw) minmax(0,1fr);gap:clamp(24px,5vw,72px);align-items:center;padding:clamp(4px,1vh,12px) 0;overflow:hidden}
+.left{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;max-width:min(42vw,760px);width:100%;margin:auto}
+.art-wrap{width:min(100%,42vw,62vh,760px);aspect-ratio:1/1;display:grid;place-items:center}
 .art{width:100%;height:100%;object-fit:cover;border-radius:18px;display:block;box-shadow:0 26px 60px rgba(0,0,0,.26);transition:transform .42s cubic-bezier(.22,.8,.2,1),opacity .25s}
 .art.paused{transform:scale(.70)}
 .fallback{width:100%;height:100%;border-radius:18px;background:rgba(255,255,255,.055);display:grid;place-items:center;color:rgba(255,255,255,.15);font-size:72px}
@@ -431,7 +453,7 @@ body{position:relative;min-height:100dvh}
 .artist{font-size:18px;font-weight:500;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .audio-info{font-size:14px;color:rgba(255,255,255,.47);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scrub{width:100%;margin-top:28px}
-.range{width:100%;height:5px;appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.23);border-radius:999px;outline:none;margin:0;padding:0;display:block}
+.range{width:100%;height:5px;appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.23);border-radius:999px;outline:none;margin:0;padding:0;display:block;touch-action:none}
 .range::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:white;border:0;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .range::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:white;border:0}
 .times{display:flex;justify-content:space-between;margin-top:9px;font-size:13px;color:rgba(255,255,255,.56);font-variant-numeric:tabular-nums}
@@ -448,7 +470,7 @@ body{position:relative;min-height:100dvh}
 .bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:14px}
 .chip{border:0;background:transparent;color:white;font-size:15px;font-weight:600;padding:8px 10px;cursor:pointer;opacity:.9}
 .chip.off{opacity:.34}
-.right{min-width:0;height:min(76vh,820px);display:flex;align-items:center;overflow:hidden}
+.right{min-width:0;height:min(82vh,820px);display:flex;align-items:center;overflow:hidden}
 .lyrics{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 28px;mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
 .lyrics-inner{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:30px;padding:36vh 0;transition:none}
 .line{font-size:50px;font-weight:750;line-height:1.1;letter-spacing:-.025em;color:white;opacity:.27;filter:blur(1.6px);transform:scale(.985);transform-origin:left center;cursor:pointer;transition:opacity .4s,filter .4s,transform .4s}
@@ -457,6 +479,11 @@ body{position:relative;min-height:100dvh}
 .roman{font-size:22px;font-weight:500;line-height:1.2;color:white;opacity:.18;margin-top:7px;letter-spacing:0}
 .line.active .roman{opacity:.72}
 .no-lyrics{font-size:22px;color:rgba(255,255,255,.42);font-weight:600}
+button,input{font:inherit}
+button{-webkit-tap-highlight-color:transparent}
+input[type="range"]{accent-color:white}
+@media (pointer:coarse){.icon-btn{padding:14px;margin:-14px}.control{padding:12px}.control.play{padding:0}.range{height:8px}.range::-webkit-slider-thumb{width:22px;height:22px}.range::-moz-range-thumb{width:22px;height:22px}}
+@media (hover:none){.queue-item:hover{background:transparent}}
 .queue-panel{position:fixed;z-index:10;right:24px;top:70px;width:min(430px,calc(100vw - 48px));max-height:72vh;overflow:auto;background:rgba(20,22,25,.88);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.11);border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.5);display:none}
 .queue-panel.open{display:block}.queue-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-weight:700}.queue-item{display:block;width:100%;padding:12px 10px;border-radius:12px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}.queue-item:hover{background:rgba(255,255,255,.07)}.queue-item:active{background:rgba(255,255,255,.12);transform:scale(.995)}.queue-item.active{background:rgba(255,255,255,.10)}.queue-item small{display:block;color:var(--muted);margin-top:3px;pointer-events:none}.queue-item div{pointer-events:none}
 .error{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);color:#ffb3b3;font-size:13px;background:rgba(30,8,8,.75);padding:8px 12px;border-radius:10px;display:none;z-index:20}
@@ -464,12 +491,12 @@ body{position:relative;min-height:100dvh}
   .shell{padding:18px 28px 22px}
   .main{grid-template-columns:minmax(300px,42vw) minmax(0,1fr);gap:clamp(20px,4vw,48px)}
   .left{max-width:520px}
-  .art-wrap{width:min(100%,42vw,46vh,500px)}
+  .art-wrap{width:min(100%,500px,54vh,42vw)}
   .info{margin-top:18px}
   .title{font-size:clamp(22px,2.4vw,28px)}
   .artist{font-size:clamp(16px,1.7vw,18px)}
   .scrub{margin-top:18px}
-  .right{height:min(70vh,680px)}
+  .right{height:min(78vh,680px)}
   .lyrics{padding:0 clamp(8px,2vw,28px)}
   .line{font-size:clamp(30px,4vw,46px)}
   .roman{font-size:clamp(15px,1.8vw,21px)}
@@ -501,9 +528,9 @@ body{position:relative;min-height:100dvh}
 @media (orientation:landscape) and (max-height:760px) and (min-width:701px){
   .shell{padding:10px 24px 14px}
   .topbar{height:30px}
-  .main{grid-template-columns:minmax(280px,43vw) minmax(0,1fr);gap:clamp(18px,4vw,48px);padding:2px 0}
+  .main{grid-template-columns:minmax(330px,46vw) minmax(0,1fr);gap:clamp(18px,4vw,48px);padding:2px 0}
   .left{max-width:480px}
-  .art-wrap{width:min(38vh,42vw,390px)}
+  .art-wrap{width:min(52vh,42vw,460px)}
   .info{margin-top:9px}
   .title{font-size:clamp(20px,2.5vw,23px)}
   .artist{font-size:15px;margin-top:4px}
@@ -519,7 +546,7 @@ body{position:relative;min-height:100dvh}
   .roman{font-size:clamp(14px,1.8vw,17px)}
 }
 @media (max-height:600px) and (min-width:701px){
-  .art-wrap{width:min(34vh,36vw,320px)}
+  .art-wrap{width:min(45vh,36vw,360px)}
   .info{margin-top:6px}
   .scrub{margin-top:7px}
   .controls{margin-top:5px}
@@ -606,7 +633,7 @@ function renderLyrics(force=false){
   });
 }
 
-function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map((x,i)=>`<button type="button" class="queue-item ${x.id===state.track.id?'active':''}" data-index="${i}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></button>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>';document.querySelectorAll('#queue .queue-item').forEach(el=>el.addEventListener('click',()=>cmd('playQueue',{index:Number(el.dataset.index)})))}
+function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map((x,i)=>`<button type="button" class="queue-item ${x.id===state.track.id?'active':''}" data-index="${i}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></button>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>';document.querySelectorAll('#queue .queue-item').forEach(el=>el.addEventListener('click',async()=>{await cmd('playQueue',{index:Number(el.dataset.index)});toggleQueue();}))}
 function render(){if(!state?.available)return;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.volume??1;$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');renderArtwork();renderLyrics(lastTrackId!==state.track.id);renderQueue();lastTrackId=state.track.id}
 async function refresh(){try{let next=await api('/api/state');let wasPlaying=state?.playing;state=next;let now=Date.now();if(!wasPlaying||!state.playing)localPosition=state.position||0;else{localPosition=Math.max(0,state.position||0)}lastTick=now;render();$('error').style.display='none'}catch(e){showError(e)}}
 function toggleShuffle(){cmd('shuffle',{value:!state.shuffle})}
@@ -615,13 +642,37 @@ function toggleQueue(){$('queuePanel').classList.toggle('open')}
 $('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));renderLyrics()});$('seek').addEventListener('change',e=>cmd('seek',{position:Number(e.target.value)}));$('volume').addEventListener('input',e=>{if(state)state.volume=Number(e.target.value)});$('volume').addEventListener('change',e=>cmd('volume',{value:Number(e.target.value)}));
 function togglePortraitLyrics(){portraitLyrics=!portraitLyrics;manualLyricsScroll=false;render();if(portraitLyrics)requestAnimationFrame(()=>renderLyrics(true));}
 function updateOrientation(){if(window.innerWidth>600){portraitLyrics=false;document.querySelector('.main')?.classList.remove('lyrics-mode')}else{render()}}
-window.addEventListener('resize',updateOrientation);
+window.addEventListener('resize',updateOrientation,{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(updateOrientation,120),{passive:true});
+document.addEventListener('keydown',e=>{
+  if(e.target instanceof HTMLInputElement) return;
+  if(e.code==='Space'){e.preventDefault();cmd('toggle')}
+  else if(e.code==='ArrowRight'){e.preventDefault();cmd('next')}
+  else if(e.code==='ArrowLeft'){e.preventDefault();cmd('previous')}
+  else if(e.key.toLowerCase()==='q'){e.preventDefault();toggleQueue()}
+  else if(e.key.toLowerCase()==='l' && window.innerWidth<=700){e.preventDefault();togglePortraitLyrics()}
+});
+$('lyrics').addEventListener('wheel',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
 $('lyrics').addEventListener('scroll',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
 setInterval(()=>{let now=Date.now(),dt=(now-lastTick)/1000;lastTick=now;if(state?.playing){localPosition=Math.min(state.duration||Infinity,localPosition+dt);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').value=Math.min(state.duration||1,localPosition);renderLyrics()}},250);
 setInterval(refresh,1000);refresh();
 function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 </script>
 </body></html>
+"""#
+
+    static let manifest = #"""
+{
+  "name": "Toyako Remote",
+  "short_name": "Toyako",
+  "description": "Remote control for the Toyako music player",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#08090b",
+  "theme_color": "#0b0d10",
+  "orientation": "any"
+}
 """#
 
 }

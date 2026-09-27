@@ -1008,6 +1008,10 @@ class AudioEngineManager: ObservableObject {
             LocalTrack
     ) {
 
+        // Keep the .playback session active when playback is started from a
+        // queue, remote command, or after returning from the background.
+        guard activateAudioSessionForPlayback() else { return }
+
         currentTrack =
             track
 

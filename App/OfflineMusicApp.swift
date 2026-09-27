@@ -1,10 +1,13 @@
 import SwiftUI
 import AVFoundation
+import UIKit
 
 @main
 struct OfflineMusicApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var audioManager = AudioEngineManager()
     @StateObject private var remoteServer = RemoteServer()
+    @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
 
     init() {
         ToyakoPreferences.registerDefaults()
@@ -34,11 +37,26 @@ struct OfflineMusicApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .background(
+                    AppSystemVolumeBridge(value: $systemVolume)
+                        .frame(width: 1, height: 1)
+                        .opacity(0.01)
+                )
                 .environmentObject(audioManager)
                 .environmentObject(audioManager.clock)
                 .environmentObject(remoteServer)
                 .onAppear {
                     remoteServer.attach(to: audioManager)
+                    remoteServer.autoStartIfEnabled()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background && audioManager.isPlaying {
+                        // The .playback audio session keeps the app eligible to
+                        // continue running while music is playing in the background.
+                        let session = AVAudioSession.sharedInstance()
+                        try? session.setCategory(.playback, mode: .default, options: [])
+                        try? session.setActive(true)
+                    }
                 }
         }
     }

@@ -130,7 +130,7 @@ struct SettingsView: View {
                     Toggle("Allow Local Network Remote", isOn: Binding(
                         get: { remoteServer.isRunning },
                         set: { enabled in
-                            if enabled { remoteServer.start() } else { remoteServer.stop() }
+                            remoteServer.setEnabled(enabled)
                         }
                     ))
                     .tint(.green)

@@ -1488,8 +1488,16 @@ private struct SystemVolumeBridge: UIViewRepresentable {
 
         func setSystemVolume(_ volume: Float) {
             let clamped = min(1, max(0, volume))
-            guard let slider, abs(slider.value - clamped) > 0.001 else { return }
+            guard let slider else { return }
+
+            // MPVolumeView exposes the system-output slider through a UISlider.
+            // Setting its value alone can update the visual thumb without
+            // committing the change on some iOS builds. Send the same value
+            // change action that the native slider generates so the actual
+            // device output volume is updated.
             slider.setValue(clamped, animated: false)
+            slider.sendActions(for: .valueChanged)
+            value.wrappedValue = clamped
         }
 
         func stopObservingSystemVolume() {
