@@ -258,7 +258,13 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
                             .frame(width: itemWidth)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // Keep full rows leading-aligned, but center incomplete rows
+                // (three cards or fewer) so narrow windows do not leave a
+                // single card stranded against the left edge.
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: row.count <= 3 ? .center : .leading
+                )
             }
         }
     }

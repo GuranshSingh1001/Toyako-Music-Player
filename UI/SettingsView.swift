@@ -22,6 +22,7 @@ struct SettingsView: View {
             Form {
                 Section("Appearance") {
                     Toggle("Artwork Bleeding Effect", isOn: $bleedingEffect)
+                        .tint(.green)
 
                     Text("Uses album artwork to create a soft blurred background on Home, Tracks, Albums, Playlists, and other artwork-driven screens.")
                         .font(.caption)
@@ -60,8 +61,11 @@ struct SettingsView: View {
 
                 Section("Lyrics") {
                     Toggle("Show Romanization", isOn: $showRomanization)
+                        .tint(.green)
                     Toggle("Karaoke Glow", isOn: $karaokeGlow)
+                        .tint(.green)
                     Toggle("Translate Japanese Lyrics", isOn: $showTranslation)
+                        .tint(.green)
 
                     Picker("Animation", selection: $lyricsAnimationStyle) {
                         ForEach(LyricsAnimationStyle.allCases) { style in
@@ -95,10 +99,12 @@ struct SettingsView: View {
 
                 Section("Now Playing") {
                     Toggle("Show Audio Quality", isOn: $showAudioInfo)
+                        .tint(.green)
                 }
 
                 Section("Artist Artwork") {
                     Toggle("Automatically Download Artist Artwork", isOn: $automaticArtistArtwork)
+                        .tint(.green)
 
                     Text("When enabled, Toyako uses internet metadata services to find artist artwork and caches the images on your device. It is off by default.")
                         .font(.caption)
