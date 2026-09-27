@@ -258,7 +258,7 @@ struct PlaylistHeaderView: View {
             HStack(spacing: 10) {
                 playButton.frame(minWidth: 96, maxWidth: 110)
                 shuffleButton.frame(minWidth: 112, maxWidth: 126)
-                addSongsButton.frame(minWidth: 122, maxWidth: 138)
+                addSongsButton.frame(minWidth: 154, maxWidth: 170)
             }
 
             VStack(spacing: 10) {
@@ -296,6 +296,7 @@ struct PlaylistHeaderView: View {
             Label("Add Songs", systemImage: "plus")
                 .font(.subheadline.bold())
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(ToyakoSecondaryButtonStyle())

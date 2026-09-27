@@ -354,7 +354,7 @@ struct ContentView: View {
 
         NavigationStack {
             Group {
-                if category == .artists {
+                if category == .artists || category == .allPlaylists {
                     detailContent(for: category)
                 } else {
                     detailContent(for: category)

@@ -208,6 +208,18 @@ struct PlaylistDetailView: View {
     let onAddSongs: () -> Void
 
     @EnvironmentObject private var audioManager: AudioEngineManager
+    @State private var searchText = ""
+
+    private var filteredTracks: [LocalTrack] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return tracks }
+
+        return tracks.filter { track in
+            track.title.localizedCaseInsensitiveContains(query) ||
+            track.artist.localizedCaseInsensitiveContains(query) ||
+            track.album.localizedCaseInsensitiveContains(query)
+        }
+    }
 
     // Use the exact same artwork-selection rule as the Playlists page so the
     // bleed does not visually change when navigating into a playlist.
@@ -221,7 +233,7 @@ struct PlaylistDetailView: View {
             ArtworkBleedPageBackground(artworkURL: bleedArtworkURL)
 
             SongListView(
-                tracks: tracks,
+                tracks: filteredTracks,
                 allTracks: tracks,
                 library: library,
                 playlistID: playlist.id,
@@ -237,5 +249,10 @@ struct PlaylistDetailView: View {
         }
         .navigationTitle(playlist.name)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .automatic),
+            prompt: "Search songs"
+        )
     }
 }
