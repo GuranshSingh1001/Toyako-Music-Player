@@ -1,0 +1,177 @@
+import SwiftUI
+
+struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var audioManager: AudioEngineManager
+    @EnvironmentObject private var remoteServer: RemoteServer
+
+    @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
+    @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
+    @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
+    @AppStorage(ToyakoPreferences.lyricsFontScaleKey) private var lyricsFontScale = 1.0
+    @AppStorage(ToyakoPreferences.lyricsLineSpacingKey) private var lyricsLineSpacing = 30.0
+    @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
+    @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
+    @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
+    @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
+    @State private var showClearArtistArtworkConfirmation = false
+    @State private var artistArtworkStatus: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Appearance") {
+                    Toggle("Artwork Bleeding Effect", isOn: $bleedingEffect)
+                        .tint(.green)
+
+                    Text("Uses album artwork to create a soft blurred background on Home, Tracks, Albums, Playlists, and other artwork-driven screens.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Library Cover Art Size")
+                            Spacer()
+                            Text("\(Int(libraryArtworkSize)) pt")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Slider(
+                            value: $libraryArtworkSize,
+                            in: 120...220,
+                            step: 5
+                        ) {
+                            Text("Library Cover Art Size")
+                        } minimumValueLabel: {
+                            Text("120")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } maximumValueLabel: {
+                            Text("220")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text("Controls the square cover size on Home, Tracks, Albums, and Playlists.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Lyrics") {
+                    Toggle("Show Romanization", isOn: $showRomanization)
+                        .tint(.green)
+                    Toggle("Karaoke Glow", isOn: $karaokeGlow)
+                        .tint(.green)
+                    Toggle("Translate Japanese Lyrics", isOn: $showTranslation)
+                        .tint(.green)
+
+                    Picker("Animation", selection: $lyricsAnimationStyle) {
+                        ForEach(LyricsAnimationStyle.allCases) { style in
+                            Text(style.title).tag(style.rawValue)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Text Size")
+                            Spacer()
+                            Text("\(Int(lyricsFontScale * 100))%")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Slider(value: $lyricsFontScale, in: 0.82...1.18, step: 0.01)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Line Spacing")
+                            Spacer()
+                            Text("\(Int(lyricsLineSpacing)) pt")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $lyricsLineSpacing, in: 8...60, step: 1)
+                    }
+                }
+
+                Section("Now Playing") {
+                    Toggle("Show Audio Quality", isOn: $showAudioInfo)
+                        .tint(.green)
+                }
+
+                Section("Artist Artwork") {
+                    Toggle("Automatically Download Artist Artwork", isOn: $automaticArtistArtwork)
+                        .tint(.green)
+
+                    Text("When enabled, Toyako uses internet metadata services to find artist artwork and caches the images on your device. It is off by default.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button("Remove All Downloaded Artist Artwork", role: .destructive) {
+                        showClearArtistArtworkConfirmation = true
+                    }
+
+                    Text("Artwork is stored in Toyako's app sandbox under Library/Caches/ArtistArtwork. It does not appear in the Files app because it is app cache data.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let artistArtworkStatus {
+                        Text(artistArtworkStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Remote Control") {
+                    Toggle("Allow Local Network Remote", isOn: Binding(
+                        get: { remoteServer.isRunning },
+                        set: { enabled in
+                            if enabled { remoteServer.start() } else { remoteServer.stop() }
+                        }
+                    ))
+                    .tint(.green)
+
+                    if remoteServer.isRunning, let address = remoteServer.address, remoteServer.port > 0 {
+                        LabeledContent("Web Remote", value: "http://\(address):\(remoteServer.port)")
+                            .textSelection(.enabled)
+
+                    } else if let error = remoteServer.lastError {
+                        Text("Remote server error: \(error)")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                Section("About") {
+                    LabeledContent("App", value: "Toyako")
+                    LabeledContent("Version", value: "1.4")
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toggleStyle(.automatic)
+            .confirmationDialog("Remove all downloaded artist artwork?", isPresented: $showClearArtistArtworkConfirmation, titleVisibility: .visible) {
+                Button("Remove Artwork", role: .destructive) {
+                    Task {
+                        let count = await ArtistArtworkService.shared.clearCache()
+                        artistArtworkStatus = count == 0 ? "No cached artist artwork was found." : "Removed \(count) cached artist artwork files."
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .tint(ToyakoDesign.Color.accent)
+        .onAppear {
+            ToyakoPreferences.registerDefaults()
+        }
+    }
+}
