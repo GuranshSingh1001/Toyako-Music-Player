@@ -21,7 +21,6 @@ struct OfflineMusicApp: App {
                 .environmentObject(remoteServer)
                 .onAppear {
                     remoteServer.attach(to: audioManager)
-                    remoteServer.start()
                 }
         }
     }

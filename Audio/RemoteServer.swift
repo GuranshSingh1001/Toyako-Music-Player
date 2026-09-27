@@ -40,7 +40,7 @@ final class RemoteServer: ObservableObject {
                         self?.lastError = nil
                     case .failed(let error):
                         self?.isRunning = false
-                        self?.lastError = error.localizedDescription
+                        self?.lastError = self?.friendlyNetworkError(error) ?? error.localizedDescription
                         self?.listener?.cancel()
                         self?.listener = nil
                     case .cancelled:
@@ -67,6 +67,19 @@ final class RemoteServer: ObservableObject {
         isRunning = false
         address = nil
         port = 0
+    }
+
+    private func friendlyNetworkError(_ error: Error) -> String {
+        let nsError = error as NSError
+        // NWError.posix(EACCES) and local-network privacy failures are surfaced
+        // as opaque errors such as "-65555: NoAuth" on iPadOS.
+        let description = error.localizedDescription
+        if description.localizedCaseInsensitiveContains("NoAuth") ||
+            description.localizedCaseInsensitiveContains("permission") ||
+            nsError.code == -65555 {
+            return "Local Network access is disabled. Enable Settings > Privacy & Security > Local Network > Toyako, then turn Remote Control on again."
+        }
+        return description
     }
 
     func toggle() {

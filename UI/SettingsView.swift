@@ -139,7 +139,7 @@ struct SettingsView: View {
                         LabeledContent("Web Remote", value: "http://\(address):\(remoteServer.port)")
                             .textSelection(.enabled)
 
-                        Text("Open this address on another device connected to the same Wi-Fi network. Toyako remains the playback source; the remote controls playback and mirrors Now Playing, artwork, queue, and lyrics.")
+                        Text("Open this address on another device connected to the same Wi-Fi network. Toyako remains the playback source; the remote controls playback and mirrors Now Playing, artwork, queue, and lyrics. If Local Network access is denied, enable it in Settings > Privacy & Security > Local Network > Toyako.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else if let error = remoteServer.lastError {
