@@ -1028,7 +1028,7 @@ class LocalLibrary:
                             for:
                                 sourceURL,
                             in:
-                                documents,
+                                musicDirectory,
                             fileManager:
                                 fileManager
                         )

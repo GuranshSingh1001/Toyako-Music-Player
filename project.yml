@@ -30,6 +30,7 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: com.local.Toyako
 
       MARKETING_VERSION: "1.4"
+      CURRENT_PROJECT_VERSION: "1"
 
       INFOPLIST_KEY_CFBundleDisplayName: "Toyako"
 
