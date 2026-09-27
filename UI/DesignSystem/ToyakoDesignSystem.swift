@@ -250,10 +250,10 @@ enum ToyakoArtworkSize {
     static let playlistCard: CGFloat = libraryArtwork
 }
 
-// MARK: - Centered adaptive library grid
+// MARK: - Leading adaptive library grid
 
-/// An adaptive library grid whose incomplete final row is centered instead of
-/// being pinned to the leading edge. Card widths remain consistent across rows.
+/// An adaptive library grid whose rows stay pinned to the leading edge.
+/// Card widths remain consistent across rows while the column count adapts.
 struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
     let items: [Item]
     let availableWidth: CGFloat
@@ -288,7 +288,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
         // changes as the window changes; the artwork/card geometry does not.
         let itemWidth = minimumItemWidth
 
-        LazyVStack(alignment: .center, spacing: rowSpacing) {
+        LazyVStack(alignment: .leading, spacing: rowSpacing) {
             ForEach(Array(items.chunked(into: columnCount).enumerated()), id: \.offset) { _, row in
                 HStack(spacing: columnSpacing) {
                     ForEach(row) { item in
@@ -296,7 +296,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
                             .frame(width: itemWidth)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

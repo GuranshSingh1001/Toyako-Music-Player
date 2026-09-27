@@ -38,14 +38,20 @@ struct PlaylistHeaderView: View {
                         .frame(width: 430, alignment: .leading)
                         .layoutPriority(1)
 
+                    Spacer(minLength: 24)
+
                     actionBar
                         .fixedSize(horizontal: true, vertical: false)
                 }
 
                 VStack(alignment: .leading, spacing: 16) {
                     titleBlock(compact: true)
-                    actionBar
-                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack {
+                        Spacer(minLength: 0)
+                        actionBar
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }

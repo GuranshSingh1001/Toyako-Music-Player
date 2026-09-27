@@ -9,6 +9,7 @@ struct ArtistListView: View {
     @State private var selectedArtistID: String?
     @State private var artistSearch = ""
     @State private var selectedArtistArtwork: UIImage?
+    @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
 
 
     private var visibleArtists: [ArtistGroup] {
@@ -87,7 +88,7 @@ struct ArtistListView: View {
             }
         }
         .background(Color.clear)
-        .task(id: selectedArtist?.id) {
+        .task(id: "\(selectedArtist?.id ?? "")|\(automaticArtistArtwork)") {
             guard let artist = selectedArtist else {
                 selectedArtistArtwork = nil
                 return
@@ -95,7 +96,7 @@ struct ArtistListView: View {
 
             let data = await ArtistArtworkService.shared.imageData(
                 for: artist.name,
-                allowNetwork: true
+                allowNetwork: automaticArtistArtwork
             )
             guard !Task.isCancelled else { return }
             selectedArtistArtwork = data.flatMap(UIImage.init(data:))
@@ -445,7 +446,7 @@ struct ArtistDetailView: View {
         .task(id: "\(artist.name)|\(automaticArtistArtwork)") {
             let data = await ArtistArtworkService.shared.imageData(
                 for: artist.name,
-                allowNetwork: true
+                allowNetwork: automaticArtistArtwork
             )
             guard !Task.isCancelled else { return }
             artwork = data.flatMap(UIImage.init(data:))

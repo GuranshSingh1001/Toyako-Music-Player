@@ -1232,9 +1232,6 @@ class LocalLibrary:
         let fingerprints =
             cachedFingerprints
 
-        let playlists =
-            playlists
-
         let parserVersion =
             cachedParserVersion
 
@@ -1243,6 +1240,10 @@ class LocalLibrary:
                 .utility
         ) {
 
+            // Playlists and recently-played history have their own writers.
+            // Do not copy those arrays into this snapshot: this scan may have
+            // captured an older value and could otherwise overwrite a playlist
+            // that was created/edited while the filesystem scan was running.
             ToyakoUnifiedCache.update {
                 cache in
 
@@ -1251,9 +1252,6 @@ class LocalLibrary:
 
                 cache.fingerprints =
                     fingerprints
-
-                cache.playlists =
-                    playlists
 
                 cache.metadataParserVersion =
                     parserVersion
