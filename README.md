@@ -24,8 +24,6 @@ Built with SwiftUI and AVFoundation, Toyako is designed around a simple idea: yo
 - Recently played history
 - Adaptive artwork-driven Now Playing ambience
 - Audio quality information for the current track
-- Queue drag-and-drop reordering
-- Persistent smooth track transition settings
 - Background audio playback
 - Shuffle and repeat controls
 - Playback progress and seeking
