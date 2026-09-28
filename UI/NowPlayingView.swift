@@ -363,10 +363,6 @@ struct NowPlayingView: View {
         @EnvironmentObject private var audioManager: AudioEngineManager
         @Environment(\.dismiss) private var dismiss
 
-        private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
-    }
 
     var body: some View {
             VStack(alignment: .leading, spacing: 4) {
@@ -766,11 +762,6 @@ private struct SmoothLyricsView: View {
         LyricsAnimationStyle(rawValue: lyricsAnimationStyle) ?? .dynamic
     }
 
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
-    }
-
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
@@ -1088,11 +1079,6 @@ private struct TimedLyricPair: View {
     private var japaneseFont: Font { Font.system(size: compact ? 42 : 50, weight: .bold, design: .rounded) }
     private var romanizedFont: Font { Font.system(size: compact ? 18 : 21, weight: .medium, design: .rounded) }
 
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
-    }
-
     var body: some View {
         Group {
             if state == .active && isPlaying {
@@ -1166,11 +1152,6 @@ private struct JapaneseTimedLine: View {
 
     private var allUnits: [LyricUnit] {
         line.words.flatMap(\.units)
-    }
-
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
@@ -1252,11 +1233,6 @@ private struct JapaneseLyricUnitView: View {
         }
     }
 
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
-    }
-
     var body: some View {
         VStack(spacing: 1) {
             Text(unit.text)
@@ -1290,11 +1266,6 @@ private struct WordFlow: View {
     let font: Font
     let baseOpacity: Double
     let riseAmplitude: CGFloat
-
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
-    }
 
     var body: some View {
         FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
@@ -1339,11 +1310,6 @@ private struct WordRiseReveal: View {
         if isActive { return 1.0 }
         if currentTime >= word.endTime { return 0.82 }
         return baseOpacity
-    }
-
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
@@ -1458,11 +1424,6 @@ struct SystemVolumeSlider: View {
 
     private var shownVolume: Double {
         isHolding ? dragVolume : safeVolume
-    }
-
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
@@ -1660,11 +1621,6 @@ struct AppleMusicScrubberBar: View {
 
     private var displayedTime: TimeInterval {
         duration * shownProgress
-    }
-
-    private func updateAudioRouteName() {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
