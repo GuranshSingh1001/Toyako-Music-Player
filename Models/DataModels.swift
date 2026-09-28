@@ -74,7 +74,7 @@ struct ArtistGroup: Identifiable, Hashable {
     let tracks: [LocalTrack]
 }
 
-struct Playlist: Identifiable, Codable {
+struct Playlist: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     var trackURLs: [URL]

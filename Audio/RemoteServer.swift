@@ -15,18 +15,19 @@ extension Notification.Name {
 /// current track, artwork, queue, lyrics and playback position and can send
 /// playback commands back to the iPad.
 final class RemoteServer: ObservableObject {
-    enum PlaybackTarget: String { case ipad, web }
-
     @Published private(set) var isRunning = false
     @Published private(set) var address: String?
     @Published private(set) var port: UInt16 = 0
     @Published private(set) var lastError: String?
-    @Published private(set) var playbackTarget: PlaybackTarget = .ipad
-    @Published private(set) var remoteWebPosition: TimeInterval = 0
-    @Published private(set) var remoteWebPlaying = false
 
     private var listener: NWListener?
     private weak var audioManager: AudioEngineManager?
+
+    private let libraryLock = NSLock()
+    private var libraryTracks: [LocalTrack] = []
+    private var libraryAlbums: [AlbumGroup] = []
+    private var libraryArtists: [ArtistGroup] = []
+    private var libraryPlaylists: [Playlist] = []
     private let queue = DispatchQueue(label: "com.toyako.remote-server")
     // Keep the remote on one stable port so toggling it off/on does not change the URL.
     private let fixedPort: UInt16 = 8787
@@ -34,6 +35,29 @@ final class RemoteServer: ObservableObject {
 
     func attach(to manager: AudioEngineManager) {
         audioManager = manager
+    }
+
+    /// Updates the read-only library snapshot used by the Web Remote.
+    /// Playback remains entirely on the iPad; this snapshot is only for
+    /// browsing and sending normal playback commands back to Toyako.
+    func updateLibrarySnapshot(
+        tracks: [LocalTrack],
+        albums: [AlbumGroup],
+        artists: [ArtistGroup],
+        playlists: [Playlist]
+    ) {
+        libraryLock.lock()
+        libraryTracks = tracks
+        libraryAlbums = albums
+        libraryArtists = artists
+        libraryPlaylists = playlists
+        libraryLock.unlock()
+    }
+
+    private func librarySnapshot() -> (tracks: [LocalTrack], albums: [AlbumGroup], artists: [ArtistGroup], playlists: [Playlist]) {
+        libraryLock.lock()
+        defer { libraryLock.unlock() }
+        return (libraryTracks, libraryAlbums, libraryArtists, libraryPlaylists)
     }
 
     func autoStartIfEnabled() {
@@ -60,6 +84,12 @@ final class RemoteServer: ObservableObject {
                 return
             }
             let listener = try NWListener(using: .tcp, on: endpointPort)
+            // Bonjour advertising is intentionally optional. LiveContainer
+            // hosts guest apps and does not apply guest entitlements exactly
+            // like a normally installed app, so requiring service registration
+            // can prevent the TCP server from starting there. The web remote
+            // uses the LAN address shown in Settings, which works without
+            // Bonjour.
             listener.stateUpdateHandler = { [weak self] state in
                 DispatchQueue.main.async {
                     switch state {
@@ -84,7 +114,6 @@ final class RemoteServer: ObservableObject {
             listener.newConnectionHandler = { [weak self] connection in
                 self?.handle(connection)
             }
-
             self.listener = listener
             listener.start(queue: queue)
         } catch {
@@ -115,57 +144,6 @@ final class RemoteServer: ObservableObject {
 
     func toggle() {
         if isRunning { stop() } else { start() }
-    }
-
-    func handoffToWeb() {
-        guard let manager = audioManager, manager.currentTrack != nil else { return }
-        DispatchQueue.main.async {
-            self.remoteWebPosition = manager.currentTime
-            self.remoteWebPlaying = manager.isPlaying
-            self.playbackTarget = .web
-            manager.pauseFromRemote()
-        }
-    }
-
-    func handoffToIPad(position: TimeInterval, playing: Bool) {
-        guard let manager = audioManager, manager.currentTrack != nil else { return }
-        DispatchQueue.main.async {
-            manager.seek(to: position)
-            self.remoteWebPosition = position
-            self.remoteWebPlaying = playing
-            self.playbackTarget = .ipad
-            if playing { manager.playFromRemote() } else { manager.pauseFromRemote() }
-        }
-    }
-
-    func togglePlayback() {
-        if playbackTarget == .web {
-            remoteWebPlaying.toggle()
-        } else {
-            audioManager?.togglePlayPause()
-        }
-    }
-
-    func previousPlayback() {
-        guard let manager = audioManager else { return }
-        let wasWebPlaying = remoteWebPlaying
-        manager.backward()
-        if playbackTarget == .web {
-            manager.pauseFromRemote()
-            remoteWebPosition = manager.currentTime
-            remoteWebPlaying = wasWebPlaying
-        }
-    }
-
-    func nextPlayback() {
-        guard let manager = audioManager else { return }
-        let wasWebPlaying = remoteWebPlaying
-        manager.forward()
-        if playbackTarget == .web {
-            manager.pauseFromRemote()
-            remoteWebPosition = 0
-            remoteWebPlaying = wasWebPlaying
-        }
     }
 
     private func handle(_ connection: NWConnection) {
@@ -230,24 +208,10 @@ final class RemoteServer: ObservableObject {
             sendWebIcon(connection, resource: "WebIcon-512", status: 200)
         case ("GET", "/api/state"):
             sendJSON(connection, object: statePayload())
-        case ("GET", "/api/media"):
-            handleMediaRequest(rawPath: rawPath, request: request, connection: connection)
+        case ("GET", "/api/library"):
+            sendJSON(connection, object: libraryPayload())
         case ("GET", "/api/artwork"):
-            guard let track = audioManager?.currentTrack else {
-                sendError(connection, status: 404, message: "No artwork")
-                return
-            }
-            Task {
-                var artwork = track.artworkData
-                if artwork == nil {
-                    artwork = await ArtworkStore.shared.data(for: track.url)
-                }
-                guard let artwork else {
-                    self.sendError(connection, status: 404, message: "No artwork")
-                    return
-                }
-                self.send(connection, status: 200, contentType: "image/jpeg", bodyData: self.normalizedJPEGData(artwork))
-            }
+            handleArtworkRequest(rawPath: rawPath, connection: connection)
         case ("POST", "/api/command"):
             handleCommand(body, connection: connection)
         case ("POST", "/api/settings"):
@@ -271,60 +235,38 @@ final class RemoteServer: ObservableObject {
         DispatchQueue.main.async {
             switch command {
             case "play":
-                if self.playbackTarget == .web { self.remoteWebPlaying = true } else { manager.playFromRemote() }
+                manager.playFromRemote()
             case "pause":
-                if self.playbackTarget == .web { self.remoteWebPlaying = false } else { manager.pauseFromRemote() }
+                manager.pauseFromRemote()
             case "toggle":
-                if self.playbackTarget == .web { self.remoteWebPlaying.toggle() } else { manager.togglePlayPause() }
+                manager.togglePlayPause()
             case "next":
-                let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                 manager.forward()
-                if self.playbackTarget == .web {
-                    manager.pauseFromRemote()
-                    self.remoteWebPosition = 0
-                    self.remoteWebPlaying = wasWebPlaying
-                }
             case "previous":
-                let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                 manager.backward()
-                if self.playbackTarget == .web {
-                    manager.pauseFromRemote()
-                    self.remoteWebPosition = manager.currentTime
-                    self.remoteWebPlaying = wasWebPlaying
-                }
             case "playQueue":
                 if let index = object["index"] as? Int {
-                    let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                     manager.playQueuedTrack(at: index)
-                    if self.playbackTarget == .web {
-                        manager.pauseFromRemote()
-                        self.remoteWebPosition = 0
-                        self.remoteWebPlaying = wasWebPlaying
+                }
+            case "playTrack":
+                if let idString = object["id"] as? String,
+                   let id = UUID(uuidString: idString) {
+                    let snapshot = self.librarySnapshot()
+                    if let index = snapshot.tracks.firstIndex(where: { $0.id == id }) {
+                        manager.startQueue(tracks: snapshot.tracks, startIndex: index)
+                    }
+                }
+            case "playTrackSet":
+                if let ids = object["ids"] as? [String] {
+                    let snapshot = self.librarySnapshot()
+                    let wanted = ids.compactMap { UUID(uuidString: $0) }
+                    let selected = wanted.compactMap { id in snapshot.tracks.first(where: { $0.id == id }) }
+                    if let first = selected.first {
+                        manager.startQueue(tracks: selected, startIndex: 0)
                     }
                 }
             case "seek":
-                if let position = object["position"] as? Double {
-                    if self.playbackTarget == .web { self.remoteWebPosition = max(0, position) }
-                    else { manager.seek(to: position) }
-                }
-            case "handoffToWeb":
-                self.playbackTarget = .web
-                self.remoteWebPosition = manager.currentTime
-                self.remoteWebPlaying = manager.isPlaying
-                manager.pauseFromRemote()
-            case "handoffToIPad":
-                let position = (object["position"] as? Double) ?? self.remoteWebPosition
-                let shouldPlay = (object["playing"] as? Bool) ?? self.remoteWebPlaying
-                self.remoteWebPosition = position
-                self.remoteWebPlaying = shouldPlay
-                manager.seek(to: position)
-                self.playbackTarget = .ipad
-                if shouldPlay { manager.playFromRemote() } else { manager.pauseFromRemote() }
-            case "remoteSync":
-                if self.playbackTarget == .web {
-                    if let position = object["position"] as? Double { self.remoteWebPosition = max(0, position) }
-                    if let playing = object["playing"] as? Bool { self.remoteWebPlaying = playing }
-                }
+                if let position = object["position"] as? Double { manager.seek(to: position) }
             case "volume":
                 if let value = object["value"] as? Double {
                     // The Now Playing slider controls the iPad's actual output
@@ -383,92 +325,6 @@ final class RemoteServer: ObservableObject {
         sendJSON(connection, object: ["ok": true])
     }
 
-    private func handleMediaRequest(rawPath: String, request: String, connection: NWConnection) {
-        guard let manager = audioManager, let track = manager.currentTrack else {
-            sendError(connection, status: 404, message: "No track")
-            return
-        }
-
-        let query = rawPath.components(separatedBy: "?").dropFirst().joined(separator: "?")
-        let params = query.split(separator: "&").reduce(into: [String: String]()) { result, item in
-            let pair = item.split(separator: "=", maxSplits: 1).map(String.init)
-            if pair.count == 2 { result[pair[0]] = pair[1].removingPercentEncoding ?? pair[1] }
-        }
-        if let requestedID = params["id"], requestedID != track.id.uuidString {
-            sendError(connection, status: 404, message: "Track is no longer current")
-            return
-        }
-
-        guard let handle = try? FileHandle(forReadingFrom: track.url) else {
-            sendError(connection, status: 404, message: "Media file unavailable")
-            return
-        }
-        defer { try? handle.close() }
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: track.url.path),
-              let fileSize = attributes[.size] as? NSNumber else {
-            sendError(connection, status: 404, message: "Media file unavailable")
-            return
-        }
-        let total = Int64(fileSize.int64Value)
-        let rangeHeader = headerValue(in: request, name: "Range")
-        var start: Int64 = 0
-        var end: Int64 = max(0, total - 1)
-        var status = 200
-        if let rangeHeader, rangeHeader.hasPrefix("bytes=") {
-            let value = String(rangeHeader.dropFirst(6)).split(separator: "-", maxSplits: 1).map(String.init)
-            if let first = Int64(value.first ?? ""), first >= 0 {
-                start = first
-                if value.count > 1, let requestedEnd = Int64(value[1]), requestedEnd >= start { end = min(requestedEnd, total - 1) }
-                else { end = total - 1 }
-                status = 206
-            }
-        }
-        guard total > 0, start < total, start <= end else {
-            let header = "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */\(total)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-            connection.send(content: Data(header.utf8), completion: .contentProcessed { _ in connection.cancel() })
-            return
-        }
-
-        let length = Int(end - start + 1)
-        do {
-            try handle.seek(toOffset: UInt64(start))
-            let data = try handle.read(upToCount: length) ?? Data()
-            let contentType = Self.mimeType(for: track.url.pathExtension)
-            let reason = status == 206 ? "Partial Content" : "OK"
-            var header = "HTTP/1.1 \(status) \(reason)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nAccept-Ranges: bytes\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n"
-            if status == 206 { header += "Content-Range: bytes \(start)-\(start + Int64(data.count) - 1)/\(total)\r\n" }
-            header += "\r\n"
-            connection.send(content: Data(header.utf8) + data, completion: .contentProcessed { _ in connection.cancel() })
-        } catch {
-            sendError(connection, status: 500, message: "Could not read media")
-        }
-    }
-
-    private func headerValue(in request: String, name: String) -> String? {
-        for line in request.components(separatedBy: "\r\n").dropFirst() {
-            let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
-            if parts.count == 2, parts[0].trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame {
-                return parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        return nil
-    }
-
-    private static func mimeType(for ext: String) -> String {
-        switch ext.lowercased() {
-        case "mp3": return "audio/mpeg"
-        case "m4a", "mp4": return "audio/mp4"
-        case "aac": return "audio/aac"
-        case "wav": return "audio/wav"
-        case "aiff", "aif": return "audio/aiff"
-        case "flac": return "audio/flac"
-        case "caf": return "audio/x-caf"
-        case "opus": return "audio/ogg"
-        case "ogg": return "audio/ogg"
-        default: return "application/octet-stream"
-        }
-    }
-
     private func statePayload() -> [String: Any] {
         guard let manager = audioManager else { return ["available": false] }
         let track = manager.currentTrack
@@ -501,11 +357,9 @@ final class RemoteServer: ObservableObject {
         let defaults = UserDefaults.standard
         return [
             "available": true,
-            "playing": playbackTarget == .web ? remoteWebPlaying : manager.isPlaying,
-            "position": playbackTarget == .web ? remoteWebPosition : manager.currentTime,
+            "playing": manager.isPlaying,
+            "position": manager.currentTime,
             "duration": track?.duration ?? 0,
-            "playbackTarget": playbackTarget.rawValue,
-            "playbackDeviceName": playbackTarget == .web ? "Web Remote" : currentNativeOutputName(),
             "volume": AVAudioSession.sharedInstance().outputVolume,
             "shuffle": manager.isShuffle,
             "repeat": manager.repeatMode.rawValue,
@@ -533,9 +387,89 @@ final class RemoteServer: ObservableObject {
         ]
     }
 
-    private func currentNativeOutputName() -> String {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        return outputs.first?.portName ?? "This iPad"
+    private func handleArtworkRequest(rawPath: String, connection: NWConnection) {
+        let idString = queryValue(rawPath, key: "id")
+        let snapshot = librarySnapshot()
+        let track: LocalTrack?
+        if let idString, let id = UUID(uuidString: idString) {
+            track = snapshot.tracks.first(where: { $0.id == id })
+                ?? audioManager?.currentTrack
+        } else {
+            track = audioManager?.currentTrack
+        }
+
+        guard let track else {
+            sendError(connection, status: 404, message: "No artwork")
+            return
+        }
+        Task {
+            var artwork = track.artworkData
+            if artwork == nil { artwork = await ArtworkStore.shared.data(for: track.url) }
+            guard let artwork else {
+                self.sendError(connection, status: 404, message: "No artwork")
+                return
+            }
+            self.send(connection, status: 200, contentType: "image/jpeg", bodyData: self.normalizedJPEGData(artwork))
+        }
+    }
+
+    private func queryValue(_ rawPath: String, key: String) -> String? {
+        guard let query = rawPath.split(separator: "?", maxSplits: 1).dropFirst().first else { return nil }
+        for pair in query.split(separator: "&") {
+            let bits = pair.split(separator: "=", maxSplits: 1)
+            guard bits.count == 2, String(bits[0]) == key else { continue }
+            return String(bits[1]).removingPercentEncoding
+        }
+        return nil
+    }
+
+    private func libraryPayload() -> [String: Any] {
+        let snapshot = librarySnapshot()
+        let trackPayload: [[String: Any]] = snapshot.tracks.map { track in
+            [
+                "id": track.id.uuidString,
+                "title": track.title,
+                "artist": track.artist,
+                "album": track.album,
+                "genre": track.genre,
+                "duration": track.duration,
+                "artworkURL": "/api/artwork?id=\(track.id.uuidString)"
+            ]
+        }
+        let albumPayload: [[String: Any]] = snapshot.albums.map { album in
+            let tracks = album.tracks.map(\.id.uuidString)
+            return [
+                "id": Data("\(album.name)\u{1F}\(album.artist)".utf8).base64EncodedString(),
+                "name": album.name,
+                "artist": album.artist,
+                "trackIDs": tracks,
+                "artworkURL": album.tracks.first.map { "/api/artwork?id=\($0.id.uuidString)" } as Any
+            ]
+        }
+        let artistPayload: [[String: Any]] = snapshot.artists.map { artist in
+            let tracks = artist.tracks.map(\.id.uuidString)
+            return [
+                "id": Data(artist.name.utf8).base64EncodedString(),
+                "name": artist.name,
+                "trackIDs": tracks,
+                "artworkURL": artist.tracks.first.map { "/api/artwork?id=\($0.id.uuidString)" } as Any
+            ]
+        }
+        let playlistPayload: [[String: Any]] = snapshot.playlists.map { playlist in
+            let trackIDs = playlist.trackURLs.compactMap { url in snapshot.tracks.first(where: { $0.url == url })?.id.uuidString }
+            return [
+                "id": playlist.id.uuidString,
+                "name": playlist.name,
+                "trackIDs": trackIDs,
+                "artworkURL": trackIDs.first.map { "/api/artwork?id=\($0)" } as Any
+            ]
+        }
+        return [
+            "tracks": trackPayload,
+            "albums": albumPayload,
+            "artists": artistPayload,
+            "playlists": playlistPayload
+        ]
     }
 
     private func audioFormatSummary(for track: LocalTrack) -> String? {
@@ -622,288 +556,51 @@ final class RemoteServer: ObservableObject {
 <!doctype html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b0d10">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Toyako">
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="manifest" href="/manifest.json"><link rel="icon" type="image/png" href="/icon-192.png">
 <title>Toyako</title>
 <style>
-:root{color-scheme:dark;--white:#fff;--muted:rgba(255,255,255,.62);--faint:rgba(255,255,255,.28);--line:rgba(255,255,255,.22)}
-*{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;background:#08090b;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
-body{position:relative;min-height:100vh;min-height:100svh;min-height:100dvh}
-#backdrop{position:fixed;inset:-8%;width:116%;height:116%;object-fit:cover;filter:blur(55px) saturate(.72);opacity:.48;transform:scale(1.05);display:none;pointer-events:none}
-#backdrop.visible{display:block}
-.backdrop-shade{position:fixed;inset:0;background:linear-gradient(90deg,rgba(5,7,10,.55),rgba(5,7,10,.36) 48%,rgba(5,7,10,.48)),rgba(6,8,11,.34);pointer-events:none}
-.shell{position:relative;width:100%;height:100vh;height:100svh;height:100dvh;min-height:0;padding:clamp(12px,2.2vh,26px) clamp(20px,4vw,48px) clamp(12px,2.2vh,26px);display:flex;flex-direction:column;overflow:hidden}
-.topbar{height:clamp(32px,4.5vh,42px);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
-.icon-btn{border:0;background:transparent;color:white;padding:10px;margin:-10px;cursor:pointer;display:grid;place-items:center;opacity:.94;flex:0 0 auto}
-.icon-btn svg{width:clamp(22px,2.2vw,25px);height:clamp(22px,2.2vw,25px);fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.install-btn{display:none}.install-btn.visible{display:grid}
-.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,0.9fr) minmax(0,1.1fr);gap:clamp(28px,5vw,72px);align-items:stretch;padding:clamp(2px,1vh,10px) 0;overflow:hidden}
-.left{min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;max-width:760px;width:100%;margin:auto}
-.art-wrap{width:min(100%,42vw,60dvh,calc(100dvh - 430px),760px);aspect-ratio:1/1;flex:0 1 auto;display:grid;place-items:center;margin:0 auto}
-.art{width:100%;height:100%;object-fit:cover;border-radius:18px;display:block;box-shadow:0 26px 60px rgba(0,0,0,.26);transition:transform .42s cubic-bezier(.22,.8,.2,1),opacity .25s}
-.art.paused{transform:scale(.70)}
-.fallback{width:100%;height:100%;border-radius:18px;background:rgba(255,255,255,.055);display:grid;place-items:center;color:rgba(255,255,255,.15);font-size:72px}
-.info{margin-top:clamp(12px,2.2vh,24px);width:100%;text-align:left}
-.title{font-size:clamp(22px,2.2vw,28px);font-weight:750;letter-spacing:-.035em;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.artist{font-size:clamp(15px,1.45vw,18px);font-weight:500;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.audio-info{font-size:clamp(12px,1.15vw,14px);color:rgba(255,255,255,.47);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scrub{width:100%;margin-top:clamp(14px,2.2vh,28px)}
-.range{width:100%;height:5px;appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.23);border-radius:999px;outline:none;margin:0;padding:0;display:block;touch-action:none}
-.range::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:white;border:0;box-shadow:0 2px 8px rgba(0,0,0,.18)}
-.range::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:white;border:0}
-.times{display:flex;justify-content:space-between;margin-top:7px;font-size:clamp(11px,1vw,13px);color:rgba(255,255,255,.56);font-variant-numeric:tabular-nums}
-.controls{width:100%;display:flex;align-items:center;justify-content:center;gap:clamp(16px,3vw,48px);margin-top:clamp(10px,2.2vh,25px)}
-.control{border:0;background:transparent;color:white;display:grid;place-items:center;padding:8px;cursor:pointer;opacity:.96;flex:0 0 auto}
-.control.dim{color:rgba(255,255,255,.35)}
-.control svg{width:clamp(22px,2.4vw,27px);height:clamp(22px,2.4vw,27px);fill:currentColor;stroke:none}
-.control.play{width:clamp(46px,4.8vw,58px);height:clamp(46px,4.8vw,58px);padding:0}
-.control.play svg{width:clamp(34px,3.8vw,43px);height:clamp(34px,3.8vw,43px)}
-.control:active{transform:scale(.91)}
-.volume{width:100%;display:flex;align-items:center;gap:12px;margin-top:clamp(8px,1.8vh,18px)}
-.volume svg{width:21px;height:21px;fill:white;opacity:.9;flex:0 0 auto}
-.volume .range{height:5px}
-.bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:10px}.output-row{width:100%;display:flex;align-items:center;gap:10px;margin-top:12px;color:var(--muted);font-size:13px}.output-label{color:rgba(255,255,255,.48)}.output-button{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:white;border-radius:999px;padding:8px 12px;font-weight:650;cursor:pointer}.output-menu{position:absolute;z-index:12;display:none;left:0;bottom:46px;min-width:210px;padding:8px;background:rgba(22,24,27,.96);backdrop-filter:blur(25px);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5)}.output-menu.open{display:block}.output-wrap{position:relative}.output-option{display:block;width:100%;border:0;background:transparent;color:white;text-align:left;padding:11px 12px;border-radius:10px;cursor:pointer}.output-option:hover{background:rgba(255,255,255,.08)}.output-option.active{background:rgba(255,255,255,.12)}
-.chip{border:0;background:transparent;color:white;font-size:15px;font-weight:600;padding:8px 10px;cursor:pointer;opacity:.9}
-.chip.off{opacity:.34}
-.right{min-width:0;min-height:0;height:100%;display:flex;align-items:stretch;overflow:hidden}
-.lyrics{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 clamp(8px,2.2vw,28px);mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
-.lyrics-inner{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:clamp(20px,3vh,30px);padding:clamp(120px,30%,260px) 0;transition:none}
-.line{font-size:50px;font-weight:750;line-height:1.1;letter-spacing:-.025em;color:white;opacity:.27;filter:blur(1.6px);transform:scale(.985);transform-origin:left center;cursor:pointer;transition:opacity .4s,filter .4s,transform .4s}
-.line.past{opacity:.12;filter:blur(3.8px);transform:scale(.972)}
-.line.active{opacity:1;filter:none;transform:scale(1)}
-.roman{font-size:22px;font-weight:500;line-height:1.2;color:white;opacity:.18;margin-top:7px;letter-spacing:0}
-.line.active .roman{opacity:.72}
-.no-lyrics{font-size:22px;color:rgba(255,255,255,.42);font-weight:600}
-button,input{font:inherit}
-button{-webkit-tap-highlight-color:transparent}
-input[type="range"]{accent-color:white}
-@media (pointer:coarse){.icon-btn{padding:14px;margin:-14px}.control{padding:12px}.control.play{padding:0}.range{height:8px}.range::-webkit-slider-thumb{width:22px;height:22px}.range::-moz-range-thumb{width:22px;height:22px}}
-@media (hover:none){.queue-item:hover{background:transparent}}
-.queue-panel{position:fixed;z-index:10;right:24px;top:70px;width:min(430px,calc(100vw - 48px));max-height:72vh;overflow:auto;background:rgba(20,22,25,.88);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.11);border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.5);display:none}
-.queue-panel.open{display:block}.queue-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-weight:700}.queue-item{display:block;width:100%;padding:12px 10px;border-radius:12px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}.queue-item:hover{background:rgba(255,255,255,.07)}.queue-item:active{background:rgba(255,255,255,.12);transform:scale(.995)}.queue-item.active{background:rgba(255,255,255,.10)}.queue-item small{display:block;color:var(--muted);margin-top:3px;pointer-events:none}.queue-item div{pointer-events:none}
-.error{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);color:#ffb3b3;font-size:13px;background:rgba(30,8,8,.75);padding:8px 12px;border-radius:10px;display:none;z-index:20}
-@media(max-width:700px){
-  .shell{padding:12px 18px max(16px,env(safe-area-inset-bottom))}
-  .main{display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;position:relative;overflow:hidden;gap:0;padding:8px 0 0}
-  .left{max-width:none;display:flex;width:100%;height:auto;min-height:0}
-  .art-wrap{width:min(86vw,390px,52vh);max-width:100%;margin:0 auto}
-  .info{margin-top:clamp(12px,2vh,17px)}
-  .title{font-size:clamp(20px,6vw,23px)}
-  .artist{font-size:clamp(14px,4.3vw,16px)}
-  .audio-info{font-size:clamp(11px,3.2vw,12px)}
-  .scrub{margin-top:clamp(14px,2.5vh,20px)}
-  .controls{margin-top:clamp(12px,2vh,18px);gap:clamp(14px,5vw,24px)}
-  .volume{margin-top:clamp(8px,1.8vh,12px)}
-  .right{height:min(54dvh,430px);min-height:220px;width:100%;display:none;order:0}
-  .line{font-size:clamp(25px,8vw,32px);line-height:1.08}
-  .roman{font-size:clamp(14px,4vw,16px)}
-  .bottom-actions{display:none}
-  .portrait-lyrics-button{display:grid}
-  .main.lyrics-mode .art-wrap{display:none}
-  .main.lyrics-mode .right{display:flex;position:absolute;left:0;right:0;top:0;height:min(56dvh,460px);min-height:220px}
-  .main.lyrics-mode .info{margin-top:10px}
-  .main.lyrics-mode .left{max-width:none;padding-top:min(56dvh,460px)}
-  .main.lyrics-mode .lyrics-toggle-icon{transform:rotate(180deg)}
-}
-@media(min-width:701px){.portrait-lyrics-button{display:none}}
-
-
+:root{color-scheme:dark;--bg:#08090b;--card:rgba(255,255,255,.075);--line:rgba(255,255,255,.12);--muted:rgba(255,255,255,.62);--accent:#fff}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}body{overflow-x:hidden}
+button,input{font:inherit}button{color:inherit}.app{min-height:100vh;min-height:100dvh;padding:18px clamp(16px,4vw,52px) 110px}.top{display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:20;padding:4px 0 14px;background:linear-gradient(var(--bg) 75%,transparent);backdrop-filter:blur(10px)}.brand{font-size:25px;font-weight:800;letter-spacing:-.04em}.nav{display:flex;gap:6px;overflow:auto;scrollbar-width:none}.nav::-webkit-scrollbar{display:none}.nav button{border:0;background:transparent;padding:9px 12px;border-radius:999px;color:var(--muted);font-weight:650;white-space:nowrap;cursor:pointer}.nav button.active{background:#fff;color:#111}.page{max-width:1500px;margin:0 auto}.hero{display:grid;grid-template-columns:minmax(220px,34%) 1fr;gap:32px;align-items:center;min-height:340px}.hero-art{width:min(100%,430px);aspect-ratio:1;object-fit:cover;border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)}.eyebrow{color:var(--muted);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}.hero h1{font-size:clamp(32px,5vw,66px);line-height:.98;letter-spacing:-.055em;margin:8px 0}.hero p{color:var(--muted);font-size:17px}.sections{display:grid;gap:34px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:13px}.section-head h2{margin:0;font-size:23px;letter-spacing:-.035em}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:16px}.card{border:1px solid var(--line);background:var(--card);border-radius:17px;padding:11px;text-align:left;cursor:pointer;min-width:0;transition:transform .15s,background .15s}.card:active{transform:scale(.98)}.card:hover{background:rgba(255,255,255,.105)}.cover{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;background:rgba(255,255,255,.06);display:grid;place-items:center;color:rgba(255,255,255,.25);font-size:42px}.card-title{margin-top:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card-sub{margin-top:4px;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.list{display:grid;gap:6px}.row{display:grid;grid-template-columns:52px 1fr auto;gap:13px;align-items:center;padding:9px;border:0;background:transparent;border-radius:13px;text-align:left;cursor:pointer}.row:hover{background:rgba(255,255,255,.07)}.row-cover{width:52px;height:52px;object-fit:cover;border-radius:9px;background:rgba(255,255,255,.06)}.row-title{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-sub{color:var(--muted);font-size:13px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.duration{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.detail{display:grid;gap:24px}.detail-head{display:flex;gap:22px;align-items:center}.detail-cover{width:190px;height:190px;object-fit:cover;border-radius:20px;background:rgba(255,255,255,.06)}.detail h1{font-size:clamp(30px,5vw,54px);margin:0;letter-spacing:-.05em}.detail p{color:var(--muted)}.back{border:0;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 13px;cursor:pointer}.player{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(940px,calc(100% - 28px));background:rgba(18,20,24,.92);border:1px solid var(--line);backdrop-filter:blur(26px);border-radius:20px;padding:12px 15px;box-shadow:0 25px 70px rgba(0,0,0,.45)}.player-top{display:flex;gap:12px;align-items:center}.player-art{width:48px;height:48px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,.06)}.player-meta{min-width:0;flex:1}.player-title{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player-artist{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player-controls{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:8px}.player-controls button{border:0;background:transparent;cursor:pointer;font-size:19px}.player-controls .play{width:42px;height:42px;border-radius:50%;background:#fff;color:#111}.seek{width:100%;accent-color:#fff}.error{position:fixed;z-index:40;left:50%;bottom:105px;transform:translateX(-50%);background:#351212;color:#ffd1d1;border:1px solid #673131;padding:9px 13px;border-radius:10px;display:none}.empty{color:var(--muted);padding:40px 0;text-align:center}
+@media(max-width:700px){.app{padding:12px 14px 130px}.top{gap:10px}.brand{font-size:21px}.nav button{padding:8px 10px}.hero{grid-template-columns:1fr;gap:18px;min-height:0}.hero-art{width:min(70vw,300px);margin:auto}.hero-copy{text-align:center}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.detail-head{align-items:flex-start}.detail-cover{width:120px;height:120px}.player{bottom:8px;width:calc(100% - 16px)}}
 </style>
 </head>
 <body>
-<img id="backdrop" alt="">
-<div class="backdrop-shade"></div>
-<div class="shell">
-  <div class="topbar">
-    <button class="icon-btn" onclick="window.history.back()" aria-label="Close">
-      <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
-    </button>
-    <div style="display:flex;align-items:center;gap:18px">
-      <button class="icon-btn portrait-lyrics-button" onclick="togglePortraitLyrics()" aria-label="Show lyrics">
-        <svg class="lyrics-toggle-icon" viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>
-      </button>
-      <button class="icon-btn install-btn" id="installBtn" onclick="installWebApp()" aria-label="Install Toyako">
-        <svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M5 15v4h14v-4"/></svg>
-      </button>
-      <button class="icon-btn" onclick="toggleQueue()" aria-label="Queue">
-      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h9"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-      </button>
-    </div>
-  </div>
-  <div class="main" id="main">
-    <section class="left">
-      <div class="art-wrap" id="artWrap"><div class="fallback">♪</div></div>
-      <div class="info">
-        <div class="title" id="title">Nothing Playing</div>
-        <div class="artist" id="artist"></div>
-        <div class="audio-info" id="audioInfo"></div>
-      </div>
-      <div class="scrub">
-        <input id="seek" class="range" type="range" min="0" max="1" value="0" step="0.01">
-        <div class="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
-      </div>
-      <div class="controls">
-        <button class="control" id="shuffle" onclick="toggleShuffle()" aria-label="Shuffle"><svg viewBox="0 0 24 24"><path d="M16 3h5v5h-2V6.41l-3.29 3.3-1.42-1.42L17.59 5H16V3ZM4 5h2.5c1.45 0 2.82.7 3.66 1.88l6.18 8.7A2.5 2.5 0 0 0 18.38 17H21v2h-2.62a4.5 4.5 0 0 1-3.86-2.18l-6.18-8.7A2.5 2.5 0 0 0 6.5 7H4V5Zm0 12h2.5a2.5 2.5 0 0 0 2.03-1.04l1.16-1.63 1.42 1.42-1 1.41A4.5 4.5 0 0 1 6.5 19H4v-2Z"/></svg></button>
-        <button class="control" onclick="cmd('previous')" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14h2V5H6Zm3 7 9 7V5l-9 7Z"/></svg></button>
-        <button class="control play" id="play" onclick="cmd('toggle')" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path id="playPath" d="M8 5v14l11-7L8 5Z"/></svg></button>
-        <button class="control" onclick="cmd('next')" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M16 5v14h2V5h-2Zm-1 7L6 5v14l9-7Z"/></svg></button>
-        <button class="control" id="repeat" onclick="cycleRepeat()" aria-label="Repeat"><svg viewBox="0 0 24 24"><path d="M7 7h10V4l4 4-4 4V9H7a3 3 0 0 0-3 3H2a5 5 0 0 1 5-5Zm10 10H7v3l-4-4 4-4v3h10a3 3 0 0 0 3-3h2a5 5 0 0 1-5 5Z"/></svg></button>
-      </div>
-      <div class="volume">
-        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="volume" class="range" type="range" min="0" max="1" value="1" step="0.01">
-        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </div>
-      <div class="output-row">
-        <span class="output-label">Playing on</span>
-        <div class="output-wrap">
-          <button class="output-button" id="outputButton" onclick="toggleOutputMenu()">iPad</button>
-          <div class="output-menu" id="outputMenu">
-            <button class="output-option" id="ipadOutput" onclick="selectOutput('ipad')">This iPad</button>
-            <button class="output-option" id="webOutput" onclick="selectOutput('web')">This phone / Web Remote</button>
-          </div>
-        </div>
-      </div>
-    </section>
-    <section class="right">
-      <div class="lyrics" id="lyrics"><div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div></div>
-    </section>
-  </div>
-</div>
-<div class="queue-panel" id="queuePanel"><div class="queue-head"><span>Queue</span><button class="icon-btn" onclick="toggleQueue()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div id="queue"></div></div>
-<audio id="remoteAudio" preload="auto" playsinline></audio>
-<div class="error" id="error"></div>
+<div class="app"><header class="top"><div class="brand">Toyako</div><nav class="nav" id="nav"></nav></header><main class="page" id="page"></main></div>
+<div class="player" id="player"></div><div class="error" id="error"></div>
 <script>
-let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',lastLyricsSignature='',manualLyricsScroll=false,portraitLyrics=false,deferredInstallPrompt=null,remoteAudioTrackId='',lastRemoteSync=0;
-const $=id=>document.getElementById(id);
-const fmt=s=>{s=Math.max(0,Math.floor(s||0));let m=Math.floor(s/60),sec=String(s%60).padStart(2,'0');return `${m}:${sec}`};
-async function api(path,options={}){let r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
-async function cmd(command,extra={}){try{if(state?.playbackTarget==='web'&&(command==='toggle'||command==='play'||command==='pause')){if(command==='toggle'){if(remoteAudio.paused)await remoteAudio.play();else remoteAudio.pause()}else if(command==='play'){await remoteAudio.play()}else{remoteAudio.pause()}syncRemotePlayback();return;}await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){showError(e)}}
-function showError(e){$('error').textContent=e?.message||String(e);$('error').style.display='block';setTimeout(()=>$('error').style.display='none',3500)}
-const remoteAudio=$('remoteAudio');
-let remoteBrowserVolume=1;
-function toggleOutputMenu(){$('outputMenu').classList.toggle('open')}
-async function selectOutput(target){
-  $('outputMenu').classList.remove('open');
-  try{
-    if(target==='web'){
-      await cmd('handoffToWeb');
-      await refresh();
-      await syncRemoteAudioFromState(true);
-    }else{
-      const position=remoteAudioTrackId?remoteAudio.currentTime:(state?.position||0);
-      const playing=state?.playbackTarget==='web' ? !remoteAudio.paused : !!state?.playing;
-      remoteAudio.pause();
-      await cmd('handoffToIPad',{position,playing});
-    }
-  }catch(e){showError(e)}
-}
-async function syncRemoteAudioFromState(force=false){
-  if(!state||state.playbackTarget!=='web'||!state.track?.id){ remoteAudio.pause(); return; }
-  const trackChanged=remoteAudioTrackId!==state.track.id;
-  if(force||trackChanged){
-    remoteAudio.pause();
-    remoteAudio.src='/api/media?id='+encodeURIComponent(state.track.id);
-    remoteAudioTrackId=state.track.id;
-    try{remoteAudio.currentTime=Math.max(0,Math.min(state.duration||0,state.position||0))}catch(e){}
-    if(state.playing){try{await remoteAudio.play()}catch(e){showError('Tap Play to start audio on this phone.')}}
-  }else if(Math.abs(remoteAudio.currentTime-(state.position||0))>2&&!remoteAudio.seeking){
-    try{remoteAudio.currentTime=state.position||0}catch(e){}
-  }
-  if(state.playing&&remoteAudio.paused){try{await remoteAudio.play()}catch(e){}}
-  if(!state.playing&&!remoteAudio.paused)remoteAudio.pause();
-}
-function syncRemotePlayback(){
-  if(state?.playbackTarget!=='web')return;
-  const now=Date.now(); if(now-lastRemoteSync<700)return; lastRemoteSync=now;
-  api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'remoteSync',position:remoteAudio.currentTime||0,playing:!remoteAudio.paused})}).catch(()=>{});
-}
-remoteAudio.addEventListener('timeupdate',syncRemotePlayback);
-remoteAudio.addEventListener('play',syncRemotePlayback);
-remoteAudio.addEventListener('pause',syncRemotePlayback);
-remoteAudio.addEventListener('ended',()=>cmd('next'));
-
-function renderArtwork(){let wrap=$('artWrap');if(state?.track?.artworkURL){let img=wrap.querySelector('img');if(!img){img=document.createElement('img');img.className='art';wrap.replaceChildren(img)}let url=state.track.artworkURL+'?t='+encodeURIComponent(state.track.id);if(img.src!==location.origin+url)img.src=url;img.classList.toggle('paused',!state.playing);let bg=$('backdrop');bg.src=url;bg.classList.add('visible')}else{wrap.innerHTML='<div class="fallback">♪</div>';let bg=$('backdrop');bg.removeAttribute('src');bg.classList.remove('visible')}}
-function lyricsSignature(){
-  const lines=state?.lyrics||[];
-  const source=state?.lyricsSource||'';
-  return source+'|'+lines.length+'|'+lines.map(l=>String(l.time)+':'+String(l.text)).join('\n');
-}
-function renderLyrics(force=false){
-  let box=$('lyrics'),lines=state?.lyrics||[];
-  const signature=lyricsSignature();
-  if(!lines.length){
-    if(force||signature!==lastLyricsSignature){box.innerHTML='<div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div>';}
-    activeIndex=-1;
-    lastLyricsSignature=signature;
-    return;
-  }
-  let idx=0;
-  for(let i=0;i<lines.length;i++){if(lines[i].time<=localPosition)idx=i}
-  if(!force&&idx===activeIndex&&signature===lastLyricsSignature)return;
-  if(signature!==lastLyricsSignature){activeIndex=-1;manualLyricsScroll=false;}
-  activeIndex=idx;
-  lastLyricsSignature=signature;
-  let inner=document.createElement('div');inner.className='lyrics-inner';
-  lines.forEach((l,i)=>{
-    let d=document.createElement('div');d.className='line '+(i<idx?'past':i===idx?'active':'future');d.dataset.i=i;
-    d.innerHTML=escapeHTML(l.text)+(state.settings['Toyako.Lyrics.ShowRomanization']&&l.romanized?`<div class="roman">${escapeHTML(l.romanized)}</div>`:'');
-    d.onclick=()=>cmd('seek',{position:l.time});
-    inner.appendChild(d);
-  });
-  box.replaceChildren(inner);
-  requestAnimationFrame(()=>{
-    let active=inner.querySelector('.active');
-    if(active && !manualLyricsScroll){active.scrollIntoView({block:'center',behavior:force?'auto':'smooth'});}
-  });
-}
-
-function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map((x,i)=>`<button type="button" class="queue-item ${x.id===state.track.id?'active':''}" data-index="${i}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></button>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>';document.querySelectorAll('#queue .queue-item').forEach(el=>el.addEventListener('click',async()=>{await cmd('playQueue',{index:Number(el.dataset.index)});toggleQueue();}))}
-function render(){if(!state?.available)return;const trackChanged=lastTrackId!==state.track.id;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.playbackTarget==='web'?remoteBrowserVolume:(state.volume??1);$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');$('outputButton').textContent=state.playbackTarget==='web'?'Phone / Web':'iPad';$('ipadOutput').classList.toggle('active',state.playbackTarget==='ipad');$('webOutput').classList.toggle('active',state.playbackTarget==='web');if(trackChanged){activeIndex=-1;lastLyricsSignature='';manualLyricsScroll=false;}renderArtwork();renderLyrics(trackChanged);renderQueue();lastTrackId=state.track.id;if(state.playbackTarget==='web')syncRemoteAudioFromState(trackChanged)}
-async function refresh(){try{let next=await api('/api/state');let wasPlaying=state?.playing;state=next;let now=Date.now();if(!wasPlaying||!state.playing)localPosition=state.position||0;else{localPosition=Math.max(0,state.position||0)}lastTick=now;render();$('error').style.display='none'}catch(e){showError(e)}}
-function toggleShuffle(){cmd('shuffle',{value:!state.shuffle})}
-function cycleRepeat(){let modes=['off','all','one'];let i=modes.indexOf(state.repeat);cmd('repeat',{value:modes[(i+1)%modes.length]})}
-function toggleQueue(){$('queuePanel').classList.toggle('open')}
-$('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));renderLyrics()});$('seek').addEventListener('change',e=>{if(state?.playbackTarget==='web'){remoteAudio.currentTime=Number(e.target.value);syncRemotePlayback()}else cmd('seek',{position:Number(e.target.value)})});$('volume').addEventListener('input',e=>{const v=Number(e.target.value);if(state?.playbackTarget==='web'){remoteBrowserVolume=v;remoteAudio.volume=v}else if(state)state.volume=v});$('volume').addEventListener('change',e=>{const v=Number(e.target.value);if(state?.playbackTarget==='web'){remoteBrowserVolume=v;remoteAudio.volume=v;syncRemotePlayback()}else cmd('volume',{value:v})});
-function togglePortraitLyrics(){portraitLyrics=!portraitLyrics;manualLyricsScroll=false;render();if(portraitLyrics)requestAnimationFrame(()=>renderLyrics(true));}
-function updateOrientation(){if(window.innerWidth>600){portraitLyrics=false;document.querySelector('.main')?.classList.remove('lyrics-mode')}else{render()}}
-window.addEventListener('resize',updateOrientation,{passive:true});
-window.addEventListener('orientationchange',()=>setTimeout(updateOrientation,120),{passive:true});
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('installBtn').classList.add('visible');});
-window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;$('installBtn').classList.remove('visible');});
-async function installWebApp(){
-  if(!deferredInstallPrompt){
-    showError(location.protocol==='http:'?'Install is available only when this remote is served from a secure browser context (HTTPS or localhost).':'Use your browser menu and choose Install Toyako if your browser provides it.');
-    return;
-  }
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt=null;
-  $('installBtn').classList.remove('visible');
-}
-if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
-  navigator.serviceWorker.register('/sw.js').catch(()=>{});
-}
-
-document.addEventListener('keydown',e=>{
-  if(e.target instanceof HTMLInputElement) return;
-  if(e.code==='Space'){e.preventDefault();cmd('toggle')}
-  else if(e.code==='ArrowRight'){e.preventDefault();cmd('next')}
-  else if(e.code==='ArrowLeft'){e.preventDefault();cmd('previous')}
-  else if(e.key.toLowerCase()==='q'){e.preventDefault();toggleQueue()}
-  else if(e.key.toLowerCase()==='l' && window.innerWidth<=700){e.preventDefault();togglePortraitLyrics()}
-});
-$('lyrics').addEventListener('wheel',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
-$('lyrics').addEventListener('scroll',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
-setInterval(()=>{let now=Date.now(),dt=(now-lastTick)/1000;lastTick=now;if(state?.playbackTarget==='web'){localPosition=remoteAudio.currentTime||0}else if(state?.playing){localPosition=Math.min(state.duration||Infinity,localPosition+dt)}if(state?.playing||state?.playbackTarget==='web'){$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').value=Math.min(state.duration||1,localPosition);renderLyrics()}},250);
-setInterval(refresh,1000);refresh();
-function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+const $=id=>document.getElementById(id);let state=null,library={tracks:[],albums:[],artists:[],playlists:[]},view='home',detail=null;
+const fmt=s=>{s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+async function api(path,options={}){const r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
+function err(e){$('error').textContent=e?.message||String(e);$('error').style.display='block';clearTimeout(window.__err);window.__err=setTimeout(()=>$('error').style.display='none',3000)}
+async function cmd(command,extra={}){try{await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refreshState()}catch(e){err(e)}}
+function artwork(url){return url?`<img class="cover" src="${esc(url)}" loading="lazy" onerror="this.replaceWith(fallback())">`:'<div class="cover">♪</div>'}
+function fallback(){const d=document.createElement('div');d.className='cover';d.textContent='♪';return d}
+function nav(){const items=[['home','Home'],['tracks','Tracks'],['albums','Albums'],['artists','Artists'],['playlists','Playlists']];$('nav').innerHTML=items.map(([id,label])=>`<button class="${view===id?'active':''}" onclick="go('${id}')">${label}</button>`).join('')}
+function go(v){view=v;detail=null;nav();render()}
+function trackById(id){return library.tracks.find(x=>x.id===id)}
+function trackRow(t){return `<button class="row" onclick="cmd('playTrack',{id:'${t.id}'})"><img class="row-cover" src="${esc(t.artworkURL)}" loading="lazy"><div><div class="row-title">${esc(t.title)}</div><div class="row-sub">${esc(t.artist)}${t.album?' · '+esc(t.album):''}</div></div><span class="duration">${fmt(t.duration)}</span></button>`}
+function entityCard(x,type){let onclick=type==='album'?`openDetail('album','${x.id}')`:type==='artist'?`openDetail('artist','${x.id}')`:type==='playlist'?`openDetail('playlist','${x.id}')`:`cmd('playTrack',{id:'${x.id}'})`;let sub=type==='album'?x.artist:type==='artist'?`${x.trackIDs.length} tracks`:type==='playlist'?`${x.trackIDs.length} tracks`:x.artist;return `<button class="card" onclick="${onclick}">${artwork(x.artworkURL)}<div class="card-title">${esc(x.name||x.title)}</div><div class="card-sub">${esc(sub)}</div></button>`}
+function section(title,content){return `<section><div class="section-head"><h2>${esc(title)}</h2></div>${content}</section>`}
+function home(){const tracks=library.tracks.slice(0,12),albums=library.albums.slice(0,8),artists=library.artists.slice(0,8),playlists=library.playlists.slice(0,8);return `<div class="hero"><img class="hero-art" src="${esc(state?.track?.artworkURL||albums[0]?.artworkURL||'')}" onerror="this.style.visibility='hidden'"><div class="hero-copy"><div class="eyebrow">Your Library</div><h1>Listen anywhere on your network.</h1><p>${library.tracks.length} tracks · ${library.albums.length} albums · ${library.artists.length} artists · ${library.playlists.length} playlists</p></div></div><div class="sections">${section('Tracks',`<div class="list">${tracks.map(trackRow).join('')}</div>`)}${section('Albums',`<div class="grid">${albums.map(x=>entityCard(x,'album')).join('')}</div>`)}${section('Artists',`<div class="grid">${artists.map(x=>entityCard(x,'artist')).join('')}</div>`)}${section('Playlists',`<div class="grid">${playlists.map(x=>entityCard(x,'playlist')).join('')}</div>`)}</div>`}
+function tracksPage(){return `<div class="detail"><div class="detail-head"><div><div class="eyebrow">Library</div><h1>Tracks</h1><p>${library.tracks.length} tracks</p></div></div><div class="list">${library.tracks.map(trackRow).join('')}</div></div>`}
+function albumsPage(){return `<div class="detail"><div><div class="eyebrow">Library</div><h1>Albums</h1></div><div class="grid">${library.albums.map(x=>entityCard(x,'album')).join('')}</div></div>`}
+function artistsPage(){return `<div class="detail"><div><div class="eyebrow">Library</div><h1>Artists</h1></div><div class="grid">${library.artists.map(x=>entityCard(x,'artist')).join('')}</div></div>`}
+function playlistsPage(){return `<div class="detail"><div><div class="eyebrow">Library</div><h1>Playlists</h1></div><div class="grid">${library.playlists.map(x=>entityCard(x,'playlist')).join('')}</div></div>`}
+function openDetail(type,id){detail={type,id};render()}
+function detailPage(){const d=detail;let x=(d.type==='album'?library.albums:d.type==='artist'?library.artists:library.playlists).find(y=>y.id===d.id);if(!x)return '<div class="empty">Not found</div>';const tracks=x.trackIDs.map(trackById).filter(Boolean);const title=x.name;const sub=d.type==='album'?x.artist:`${tracks.length} tracks`;return `<div class="detail"><button class="back" onclick="detail=null;render()">← Back</button><div class="detail-head">${artwork(x.artworkURL).replace('class="cover"','class="detail-cover"')}<div><div class="eyebrow">${esc(d.type)}</div><h1>${esc(title)}</h1><p>${esc(sub)}</p><button class="back" onclick="cmd('playTrackSet',{ids:${JSON.stringify(x.trackIDs)}})">Play All</button></div></div><div class="list">${tracks.map(trackRow).join('')}</div></div>`}
+function render(){nav();$('page').innerHTML=detail?detailPage():view==='home'?home():view==='tracks'?tracksPage():view==='albums'?albumsPage():view==='artists'?artistsPage():playlistsPage();renderPlayer()}
+function renderPlayer(){if(!state?.available){$('player').innerHTML='';return}const t=state.track||{};$('player').innerHTML=`<div class="player-top"><img class="player-art" src="${esc(t.artworkURL||'')}" onerror="this.style.visibility='hidden'"><div class="player-meta"><div class="player-title">${esc(t.title)}</div><div class="player-artist">${esc(t.artist)}</div></div><span style="color:var(--muted);font-size:12px">${state.playing?'Playing':'Paused'}</span></div><input class="seek" id="playerSeek" type="range" min="0" max="${state.duration||1}" value="${state.position||0}" step="0.1"><div class="player-controls"><button onclick="cmd('previous')">⏮</button><button class="play" onclick="cmd('toggle')">${state.playing?'❚❚':'▶'}</button><button onclick="cmd('next')">⏭</button></div>`;const seek=$('playerSeek');seek.onchange=()=>cmd('seek',{position:Number(seek.value)})}
+async function refreshState(){try{state=await api('/api/state');render()}catch(e){err(e)}}
+async function refreshLibrary(){try{library=await api('/api/library');render()}catch(e){err(e)}}
+setInterval(refreshState,350);refreshLibrary();refreshState();
 </script>
 </body></html>
 """#
@@ -912,7 +609,7 @@ function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;',
 {
   "name": "Toyako Remote",
   "short_name": "Toyako",
-  "description": "Remote control for the Toyako music player",
+  "description": "Toyako music library and remote control",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

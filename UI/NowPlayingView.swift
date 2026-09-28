@@ -9,7 +9,6 @@ struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
     @EnvironmentObject var clock: PlaybackClock
-    @EnvironmentObject var remoteServer: RemoteServer
 
     @State private var dragOffset: CGFloat = 0
     @State private var playPausePressed = false
@@ -270,11 +269,8 @@ struct NowPlayingView: View {
                 lyricsSourceButton(size: 48, opensAbove: true)
             }
 
-            AudioRoutePicker()
-                .frame(width: 48, height: 48)
-                .accessibilityLabel("AirPlay Audio Output")
-
-            playbackDestinationMenu
+            AudioRoutePicker(routeName: audioRouteName)
+                .frame(width: 205, height: 46)
 
             Spacer(minLength: 0)
 
@@ -290,47 +286,6 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Queue")
         }
-    }
-
-    private var playbackDestinationMenu: some View {
-        Menu {
-            Button {
-                if remoteServer.playbackTarget != .ipad {
-                    remoteServer.handoffToIPad(position: remoteServerCurrentPosition, playing: remoteServerIsPlaying)
-                }
-            } label: {
-                Label("This iPad", systemImage: remoteServer.playbackTarget == .ipad ? "checkmark" : "ipad")
-            }
-
-            if remoteServer.isRunning {
-                Button {
-                    if remoteServer.playbackTarget != .web {
-                        remoteServer.handoffToWeb()
-                    }
-                } label: {
-                    Label("Web Remote / Phone", systemImage: remoteServer.playbackTarget == .web ? "checkmark" : "iphone")
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: remoteServer.playbackTarget == .web ? "iphone" : "ipad")
-                Text(remoteServer.playbackTarget == .web ? "Phone" : "iPad")
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.9))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(.white.opacity(0.10), in: Capsule())
-        }
-        .accessibilityLabel("Playback device")
-    }
-
-    private var remoteServerCurrentPosition: TimeInterval {
-        remoteServer.playbackTarget == .web ? remoteServer.remoteWebPosition : audioManager.currentTime
-    }
-
-    private var remoteServerIsPlaying: Bool {
-        remoteServer.playbackTarget == .web ? remoteServer.remoteWebPlaying : audioManager.isPlaying
     }
 
     private func lyricsSourceButton(size: CGFloat, opensAbove: Bool = false) -> some View {
@@ -464,22 +419,9 @@ struct NowPlayingView: View {
             systemVolumeSlider
                 .padding(.top, 2)
 
-            HStack(spacing: 10) {
-                AudioRoutePicker()
-                    .frame(width: 44, height: 44)
-                    .accessibilityLabel("AirPlay Audio Output")
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Playing on")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.55))
-                    Text(remoteServer.playbackTarget == .web ? "Web Remote / Phone" : audioRouteName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(1)
-                }
-
-                playbackDestinationMenu
+            HStack(spacing: 0) {
+                AudioRoutePicker(routeName: audioRouteName)
+                    .frame(width: 205, height: 46)
                 Spacer(minLength: 0)
             }
             .padding(.top, 4)
@@ -602,7 +544,7 @@ struct NowPlayingView: View {
     private var previousButton: some View {
         Button {
             previousPressed = true
-            remoteServer.previousPlayback()
+            audioManager.backward()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 previousPressed = false
@@ -624,14 +566,14 @@ struct NowPlayingView: View {
     private var playPauseButton: some View {
         Button {
             playPausePressed = true
-            remoteServer.togglePlayback()
+            audioManager.togglePlayPause()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 playPausePressed = false
             }
         } label: {
             Image(
-                systemName: (remoteServer.playbackTarget == .web ? remoteServer.remoteWebPlaying : audioManager.isPlaying) ? "pause.fill" : "play.fill"
+                systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
             )
             .font(.system(size: 38, weight: .medium))
             .foregroundStyle(.white)
@@ -649,7 +591,7 @@ struct NowPlayingView: View {
     private var nextButton: some View {
         Button {
             nextPressed = true
-            remoteServer.nextPlayback()
+            audioManager.forward()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 nextPressed = false
