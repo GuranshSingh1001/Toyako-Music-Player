@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import AVFoundation
+import AVKit
 import MediaPlayer
 import Translation
 
@@ -258,6 +259,10 @@ struct NowPlayingView: View {
                 lyricsSourceButton(size: 48, opensAbove: true)
             }
 
+            AudioRoutePicker()
+                .frame(width: 48, height: 48)
+                .accessibilityLabel("Audio Output")
+
             Button {
                 showQueue = true
             } label: {
@@ -401,6 +406,15 @@ struct NowPlayingView: View {
 
             systemVolumeSlider
                 .padding(.top, 2)
+
+            HStack {
+                Spacer()
+                AudioRoutePicker()
+                    .frame(width: 48, height: 48)
+                    .accessibilityLabel("Audio Output")
+                Spacer()
+            }
+            .padding(.top, 4)
 
             Spacer(minLength: 4)
         }
