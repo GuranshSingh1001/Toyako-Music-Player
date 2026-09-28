@@ -233,7 +233,17 @@ final class RemoteServer: ObservableObject {
         case ("GET", "/api/media"):
             handleMediaRequest(rawPath: rawPath, request: request, connection: connection)
         case ("GET", "/api/artwork"):
-            guard let track = audioManager?.currentTrack else {
+            let requestedID = rawPath.components(separatedBy: "?").dropFirst().joined(separator: "?")
+                .split(separator: "&").reduce(into: [String: String]()) { result, item in
+                    let pair = item.split(separator: "=", maxSplits: 1).map(String.init)
+                    if pair.count == 2 { result[pair[0]] = pair[1].removingPercentEncoding ?? pair[1] }
+                }["id"]
+            guard let manager = audioManager else {
+                sendError(connection, status: 404, message: "No artwork")
+                return
+            }
+            let candidates = manager.originalQueue + manager.queue + [manager.currentTrack].compactMap { $0 }
+            guard let track = requestedID.flatMap({ id in candidates.first(where: { $0.id.uuidString == id }) }) ?? manager.currentTrack else {
                 sendError(connection, status: 404, message: "No artwork")
                 return
             }
@@ -291,6 +301,13 @@ final class RemoteServer: ObservableObject {
                     manager.pauseFromRemote()
                     self.remoteWebPosition = manager.currentTime
                     self.remoteWebPlaying = wasWebPlaying
+                }
+            case "playLibrary":
+                if let id = object["id"] as? String {
+                    let pool = manager.originalQueue.isEmpty ? manager.queue : manager.originalQueue
+                    if let index = pool.firstIndex(where: { $0.id.uuidString == id }) {
+                        manager.startQueue(tracks: pool, startIndex: index)
+                    }
                 }
             case "playQueue":
                 if let index = object["index"] as? Int {
@@ -518,6 +535,16 @@ final class RemoteServer: ObservableObject {
                 "artworkURL": track == nil ? NSNull() : "/api/artwork"
             ],
             "queue": queue,
+            "library": manager.originalQueue.isEmpty ? queue : manager.originalQueue.map { item in
+                [
+                    "id": item.id.uuidString,
+                    "title": item.title,
+                    "artist": item.artist,
+                    "album": item.album,
+                    "duration": item.duration,
+                    "artworkURL": "/api/artwork?id=\(item.id.uuidString)"
+                ] as [String: Any]
+            },
             "lyrics": lyrics,
             "lyricsSource": manager.selectedLyricsSourceID as Any,
             "settings": [
@@ -622,291 +649,78 @@ final class RemoteServer: ObservableObject {
 <!doctype html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b0d10">
-<meta name="mobile-web-app-capable" content="yes">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Toyako">
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <title>Toyako</title>
 <style>
-:root{color-scheme:dark;--white:#fff;--muted:rgba(255,255,255,.62);--faint:rgba(255,255,255,.28);--line:rgba(255,255,255,.22)}
-*{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;background:#08090b;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
-body{position:relative;min-height:100vh;min-height:100svh;min-height:100dvh}
-#backdrop{position:fixed;inset:-8%;width:116%;height:116%;object-fit:cover;filter:blur(55px) saturate(.72);opacity:.48;transform:scale(1.05);display:none;pointer-events:none}
-#backdrop.visible{display:block}
-.backdrop-shade{position:fixed;inset:0;background:linear-gradient(90deg,rgba(5,7,10,.55),rgba(5,7,10,.36) 48%,rgba(5,7,10,.48)),rgba(6,8,11,.34);pointer-events:none}
-.shell{position:relative;width:100%;height:100vh;height:100svh;height:100dvh;min-height:0;padding:clamp(12px,2.2vh,26px) clamp(20px,4vw,48px) clamp(12px,2.2vh,26px);display:flex;flex-direction:column;overflow:hidden}
-.topbar{height:clamp(32px,4.5vh,42px);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
-.icon-btn{border:0;background:transparent;color:white;padding:10px;margin:-10px;cursor:pointer;display:grid;place-items:center;opacity:.94;flex:0 0 auto}
-.icon-btn svg{width:clamp(22px,2.2vw,25px);height:clamp(22px,2.2vw,25px);fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.install-btn{display:none}.install-btn.visible{display:grid}
-.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,0.9fr) minmax(0,1.1fr);gap:clamp(28px,5vw,72px);align-items:stretch;padding:clamp(2px,1vh,10px) 0;overflow:hidden}
-.left{min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;max-width:760px;width:100%;margin:auto}
-.art-wrap{width:min(100%,42vw,60dvh,calc(100dvh - 430px),760px);aspect-ratio:1/1;flex:0 1 auto;display:grid;place-items:center;margin:0 auto}
-.art{width:100%;height:100%;object-fit:cover;border-radius:18px;display:block;box-shadow:0 26px 60px rgba(0,0,0,.26);transition:transform .42s cubic-bezier(.22,.8,.2,1),opacity .25s}
-.art.paused{transform:scale(.70)}
-.fallback{width:100%;height:100%;border-radius:18px;background:rgba(255,255,255,.055);display:grid;place-items:center;color:rgba(255,255,255,.15);font-size:72px}
-.info{margin-top:clamp(12px,2.2vh,24px);width:100%;text-align:left}
-.title{font-size:clamp(22px,2.2vw,28px);font-weight:750;letter-spacing:-.035em;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.artist{font-size:clamp(15px,1.45vw,18px);font-weight:500;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.audio-info{font-size:clamp(12px,1.15vw,14px);color:rgba(255,255,255,.47);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scrub{width:100%;margin-top:clamp(14px,2.2vh,28px)}
-.range{width:100%;height:5px;appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.23);border-radius:999px;outline:none;margin:0;padding:0;display:block;touch-action:none}
-.range::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:white;border:0;box-shadow:0 2px 8px rgba(0,0,0,.18)}
-.range::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:white;border:0}
-.times{display:flex;justify-content:space-between;margin-top:7px;font-size:clamp(11px,1vw,13px);color:rgba(255,255,255,.56);font-variant-numeric:tabular-nums}
-.controls{width:100%;display:flex;align-items:center;justify-content:center;gap:clamp(16px,3vw,48px);margin-top:clamp(10px,2.2vh,25px)}
-.control{border:0;background:transparent;color:white;display:grid;place-items:center;padding:8px;cursor:pointer;opacity:.96;flex:0 0 auto}
-.control.dim{color:rgba(255,255,255,.35)}
-.control svg{width:clamp(22px,2.4vw,27px);height:clamp(22px,2.4vw,27px);fill:currentColor;stroke:none}
-.control.play{width:clamp(46px,4.8vw,58px);height:clamp(46px,4.8vw,58px);padding:0}
-.control.play svg{width:clamp(34px,3.8vw,43px);height:clamp(34px,3.8vw,43px)}
-.control:active{transform:scale(.91)}
-.volume{width:100%;display:flex;align-items:center;gap:12px;margin-top:clamp(8px,1.8vh,18px)}
-.volume svg{width:21px;height:21px;fill:white;opacity:.9;flex:0 0 auto}
-.volume .range{height:5px}
-.bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:10px}.output-row{width:100%;display:flex;align-items:center;gap:10px;margin-top:12px;color:var(--muted);font-size:13px}.output-label{color:rgba(255,255,255,.48)}.output-button{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:white;border-radius:999px;padding:8px 12px;font-weight:650;cursor:pointer}.output-menu{position:absolute;z-index:12;display:none;left:0;bottom:46px;min-width:210px;padding:8px;background:rgba(22,24,27,.96);backdrop-filter:blur(25px);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5)}.output-menu.open{display:block}.output-wrap{position:relative}.output-option{display:block;width:100%;border:0;background:transparent;color:white;text-align:left;padding:11px 12px;border-radius:10px;cursor:pointer}.output-option:hover{background:rgba(255,255,255,.08)}.output-option.active{background:rgba(255,255,255,.12)}
-.chip{border:0;background:transparent;color:white;font-size:15px;font-weight:600;padding:8px 10px;cursor:pointer;opacity:.9}
-.chip.off{opacity:.34}
-.right{min-width:0;min-height:0;height:100%;display:flex;align-items:stretch;overflow:hidden}
-.lyrics{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 clamp(8px,2.2vw,28px);mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
-.lyrics-inner{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:clamp(20px,3vh,30px);padding:clamp(120px,30%,260px) 0;transition:none}
-.line{font-size:50px;font-weight:750;line-height:1.1;letter-spacing:-.025em;color:white;opacity:.27;filter:blur(1.6px);transform:scale(.985);transform-origin:left center;cursor:pointer;transition:opacity .4s,filter .4s,transform .4s}
-.line.past{opacity:.12;filter:blur(3.8px);transform:scale(.972)}
-.line.active{opacity:1;filter:none;transform:scale(1)}
-.roman{font-size:22px;font-weight:500;line-height:1.2;color:white;opacity:.18;margin-top:7px;letter-spacing:0}
-.line.active .roman{opacity:.72}
-.no-lyrics{font-size:22px;color:rgba(255,255,255,.42);font-weight:600}
-button,input{font:inherit}
-button{-webkit-tap-highlight-color:transparent}
-input[type="range"]{accent-color:white}
-@media (pointer:coarse){.icon-btn{padding:14px;margin:-14px}.control{padding:12px}.control.play{padding:0}.range{height:8px}.range::-webkit-slider-thumb{width:22px;height:22px}.range::-moz-range-thumb{width:22px;height:22px}}
-@media (hover:none){.queue-item:hover{background:transparent}}
-.queue-panel{position:fixed;z-index:10;right:24px;top:70px;width:min(430px,calc(100vw - 48px));max-height:72vh;overflow:auto;background:rgba(20,22,25,.88);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.11);border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.5);display:none}
-.queue-panel.open{display:block}.queue-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-weight:700}.queue-item{display:block;width:100%;padding:12px 10px;border-radius:12px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}.queue-item:hover{background:rgba(255,255,255,.07)}.queue-item:active{background:rgba(255,255,255,.12);transform:scale(.995)}.queue-item.active{background:rgba(255,255,255,.10)}.queue-item small{display:block;color:var(--muted);margin-top:3px;pointer-events:none}.queue-item div{pointer-events:none}
-.error{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);color:#ffb3b3;font-size:13px;background:rgba(30,8,8,.75);padding:8px 12px;border-radius:10px;display:none;z-index:20}
-@media(max-width:700px){
-  .shell{padding:12px 18px max(16px,env(safe-area-inset-bottom))}
-  .main{display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;position:relative;overflow:hidden;gap:0;padding:8px 0 0}
-  .left{max-width:none;display:flex;width:100%;height:auto;min-height:0}
-  .art-wrap{width:min(86vw,390px,52vh);max-width:100%;margin:0 auto}
-  .info{margin-top:clamp(12px,2vh,17px)}
-  .title{font-size:clamp(20px,6vw,23px)}
-  .artist{font-size:clamp(14px,4.3vw,16px)}
-  .audio-info{font-size:clamp(11px,3.2vw,12px)}
-  .scrub{margin-top:clamp(14px,2.5vh,20px)}
-  .controls{margin-top:clamp(12px,2vh,18px);gap:clamp(14px,5vw,24px)}
-  .volume{margin-top:clamp(8px,1.8vh,12px)}
-  .right{height:min(54dvh,430px);min-height:220px;width:100%;display:none;order:0}
-  .line{font-size:clamp(25px,8vw,32px);line-height:1.08}
-  .roman{font-size:clamp(14px,4vw,16px)}
-  .bottom-actions{display:none}
-  .portrait-lyrics-button{display:grid}
-  .main.lyrics-mode .art-wrap{display:none}
-  .main.lyrics-mode .right{display:flex;position:absolute;left:0;right:0;top:0;height:min(56dvh,460px);min-height:220px}
-  .main.lyrics-mode .info{margin-top:10px}
-  .main.lyrics-mode .left{max-width:none;padding-top:min(56dvh,460px)}
-  .main.lyrics-mode .lyrics-toggle-icon{transform:rotate(180deg)}
-}
-@media(min-width:701px){.portrait-lyrics-button{display:none}}
-
-
+:root{color-scheme:dark;--bg:#000;--panel:rgba(255,255,255,.065);--panel2:rgba(255,255,255,.09);--text:#fff;--secondary:rgba(255,255,255,.62);--tertiary:rgba(255,255,255,.38);--accent:#fff;--line:rgba(255,255,255,.12);--radius:18px}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;touch-action:manipulation}body{overflow:hidden}button,input{font:inherit}button{color:inherit;border:0;background:none;-webkit-tap-highlight-color:transparent}
+.app{height:100dvh;display:grid;grid-template-columns:250px minmax(0,1fr);background:#000}.sidebar{padding:24px 14px 18px;display:flex;flex-direction:column;border-right:1px solid var(--line);background:rgba(10,10,10,.92);backdrop-filter:blur(28px)}.brand{display:flex;align-items:center;gap:11px;padding:4px 10px 25px;font-size:22px;font-weight:760;letter-spacing:-.04em}.brand img{width:30px;height:30px;border-radius:8px}.nav{display:flex;flex-direction:column;gap:5px}.nav button{height:46px;border-radius:12px;display:flex;align-items:center;gap:13px;padding:0 14px;color:var(--secondary);font-weight:600;text-align:left;cursor:pointer}.nav button.active{background:rgba(255,255,255,.11);color:#fff}.nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}.sidebar-spacer{flex:1}.settings{display:flex;align-items:center;gap:13px;padding:12px 14px;color:var(--secondary);cursor:pointer}.content{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden}.topbar{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;flex:0 0 auto}.top-title{font-size:29px;font-weight:760;letter-spacing:-.04em}.top-actions{display:flex;gap:7px}.circle{width:40px;height:40px;border-radius:50%;background:var(--panel);display:grid;place-items:center;cursor:pointer}.circle:active,.play:active,.nav button:active,.card:active{transform:scale(.96)}.circle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.page{flex:1;min-height:0;overflow:auto;padding:8px 28px 150px}.page::-webkit-scrollbar{display:none}.hero{border-radius:24px;min-height:210px;padding:28px;background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.035));border:1px solid var(--line);display:flex;align-items:flex-end;margin-bottom:30px}.hero h1{font-size:clamp(32px,4vw,52px);line-height:1;margin:0 0 9px;letter-spacing:-.055em}.hero p{margin:0;color:var(--secondary);font-size:16px}.actions{display:flex;gap:10px;margin-top:20px}.pill{padding:10px 16px;border-radius:999px;background:#fff;color:#000;font-weight:700;cursor:pointer}.pill.secondary{background:rgba(255,255,255,.1);color:#fff;border:1px solid var(--line)}.section{margin:0 0 32px}.section-head{display:flex;align-items:center;justify-content:space-between;margin:0 0 13px}.section-title{font-size:22px;font-weight:720;letter-spacing:-.025em}.section-more{font-size:14px;color:var(--secondary);cursor:pointer}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}.card{min-width:0;padding:12px;border-radius:var(--radius);background:var(--panel);border:1px solid rgba(255,255,255,.07);cursor:pointer;text-align:left}.art{width:100%;aspect-ratio:1;border-radius:12px;object-fit:cover;background:rgba(255,255,255,.06);display:block}.fallback{width:100%;aspect-ratio:1;border-radius:12px;background:rgba(255,255,255,.06);display:grid;place-items:center;color:var(--tertiary);font-size:38px}.card-title{font-size:14px;font-weight:650;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card-sub{font-size:12px;color:var(--secondary);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.list{display:flex;flex-direction:column;gap:7px}.row{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:13px;align-items:center;padding:8px 10px;border-radius:13px;cursor:pointer}.row:hover{background:rgba(255,255,255,.055)}.row-art{width:52px;height:52px;border-radius:9px;object-fit:cover;background:rgba(255,255,255,.06)}.row-main{min-width:0}.row-title{font-size:15px;font-weight:620;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-sub{font-size:13px;color:var(--secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}.row-tail{color:var(--tertiary);font-size:12px}.empty{padding:50px 20px;text-align:center;color:var(--secondary)}
+.mini{position:absolute;left:22px;right:22px;bottom:16px;height:76px;border-radius:20px;background:rgba(27,27,27,.86);border:1px solid var(--line);backdrop-filter:blur(30px);box-shadow:0 18px 55px rgba(0,0,0,.42);display:grid;grid-template-columns:minmax(170px,1fr) minmax(260px,1.2fr) minmax(170px,1fr);align-items:center;padding:8px 12px;z-index:30}.mini-track{display:flex;align-items:center;gap:10px;min-width:0}.mini-art{width:58px;height:58px;border-radius:11px;object-fit:cover;background:rgba(255,255,255,.06)}.mini-text{min-width:0}.mini-title{font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini-artist{font-size:12px;color:var(--secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}.mini-controls{display:flex;align-items:center;justify-content:center;gap:8px}.mini-controls .circle{background:transparent}.play{width:48px;height:48px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;cursor:pointer}.play svg{width:21px;height:21px;fill:currentColor}.mini-extra{display:flex;justify-content:flex-end;align-items:center;gap:7px}.progress{position:absolute;left:16px;right:16px;bottom:0;height:2px;background:rgba(255,255,255,.16);border-radius:999px;overflow:hidden}.progress i{display:block;height:100%;background:#fff;width:0}
+.mobile-nav{display:none}.now-playing{position:fixed;inset:0;background:#000;z-index:100;display:none;overflow:auto}.now-playing.open{display:block}.np-inner{min-height:100%;padding:18px 24px 35px;display:flex;flex-direction:column}.np-top{display:flex;justify-content:space-between;align-items:center}.np-title{font-size:16px;font-weight:650}.np-art{width:min(76vw,560px);aspect-ratio:1;margin:clamp(28px,7vh,70px) auto 24px;border-radius:22px;object-fit:cover;box-shadow:0 25px 70px rgba(0,0,0,.45);background:rgba(255,255,255,.06)}.np-info{width:min(760px,100%);margin:0 auto}.np-song{font-size:clamp(24px,4vw,34px);font-weight:760;letter-spacing:-.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.np-artist{font-size:17px;color:var(--secondary);margin-top:5px}.seek{width:100%;margin-top:25px}.range{width:100%;accent-color:#fff}.times{display:flex;justify-content:space-between;color:var(--secondary);font-size:12px;margin-top:5px}.np-controls{display:flex;justify-content:center;align-items:center;gap:20px;margin-top:24px}.np-controls .circle{background:transparent;width:46px;height:46px}.np-controls .play{width:60px;height:60px}.np-volume{display:flex;gap:10px;align-items:center;margin-top:25px}.np-volume svg{width:20px;height:20px;fill:#fff}.lyrics{margin:30px auto 0;width:min(760px,100%);color:var(--secondary);line-height:1.5;text-align:center}.lyric.active{color:#fff;font-size:22px;font-weight:700}.lyric{padding:7px 0}
+@media(max-width:900px){.app{display:block}.sidebar{display:none}.content{height:100dvh}.topbar{padding:0 18px}.top-title{font-size:25px}.page{padding:5px 18px 170px}.mini{left:12px;right:12px;bottom:70px;height:68px;grid-template-columns:1fr auto;padding:6px 9px;border-radius:18px}.mini-track{min-width:0}.mini-art{width:54px;height:54px}.mini-controls{gap:1px}.mini-controls .optional{display:none}.mini-extra{display:none}.mobile-nav{position:absolute;display:flex;left:12px;right:12px;bottom:8px;height:56px;border-radius:18px;background:rgba(24,24,24,.9);border:1px solid var(--line);backdrop-filter:blur(28px);z-index:40;justify-content:space-around;padding:4px}.mobile-nav button{flex:1;color:var(--secondary);font-size:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:13px}.mobile-nav button.active{color:#fff;background:rgba(255,255,255,.1)}.mobile-nav svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.hero{min-height:180px;padding:22px;border-radius:20px}.section-title{font-size:20px}.np-art{width:min(82vw,420px);margin-top:35px}}
+@media(min-width:901px){.page{padding-bottom:125px}}
 </style>
 </head>
 <body>
-<img id="backdrop" alt="">
-<div class="backdrop-shade"></div>
-<div class="shell">
-  <div class="topbar">
-    <button class="icon-btn" onclick="window.history.back()" aria-label="Close">
-      <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
-    </button>
-    <div style="display:flex;align-items:center;gap:18px">
-      <button class="icon-btn portrait-lyrics-button" onclick="togglePortraitLyrics()" aria-label="Show lyrics">
-        <svg class="lyrics-toggle-icon" viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>
-      </button>
-      <button class="icon-btn install-btn" id="installBtn" onclick="installWebApp()" aria-label="Install Toyako">
-        <svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M5 15v4h14v-4"/></svg>
-      </button>
-      <button class="icon-btn" onclick="toggleQueue()" aria-label="Queue">
-      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h9"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-      </button>
-    </div>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><img src="/icon-192.png" alt="">Toyako</div>
+  <nav class="nav">
+    <button data-page="home" class="active" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/></svg>Home</button>
+    <button data-page="tracks" onclick="go('tracks')"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Tracks</button>
+    <button data-page="albums" onclick="go('albums')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/></svg>Albums</button>
+    <button data-page="artists" onclick="go('artists')"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>Artists</button>
+    <button data-page="playlists" onclick="go('playlists')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>Playlists</button>
+  </nav>
+  <div class="sidebar-spacer"></div><div class="settings" onclick="alert('Settings are managed on the iPad.')"><span>⚙</span>Settings</div>
+</aside>
+<main class="content">
+  <header class="topbar"><div class="top-title" id="pageTitle">Home</div><div class="top-actions"><button class="circle" onclick="refresh()" aria-label="Refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 5v4h4M4 13a8 8 0 0 0 14.9 3M20 19v-4h-4"/></svg></button><button class="circle" onclick="openNowPlaying()" aria-label="Now Playing"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg></button></div></header>
+  <section class="page" id="page"></section>
+  <div class="mini" onclick="openNowPlaying()">
+    <div class="mini-track"><img class="mini-art" id="miniArt" src="" alt=""><div class="mini-text"><div class="mini-title" id="miniTitle">Nothing Playing</div><div class="mini-artist" id="miniArtist"></div></div></div>
+    <div class="mini-controls"><button class="circle optional" onclick="event.stopPropagation();cmd('previous')"><svg viewBox="0 0 24 24"><path d="M6 5v14h2V5H6Zm3 7 9 7V5l-9 7Z" fill="currentColor"/></svg></button><button class="play" id="miniPlay" onclick="event.stopPropagation();cmd('toggle')"><svg viewBox="0 0 24 24"><path id="miniPlayPath" d="M8 5v14l11-7L8 5Z"/></svg></button><button class="circle optional" onclick="event.stopPropagation();cmd('next')"><svg viewBox="0 0 24 24"><path d="M16 5v14h2V5h-2Zm-1 7L6 5v14l9-7Z" fill="currentColor"/></svg></button></div>
+    <div class="mini-extra"><button class="circle" onclick="event.stopPropagation();cmd('toggle')"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg></button></div><div class="progress"><i id="miniProgress"></i></div>
   </div>
-  <div class="main" id="main">
-    <section class="left">
-      <div class="art-wrap" id="artWrap"><div class="fallback">♪</div></div>
-      <div class="info">
-        <div class="title" id="title">Nothing Playing</div>
-        <div class="artist" id="artist"></div>
-        <div class="audio-info" id="audioInfo"></div>
-      </div>
-      <div class="scrub">
-        <input id="seek" class="range" type="range" min="0" max="1" value="0" step="0.01">
-        <div class="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
-      </div>
-      <div class="controls">
-        <button class="control" id="shuffle" onclick="toggleShuffle()" aria-label="Shuffle"><svg viewBox="0 0 24 24"><path d="M16 3h5v5h-2V6.41l-3.29 3.3-1.42-1.42L17.59 5H16V3ZM4 5h2.5c1.45 0 2.82.7 3.66 1.88l6.18 8.7A2.5 2.5 0 0 0 18.38 17H21v2h-2.62a4.5 4.5 0 0 1-3.86-2.18l-6.18-8.7A2.5 2.5 0 0 0 6.5 7H4V5Zm0 12h2.5a2.5 2.5 0 0 0 2.03-1.04l1.16-1.63 1.42 1.42-1 1.41A4.5 4.5 0 0 1 6.5 19H4v-2Z"/></svg></button>
-        <button class="control" onclick="cmd('previous')" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14h2V5H6Zm3 7 9 7V5l-9 7Z"/></svg></button>
-        <button class="control play" id="play" onclick="cmd('toggle')" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path id="playPath" d="M8 5v14l11-7L8 5Z"/></svg></button>
-        <button class="control" onclick="cmd('next')" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M16 5v14h2V5h-2Zm-1 7L6 5v14l9-7Z"/></svg></button>
-        <button class="control" id="repeat" onclick="cycleRepeat()" aria-label="Repeat"><svg viewBox="0 0 24 24"><path d="M7 7h10V4l4 4-4 4V9H7a3 3 0 0 0-3 3H2a5 5 0 0 1 5-5Zm10 10H7v3l-4-4 4-4v3h10a3 3 0 0 0 3-3h2a5 5 0 0 1-5 5Z"/></svg></button>
-      </div>
-      <div class="volume">
-        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="volume" class="range" type="range" min="0" max="1" value="1" step="0.01">
-        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </div>
-      <div class="output-row">
-        <div class="output-wrap">
-          <button class="output-button" id="outputButton" onclick="toggleOutputMenu()">iPad</button>
-          <div class="output-menu" id="outputMenu">
-            <button class="output-option" id="ipadOutput" onclick="selectOutput('ipad')">This iPad</button>
-            <button class="output-option" id="webOutput" onclick="selectOutput('web')">This phone / Web Remote</button>
-          </div>
-        </div>
-      </div>
-    </section>
-    <section class="right">
-      <div class="lyrics" id="lyrics"><div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div></div>
-    </section>
-  </div>
-</div>
-<div class="queue-panel" id="queuePanel"><div class="queue-head"><span>Queue</span><button class="icon-btn" onclick="toggleQueue()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div id="queue"></div></div>
-<audio id="remoteAudio" preload="auto" playsinline></audio>
-<div class="error" id="error"></div>
+  <nav class="mobile-nav">
+    <button data-page="home" class="active" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/></svg>Home</button>
+    <button data-page="tracks" onclick="go('tracks')"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Tracks</button>
+    <button data-page="albums" onclick="go('albums')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/></svg>Albums</button>
+    <button data-page="artists" onclick="go('artists')"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>Artists</button>
+    <button data-page="playlists" onclick="go('playlists')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>Playlists</button>
+  </nav>
+</main></div>
+<div class="now-playing" id="nowPlaying"><div class="np-inner"><div class="np-top"><button class="circle" onclick="closeNowPlaying()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button><div class="np-title">Now Playing</div><button class="circle" onclick="cmd('toggle')"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6z"/></svg></button></div><img class="np-art" id="npArt" src="" alt=""><div class="np-info"><div class="np-song" id="npTitle">Nothing Playing</div><div class="np-artist" id="npArtist"></div><div class="seek"><input id="seek" class="range" type="range" min="0" max="1" value="0" step="0.01"><div class="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div></div><div class="np-controls"><button class="circle" onclick="cmd('shuffle')"><svg viewBox="0 0 24 24"><path d="M16 3h5v5M20 4l-5 5M4 5h3a4 4 0 0 1 3.3 1.7l4.4 6.6A4 4 0 0 0 18 15h3M4 19h3a4 4 0 0 0 3.3-1.7l1.2-1.8M20 20l-4-4"/></svg></button><button class="circle" onclick="cmd('previous')"><svg viewBox="0 0 24 24"><path d="M6 5v14h2V5H6Zm3 7 9 7V5l-9 7Z" fill="currentColor"/></svg></button><button class="play" id="npPlay" onclick="cmd('toggle')"><svg viewBox="0 0 24 24"><path id="npPlayPath" d="M8 5v14l11-7L8 5Z"/></svg></button><button class="circle" onclick="cmd('next')"><svg viewBox="0 0 24 24"><path d="M16 5v14h2V5h-2Zm-1 7L6 5v14l9-7Z" fill="currentColor"/></svg></button><button class="circle" onclick="cmd('repeat')"><svg viewBox="0 0 24 24"><path d="M7 7h10V4l4 4-4 4V9H7a3 3 0 0 0-3 3M17 17H7v3l-4-4 4-4v3h10a3 3 0 0 0 3-3"/></svg></button></div><div class="np-volume"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="volume" class="range" type="range" min="0" max="1" value="1" step="0.01"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div><div class="lyrics" id="lyrics"></div></div></div></div>
 <script>
-let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',lastLyricsSignature='',manualLyricsScroll=false,portraitLyrics=false,deferredInstallPrompt=null,remoteAudioTrackId='',lastRemoteSync=0;
-const $=id=>document.getElementById(id);
-const fmt=s=>{s=Math.max(0,Math.floor(s||0));let m=Math.floor(s/60),sec=String(s%60).padStart(2,'0');return `${m}:${sec}`};
-async function api(path,options={}){let r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
-async function cmd(command,extra={}){try{if(state?.playbackTarget==='web'&&(command==='toggle'||command==='play'||command==='pause')){if(command==='toggle'){if(remoteAudio.paused)await remoteAudio.play();else remoteAudio.pause()}else if(command==='play'){await remoteAudio.play()}else{remoteAudio.pause()}syncRemotePlayback();return;}await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){showError(e)}}
-function showError(e){$('error').textContent=e?.message||String(e);$('error').style.display='block';setTimeout(()=>$('error').style.display='none',3500)}
-const remoteAudio=$('remoteAudio');
-let remoteBrowserVolume=1;
-function toggleOutputMenu(){$('outputMenu').classList.toggle('open')}
-async function selectOutput(target){
-  $('outputMenu').classList.remove('open');
-  try{
-    if(target==='web'){
-      await cmd('handoffToWeb');
-      await refresh();
-      await syncRemoteAudioFromState(true);
-    }else{
-      const position=remoteAudioTrackId?remoteAudio.currentTime:(state?.position||0);
-      const playing=state?.playbackTarget==='web' ? !remoteAudio.paused : !!state?.playing;
-      remoteAudio.pause();
-      await cmd('handoffToIPad',{position,playing});
-    }
-  }catch(e){showError(e)}
-}
-async function syncRemoteAudioFromState(force=false){
-  if(!state||state.playbackTarget!=='web'||!state.track?.id){ remoteAudio.pause(); return; }
-  const trackChanged=remoteAudioTrackId!==state.track.id;
-  if(force||trackChanged){
-    remoteAudio.pause();
-    remoteAudio.src='/api/media?id='+encodeURIComponent(state.track.id);
-    remoteAudioTrackId=state.track.id;
-    try{remoteAudio.currentTime=Math.max(0,Math.min(state.duration||0,state.position||0))}catch(e){}
-    if(state.playing){try{await remoteAudio.play()}catch(e){showError('Tap Play to start audio on this phone.')}}
-  }else if(Math.abs(remoteAudio.currentTime-(state.position||0))>2&&!remoteAudio.seeking){
-    try{remoteAudio.currentTime=state.position||0}catch(e){}
-  }
-  if(state.playing&&remoteAudio.paused){try{await remoteAudio.play()}catch(e){}}
-  if(!state.playing&&!remoteAudio.paused)remoteAudio.pause();
-}
-function syncRemotePlayback(){
-  if(state?.playbackTarget!=='web')return;
-  const now=Date.now(); if(now-lastRemoteSync<700)return; lastRemoteSync=now;
-  api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'remoteSync',position:remoteAudio.currentTime||0,playing:!remoteAudio.paused})}).catch(()=>{});
-}
-remoteAudio.addEventListener('timeupdate',syncRemotePlayback);
-remoteAudio.addEventListener('play',syncRemotePlayback);
-remoteAudio.addEventListener('pause',syncRemotePlayback);
-remoteAudio.addEventListener('ended',()=>cmd('next'));
-
-function renderArtwork(){let wrap=$('artWrap');if(state?.track?.artworkURL){let img=wrap.querySelector('img');if(!img){img=document.createElement('img');img.className='art';wrap.replaceChildren(img)}let url=state.track.artworkURL+'?t='+encodeURIComponent(state.track.id);if(img.src!==location.origin+url)img.src=url;img.classList.toggle('paused',!state.playing);let bg=$('backdrop');bg.src=url;bg.classList.add('visible')}else{wrap.innerHTML='<div class="fallback">♪</div>';let bg=$('backdrop');bg.removeAttribute('src');bg.classList.remove('visible')}}
-function lyricsSignature(){
-  const lines=state?.lyrics||[];
-  const source=state?.lyricsSource||'';
-  return source+'|'+lines.length+'|'+lines.map(l=>String(l.time)+':'+String(l.text)).join('\n');
-}
-function renderLyrics(force=false){
-  let box=$('lyrics'),lines=state?.lyrics||[];
-  const signature=lyricsSignature();
-  if(!lines.length){
-    if(force||signature!==lastLyricsSignature){box.innerHTML='<div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div>';}
-    activeIndex=-1;
-    lastLyricsSignature=signature;
-    return;
-  }
-  let idx=0;
-  for(let i=0;i<lines.length;i++){if(lines[i].time<=localPosition)idx=i}
-  if(!force&&idx===activeIndex&&signature===lastLyricsSignature)return;
-  if(signature!==lastLyricsSignature){activeIndex=-1;manualLyricsScroll=false;}
-  activeIndex=idx;
-  lastLyricsSignature=signature;
-  let inner=document.createElement('div');inner.className='lyrics-inner';
-  lines.forEach((l,i)=>{
-    let d=document.createElement('div');d.className='line '+(i<idx?'past':i===idx?'active':'future');d.dataset.i=i;
-    d.innerHTML=escapeHTML(l.text)+(state.settings['Toyako.Lyrics.ShowRomanization']&&l.romanized?`<div class="roman">${escapeHTML(l.romanized)}</div>`:'');
-    d.onclick=()=>cmd('seek',{position:l.time});
-    inner.appendChild(d);
-  });
-  box.replaceChildren(inner);
-  requestAnimationFrame(()=>{
-    let active=inner.querySelector('.active');
-    if(active && !manualLyricsScroll){active.scrollIntoView({block:'center',behavior:force?'auto':'smooth'});}
-  });
-}
-
-function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map((x,i)=>`<button type="button" class="queue-item ${x.id===state.track.id?'active':''}" data-index="${i}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></button>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>';document.querySelectorAll('#queue .queue-item').forEach(el=>el.addEventListener('click',async()=>{await cmd('playQueue',{index:Number(el.dataset.index)});toggleQueue();}))}
-function render(){if(!state?.available)return;const trackChanged=lastTrackId!==state.track.id;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.playbackTarget==='web'?remoteBrowserVolume:(state.volume??1);$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');$('outputButton').textContent=state.playbackTarget==='web'?'Phone / Web':'iPad';$('ipadOutput').classList.toggle('active',state.playbackTarget==='ipad');$('webOutput').classList.toggle('active',state.playbackTarget==='web');if(trackChanged){activeIndex=-1;lastLyricsSignature='';manualLyricsScroll=false;}renderArtwork();renderLyrics(trackChanged);renderQueue();lastTrackId=state.track.id;if(state.playbackTarget==='web')syncRemoteAudioFromState(trackChanged)}
-async function refresh(){try{let next=await api('/api/state');let wasPlaying=state?.playing;state=next;let now=Date.now();if(!wasPlaying||!state.playing)localPosition=state.position||0;else{localPosition=Math.max(0,state.position||0)}lastTick=now;render();$('error').style.display='none'}catch(e){showError(e)}}
-function toggleShuffle(){cmd('shuffle',{value:!state.shuffle})}
-function cycleRepeat(){let modes=['off','all','one'];let i=modes.indexOf(state.repeat);cmd('repeat',{value:modes[(i+1)%modes.length]})}
-function toggleQueue(){$('queuePanel').classList.toggle('open')}
-$('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));renderLyrics()});$('seek').addEventListener('change',e=>{if(state?.playbackTarget==='web'){remoteAudio.currentTime=Number(e.target.value);syncRemotePlayback()}else cmd('seek',{position:Number(e.target.value)})});$('volume').addEventListener('input',e=>{const v=Number(e.target.value);if(state?.playbackTarget==='web'){remoteBrowserVolume=v;remoteAudio.volume=v}else if(state)state.volume=v});$('volume').addEventListener('change',e=>{const v=Number(e.target.value);if(state?.playbackTarget==='web'){remoteBrowserVolume=v;remoteAudio.volume=v;syncRemotePlayback()}else cmd('volume',{value:v})});
-function togglePortraitLyrics(){portraitLyrics=!portraitLyrics;manualLyricsScroll=false;render();if(portraitLyrics)requestAnimationFrame(()=>renderLyrics(true));}
-function updateOrientation(){if(window.innerWidth>600){portraitLyrics=false;document.querySelector('.main')?.classList.remove('lyrics-mode')}else{render()}}
-window.addEventListener('resize',updateOrientation,{passive:true});
-window.addEventListener('orientationchange',()=>setTimeout(updateOrientation,120),{passive:true});
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('installBtn').classList.add('visible');});
-window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;$('installBtn').classList.remove('visible');});
-async function installWebApp(){
-  if(!deferredInstallPrompt){
-    showError(location.protocol==='http:'?'Install is available only when this remote is served from a secure browser context (HTTPS or localhost).':'Use your browser menu and choose Install Toyako if your browser provides it.');
-    return;
-  }
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt=null;
-  $('installBtn').classList.remove('visible');
-}
-if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
-  navigator.serviceWorker.register('/sw.js').catch(()=>{});
-}
-
-document.addEventListener('keydown',e=>{
-  if(e.target instanceof HTMLInputElement) return;
-  if(e.code==='Space'){e.preventDefault();cmd('toggle')}
-  else if(e.code==='ArrowRight'){e.preventDefault();cmd('next')}
-  else if(e.code==='ArrowLeft'){e.preventDefault();cmd('previous')}
-  else if(e.key.toLowerCase()==='q'){e.preventDefault();toggleQueue()}
-  else if(e.key.toLowerCase()==='l' && window.innerWidth<=700){e.preventDefault();togglePortraitLyrics()}
-});
-$('lyrics').addEventListener('wheel',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
-$('lyrics').addEventListener('scroll',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
-setInterval(()=>{let now=Date.now(),dt=(now-lastTick)/1000;lastTick=now;if(state?.playbackTarget==='web'){localPosition=remoteAudio.currentTime||0}else if(state?.playing){localPosition=Math.min(state.duration||Infinity,localPosition+dt)}if(state?.playing||state?.playbackTarget==='web'){$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').value=Math.min(state.duration||1,localPosition);renderLyrics()}},250);
-setInterval(refresh,1000);refresh();
-function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-</script>
-</body></html>
-"""#
-
+let state=null,page='home',localPosition=0,lastTick=Date.now();
+const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const fmt=s=>{s=Math.max(0,Math.floor(s||0));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`};
+async function api(path,options={}){const r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
+async function cmd(command,extra={}){try{await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){console.error(e)}}
+function art(url){return url?`<img class="art" src="${url}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">`:'<img class="art" style="display:none"><div class="fallback">♪</div>'}
+function trackArt(t,cls=''){if(!t?.artworkURL)return `<div class="${cls||'fallback'}">♪</div>`;return `<img class="${cls||'art'}" src="${t.artworkURL}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'fallback',textContent:'♪'}))">`}
+function go(p){page=p;renderPage()}
+function setNav(){document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('pageTitle').textContent=page[0].toUpperCase()+page.slice(1)}
+function tracks(){return state?.library?.length?state.library:(state?.queue||[])}
+function albums(){const m=new Map();tracks().forEach(t=>{const k=t.album||'Unknown Album';if(!m.has(k))m.set(k,{name:k,artist:t.artist,track:t})});return [...m.values()]}
+function artists(){const m=new Map();tracks().forEach(t=>{const k=t.artist||'Unknown Artist';if(!m.has(k))m.set(k,{name:k,track:t})});return [...m.values()]}
+function card(t,onclick){return `<button class="card" onclick="${onclick}">${trackArt(t)}<div class="card-title">${esc(t.title||t.name)}</div><div class="card-sub">${esc(t.artist||'')}</div></button>`}
+function trackRows(items){if(!items.length)return '<div class="empty">Your library is empty.</div>';return `<div class="list">${items.map((t,i)=>`<button class="row" onclick="cmd('playLibrary',{id:'${t.id}'})">${trackArt(t,'row-art')}<div class="row-main"><div class="row-title">${esc(t.title)}</div><div class="row-sub">${esc(t.artist)}${t.album?' · '+esc(t.album):''}</div></div><div class="row-tail">${fmt(t.duration)}</div></button>`).join('')}</div>`}
+function renderPage(){setNav();const ts=tracks(),as=albums(),ars=artists();let h='';if(page==='home'){h=`<div class="hero"><div><h1>Your Library</h1><p>${ts.length?`${ts.length} ${ts.length===1?'track':'tracks'} ready to play offline.`:'Import music on your iPad to start building your offline library.'}</p><div class="actions"><button class="pill" onclick="${ts.length?'cmd(\'playLibrary\',{id:\''+(ts[0]?.id||'')+'\'})':'alert(\'Import music on the iPad first.\')'}">${ts.length?'Play':'Import Audio'}</button><button class="pill secondary" onclick="${ts.length?'shuffleAll()':'go(\'tracks\')'}">${ts.length?'Shuffle All':'Browse Tracks'}</button></div></div></div>`;if(ts.length)h+=`<div class="section"><div class="section-head"><div class="section-title">Recently Added</div><button class="section-more" onclick="go('tracks')">See All</button></div><div class="grid">${ts.slice(0,8).map(t=>card(t,`cmd('playLibrary',{id:'${t.id}'})`)).join('')}</div></div>`;if(as.length)h+=`<div class="section"><div class="section-head"><div class="section-title">Albums</div><button class="section-more" onclick="go('albums')">See All</button></div><div class="grid">${as.slice(0,8).map(a=>card({...a.track,title:a.name},`goAlbum('${esc(a.name)}')`)).join('')}</div></div>`;if(ars.length)h+=`<div class="section"><div class="section-head"><div class="section-title">Artists</div><button class="section-more" onclick="go('artists')">See All</button></div><div class="grid">${ars.slice(0,8).map(a=>card({...a.track,title:a.name,artist:''},`goArtist('${esc(a.name)}')`)).join('')}</div></div>`}else if(page==='tracks'){h=trackRows(ts)}else if(page==='albums'){h=as.length?`<div class="grid">${as.map(a=>card({...a.track,title:a.name},`goAlbum('${esc(a.name)}')`)).join('')}</div>`:'<div class="empty">No albums yet.</div>'}else if(page==='artists'){h=ars.length?`<div class="grid">${ars.map(a=>card({...a.track,title:a.name,artist:''},`goArtist('${esc(a.name)}')`)).join('')}</div>`:'<div class="empty">No artists yet.</div>'}else{h='<div class="empty">Playlists are managed on the iPad in this controller-only remote.</div>'}$('page').innerHTML=h}
+function goAlbum(name){const items=tracks().filter(t=>(t.album||'Unknown Album')===name);$('pageTitle').textContent=name;$('page').innerHTML=`<div class="section"><div class="section-head"><div class="section-title">${esc(name)}</div><button class="section-more" onclick="go('albums')">Albums</button></div>${trackRows(items)}</div>`}
+function goArtist(name){const items=tracks().filter(t=>(t.artist||'Unknown Artist')===name);$('pageTitle').textContent=name;$('page').innerHTML=`<div class="section"><div class="section-head"><div class="section-title">${esc(name)}</div><button class="section-more" onclick="go('artists')">Artists</button></div>${trackRows(items)}</div>`}
+function shuffleAll(){const ts=tracks();if(ts.length)cmd('playLibrary',{id:ts[Math.floor(Math.random()*ts.length)].id})}
+function renderState(){const t=state?.track||{};$('miniTitle').textContent=t.title||'Nothing Playing';$('miniArtist').textContent=t.artist||'';$('npTitle').textContent=t.title||'Nothing Playing';$('npArtist').textContent=t.artist||'';['miniArt','npArt'].forEach(id=>{const el=$(id);el.src=t.artworkURL||'';el.style.display=t.artworkURL?'block':'none'});const path=state?.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z';$('miniPlayPath').setAttribute('d',path);$('npPlayPath').setAttribute('d',path);localPosition=state?.position||0;$('seek').max=state?.duration||1;$('seek').value=localPosition;$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state?.duration||0)-localPosition));$('volume').value=state?.volume??1;const pct=state?.duration?Math.min(100,(localPosition/state.duration)*100):0;$('miniProgress').style.width=pct+'%';$('lyrics').innerHTML=(state?.lyrics||[]).map(l=>`<div class="lyric ${l.time<=localPosition&&(!state.lyrics[l.lyricsIndex+1]||localPosition<state.lyrics[l.lyricsIndex+1]?.time)?'active':''}">${esc(l.text)}</div>`).join('');}
+function openNowPlaying(){ $('nowPlaying').classList.add('open'); renderState() }function closeNowPlaying(){$('nowPlaying').classList.remove('open')}
+$('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state?.duration||0)-localPosition))});$('seek').addEventListener('change',e=>cmd('seek',{position:Number(e.target.value)}));$('volume').addEventListener('change',e=>cmd('volume',{value:Number(e.target.value)}));
+async function refresh(){try{state=await api('/api/state');renderState();renderPage()}catch(e){console.error(e)}}
+setInterval(()=>{if(state?.playing){localPosition=Math.min(state.duration||0,localPosition+0.5);renderState()}},500);refresh();
+</script></body></html>
+"""
     static let manifest = #"""
 {
   "name": "Toyako Remote",
