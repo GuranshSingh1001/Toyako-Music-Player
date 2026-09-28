@@ -27,13 +27,6 @@ final class RemoteServer: ObservableObject {
     private let fixedPort: UInt16 = 8787
     private let enabledKey = "Toyako.RemoteServerEnabled"
 
-    // Bonjour service used by other Toyako clients for discovery. This does
-    // not rename the iPad itself to toyako.local; iPadOS does not let an app
-    // arbitrarily claim a device-wide .local hostname. It does make Toyako
-    // discoverable as a local HTTP service without requiring users to type an IP.
-    private let bonjourServiceType = "_http._tcp."
-    private let bonjourServiceName = "Toyako"
-
     func attach(to manager: AudioEngineManager) {
         audioManager = manager
     }
@@ -62,12 +55,6 @@ final class RemoteServer: ObservableObject {
                 return
             }
             let listener = try NWListener(using: .tcp, on: endpointPort)
-            // Bonjour advertising is intentionally optional. LiveContainer
-            // hosts guest apps and does not apply guest entitlements exactly
-            // like a normally installed app, so requiring service registration
-            // can prevent the TCP server from starting there. The web remote
-            // uses the LAN address shown in Settings, which works without
-            // Bonjour.
             listener.stateUpdateHandler = { [weak self] state in
                 DispatchQueue.main.async {
                     switch state {
@@ -92,15 +79,6 @@ final class RemoteServer: ObservableObject {
             listener.newConnectionHandler = { [weak self] connection in
                 self?.handle(connection)
             }
-
-            // Advertise the existing HTTP remote over Bonjour. Clients that
-            // support Bonjour can discover Toyako on the LAN instead of
-            // manually entering the numeric address.
-            listener.service = NWListener.Service(
-                name: bonjourServiceName,
-                type: bonjourServiceType,
-                domain: "local."
-            )
 
             self.listener = listener
             listener.start(queue: queue)
@@ -342,11 +320,6 @@ final class RemoteServer: ObservableObject {
             "available": true,
             "playing": manager.isPlaying,
             "position": manager.currentTime,
-            "remoteService": [
-                "name": bonjourServiceName,
-                "type": bonjourServiceType,
-                "port": port
-            ],
             "duration": track?.duration ?? 0,
             "volume": AVAudioSession.sharedInstance().outputVolume,
             "shuffle": manager.isShuffle,

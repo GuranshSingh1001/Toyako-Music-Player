@@ -22,10 +22,6 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Toyako uses your local network to let other devices discover and control playback and view Now Playing information.</string>
-    <key>NSBonjourServices</key>
-    <array>
-        <string>_http._tcp</string>
-    </array>
     <key>UIFileSharingEnabled</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
