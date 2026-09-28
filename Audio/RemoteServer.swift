@@ -720,7 +720,7 @@ $('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('e
 async function refresh(){try{state=await api('/api/state');renderState();renderPage()}catch(e){console.error(e)}}
 setInterval(()=>{if(state?.playing){localPosition=Math.min(state.duration||0,localPosition+0.5);renderState()}},500);refresh();
 </script></body></html>
-"""
+"""#
     static let manifest = #"""
 {
   "name": "Toyako Remote",

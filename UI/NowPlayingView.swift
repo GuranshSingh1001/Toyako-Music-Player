@@ -281,6 +281,92 @@ struct NowPlayingView: View {
         }
     }
 
+
+    private func lyricsSourceButton(size: CGFloat, opensAbove: Bool = false) -> some View {
+        Button {
+            showLyricsSourcePicker = true
+        } label: {
+            Image(systemName: "text.badge.plus")
+                .font(.system(size: size >= 52 ? 18 : 21, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(width: size, height: size)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Select lyrics")
+        .popover(
+            isPresented: $showLyricsSourcePicker,
+            attachmentAnchor: .point(opensAbove ? .top : .bottom),
+            arrowEdge: opensAbove ? .bottom : .top
+        ) {
+            LyricsSourcePickerView()
+                .environmentObject(audioManager)
+                .frame(minWidth: 230, maxWidth: 300)
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private struct LyricsSourcePickerView: View {
+        @EnvironmentObject private var audioManager: AudioEngineManager
+        @Environment(\.dismiss) private var dismiss
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Lyrics")
+                    .font(.headline)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+
+                ForEach(audioManager.lyricsSources) { source in
+                    Button {
+                        audioManager.selectLyricsSource(source.id)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: source.id == audioManager.selectedLyricsSourceID ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 18, weight: .semibold))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.displayName).font(.body.weight(.medium))
+                                Text(source.format.uppercased()).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                        }
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    private func close(height: CGFloat) {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) { dragOffset = height }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) { isPresented = false }
+    }
+
+    private func dismissGesture(height: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { value in
+                guard value.translation.height > 0, abs(value.translation.height) > abs(value.translation.width) else { return }
+                dragOffset = value.translation.height
+            }
+            .onEnded { value in
+                let translation = value.translation.height
+                let predicted = value.predictedEndTranslation.height
+                if translation > 110 || predicted > 280 {
+                    close(height: height)
+                } else {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) { dragOffset = 0 }
+                }
+            }
+    }
+
     // MARK: - Artwork Pane
 
     private func artworkPane(maxHeight: CGFloat) -> some View {
