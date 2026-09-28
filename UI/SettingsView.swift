@@ -1,5 +1,4 @@
 import SwiftUI
-import CoreImage.CIFilterBuiltins
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -137,20 +136,8 @@ struct SettingsView: View {
                     .tint(.green)
 
                     if remoteServer.isRunning, let address = remoteServer.address, remoteServer.port > 0 {
-                        let remoteURL = "http://\(address):\(remoteServer.port)"
-                        VStack(alignment: .leading, spacing: 10) {
-                            LabeledContent("Web Remote", value: remoteURL)
-                                .textSelection(.enabled)
-                            HStack(spacing: 12) {
-                                QRCodeView(value: remoteURL)
-                                    .frame(width: 92, height: 92)
-                                    .background(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                Text("Scan to open the Web Remote")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                        LabeledContent("Web Remote", value: "http://\(address):\(remoteServer.port)")
+                            .textSelection(.enabled)
 
                     } else if let error = remoteServer.lastError {
                         Text("Remote server error: \(error)")
@@ -161,7 +148,7 @@ struct SettingsView: View {
 
                 Section("About") {
                     LabeledContent("App", value: "Toyako")
-                    LabeledContent("Version", value: "1.4.3")
+                    LabeledContent("Version", value: "1.4.1")
                 }
             }
             .navigationTitle("Settings")
@@ -186,38 +173,5 @@ struct SettingsView: View {
         .onAppear {
             ToyakoPreferences.registerDefaults()
         }
-    }
-}
-
-
-private struct QRCodeView: View {
-    let value: String
-
-    var body: some View {
-        Group {
-            if let image = makeQRImage(from: value) {
-                Image(uiImage: image)
-                    .interpolation(.none)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                Image(systemName: "qrcode")
-                    .resizable()
-                    .scaledToFit()
-                    .padding(12)
-            }
-        }
-    }
-
-    private func makeQRImage(from string: String) -> UIImage? {
-        guard let data = string.data(using: .utf8) else { return nil }
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = data
-        filter.correctionLevel = "M"
-        guard let output = filter.outputImage else { return nil }
-        let scaled = output.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cgImage)
     }
 }

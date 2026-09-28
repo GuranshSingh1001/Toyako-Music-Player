@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 import AVFoundation
-import AVKit
 import MediaPlayer
 import Translation
 
@@ -9,7 +8,6 @@ struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
     @EnvironmentObject var clock: PlaybackClock
-    @EnvironmentObject var remoteServer: RemoteServer
 
     @State private var dragOffset: CGFloat = 0
     @State private var playPausePressed = false
@@ -32,7 +30,6 @@ struct NowPlayingView: View {
     @State private var artworkTint: Color = .black
     @State private var audioFormatInfo: AudioFormatInfo?
     @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
-    @State private var audioRouteName = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "This iPad"
 
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
 
@@ -123,13 +120,9 @@ struct NowPlayingView: View {
         }
         .ignoresSafeArea()
         .onAppear {
-            audioRouteName = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "This iPad"
             withAnimation(.spring(response: 0.42, dampingFraction: 0.88).delay(0.04)) {
                 artworkVisible = true
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { _ in
-            audioRouteName = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "This iPad"
         }
         .task(id: audioManager.currentTrack?.id) {
             guard let url = audioManager.currentTrack?.url else {
@@ -265,16 +258,6 @@ struct NowPlayingView: View {
                 lyricsSourceButton(size: 48, opensAbove: true)
             }
 
-            HStack(spacing: 8) {
-                AudioRoutePicker(size: 36)
-                Text("Playing on \(audioRouteName)")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-
             Button {
                 showQueue = true
             } label: {
@@ -288,7 +271,6 @@ struct NowPlayingView: View {
             .accessibilityLabel("Queue")
         }
     }
-
 
     private func lyricsSourceButton(size: CGFloat, opensAbove: Bool = false) -> some View {
         Button {
@@ -314,6 +296,8 @@ struct NowPlayingView: View {
         }
     }
 
+    // MARK: - Lyrics Source Picker
+
     private struct LyricsSourcePickerView: View {
         @EnvironmentObject private var audioManager: AudioEngineManager
         @Environment(\.dismiss) private var dismiss
@@ -334,10 +318,15 @@ struct NowPlayingView: View {
                         HStack(spacing: 12) {
                             Image(systemName: source.id == audioManager.selectedLyricsSourceID ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 18, weight: .semibold))
+
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(source.displayName).font(.body.weight(.medium))
-                                Text(source.format.uppercased()).font(.caption).foregroundStyle(.secondary)
+                                Text(source.displayName)
+                                    .font(.body.weight(.medium))
+                                Text(source.format.uppercased())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
+
                             Spacer(minLength: 8)
                         }
                         .foregroundStyle(.primary)
@@ -353,24 +342,37 @@ struct NowPlayingView: View {
         }
     }
 
+    // MARK: - Presentation
+
     private func close(height: CGFloat) {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) { dragOffset = height }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) { isPresented = false }
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+            dragOffset = height
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
+            isPresented = false
+        }
     }
 
     private func dismissGesture(height: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .onChanged { value in
-                guard value.translation.height > 0, abs(value.translation.height) > abs(value.translation.width) else { return }
+                guard value.translation.height > 0,
+                      abs(value.translation.height) > abs(value.translation.width)
+                else { return }
+
                 dragOffset = value.translation.height
             }
             .onEnded { value in
                 let translation = value.translation.height
                 let predicted = value.predictedEndTranslation.height
+
                 if translation > 110 || predicted > 280 {
                     close(height: height)
                 } else {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) { dragOffset = 0 }
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+                        dragOffset = 0
+                    }
                 }
             }
     }
@@ -399,12 +401,6 @@ struct NowPlayingView: View {
 
             systemVolumeSlider
                 .padding(.top, 2)
-
-            HStack(spacing: 10) {
-                AudioRoutePicker(size: 36)
-                Spacer(minLength: 0)
-            }
-            .padding(.top, 4)
 
             Spacer(minLength: 4)
         }
@@ -524,7 +520,7 @@ struct NowPlayingView: View {
     private var previousButton: some View {
         Button {
             previousPressed = true
-            remoteServer.previousPlayback()
+            audioManager.backward()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 previousPressed = false
@@ -546,14 +542,14 @@ struct NowPlayingView: View {
     private var playPauseButton: some View {
         Button {
             playPausePressed = true
-            remoteServer.togglePlayback()
+            audioManager.togglePlayPause()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 playPausePressed = false
             }
         } label: {
             Image(
-                systemName: (remoteServer.playbackTarget == .web ? remoteServer.remoteWebPlaying : audioManager.isPlaying) ? "pause.fill" : "play.fill"
+                systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
             )
             .font(.system(size: 38, weight: .medium))
             .foregroundStyle(.white)
@@ -571,7 +567,7 @@ struct NowPlayingView: View {
     private var nextButton: some View {
         Button {
             nextPressed = true
-            remoteServer.nextPlayback()
+            audioManager.forward()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 nextPressed = false

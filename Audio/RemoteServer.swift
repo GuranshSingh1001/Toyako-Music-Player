@@ -15,15 +15,10 @@ extension Notification.Name {
 /// current track, artwork, queue, lyrics and playback position and can send
 /// playback commands back to the iPad.
 final class RemoteServer: ObservableObject {
-    enum PlaybackTarget: String { case ipad, web }
-
     @Published private(set) var isRunning = false
     @Published private(set) var address: String?
     @Published private(set) var port: UInt16 = 0
     @Published private(set) var lastError: String?
-    @Published private(set) var playbackTarget: PlaybackTarget = .ipad
-    @Published private(set) var remoteWebPosition: TimeInterval = 0
-    @Published private(set) var remoteWebPlaying = false
 
     private var listener: NWListener?
     private weak var audioManager: AudioEngineManager?
@@ -60,6 +55,12 @@ final class RemoteServer: ObservableObject {
                 return
             }
             let listener = try NWListener(using: .tcp, on: endpointPort)
+            // Bonjour advertising is intentionally optional. LiveContainer
+            // hosts guest apps and does not apply guest entitlements exactly
+            // like a normally installed app, so requiring service registration
+            // can prevent the TCP server from starting there. The web remote
+            // uses the LAN address shown in Settings, which works without
+            // Bonjour.
             listener.stateUpdateHandler = { [weak self] state in
                 DispatchQueue.main.async {
                     switch state {
@@ -84,7 +85,6 @@ final class RemoteServer: ObservableObject {
             listener.newConnectionHandler = { [weak self] connection in
                 self?.handle(connection)
             }
-
             self.listener = listener
             listener.start(queue: queue)
         } catch {
@@ -115,57 +115,6 @@ final class RemoteServer: ObservableObject {
 
     func toggle() {
         if isRunning { stop() } else { start() }
-    }
-
-    func handoffToWeb() {
-        guard let manager = audioManager, manager.currentTrack != nil else { return }
-        DispatchQueue.main.async {
-            self.remoteWebPosition = manager.currentTime
-            self.remoteWebPlaying = manager.isPlaying
-            self.playbackTarget = .web
-            manager.pauseFromRemote()
-        }
-    }
-
-    func handoffToIPad(position: TimeInterval, playing: Bool) {
-        guard let manager = audioManager, manager.currentTrack != nil else { return }
-        DispatchQueue.main.async {
-            manager.seek(to: position)
-            self.remoteWebPosition = position
-            self.remoteWebPlaying = playing
-            self.playbackTarget = .ipad
-            if playing { manager.playFromRemote() } else { manager.pauseFromRemote() }
-        }
-    }
-
-    func togglePlayback() {
-        if playbackTarget == .web {
-            remoteWebPlaying.toggle()
-        } else {
-            audioManager?.togglePlayPause()
-        }
-    }
-
-    func previousPlayback() {
-        guard let manager = audioManager else { return }
-        let wasWebPlaying = remoteWebPlaying
-        manager.backward()
-        if playbackTarget == .web {
-            manager.pauseFromRemote()
-            remoteWebPosition = manager.currentTime
-            remoteWebPlaying = wasWebPlaying
-        }
-    }
-
-    func nextPlayback() {
-        guard let manager = audioManager else { return }
-        let wasWebPlaying = remoteWebPlaying
-        manager.forward()
-        if playbackTarget == .web {
-            manager.pauseFromRemote()
-            remoteWebPosition = 0
-            remoteWebPlaying = wasWebPlaying
-        }
     }
 
     private func handle(_ connection: NWConnection) {
@@ -230,20 +179,8 @@ final class RemoteServer: ObservableObject {
             sendWebIcon(connection, resource: "WebIcon-512", status: 200)
         case ("GET", "/api/state"):
             sendJSON(connection, object: statePayload())
-        case ("GET", "/api/media"):
-            handleMediaRequest(rawPath: rawPath, request: request, connection: connection)
         case ("GET", "/api/artwork"):
-            let requestedID = rawPath.components(separatedBy: "?").dropFirst().joined(separator: "?")
-                .split(separator: "&").reduce(into: [String: String]()) { result, item in
-                    let pair = item.split(separator: "=", maxSplits: 1).map(String.init)
-                    if pair.count == 2 { result[pair[0]] = pair[1].removingPercentEncoding ?? pair[1] }
-                }["id"]
-            guard let manager = audioManager else {
-                sendError(connection, status: 404, message: "No artwork")
-                return
-            }
-            let candidates = manager.originalQueue + manager.queue + [manager.currentTrack].compactMap { $0 }
-            guard let track = requestedID.flatMap({ id in candidates.first(where: { $0.id.uuidString == id }) }) ?? manager.currentTrack else {
+            guard let track = audioManager?.currentTrack else {
                 sendError(connection, status: 404, message: "No artwork")
                 return
             }
@@ -281,76 +218,21 @@ final class RemoteServer: ObservableObject {
         DispatchQueue.main.async {
             switch command {
             case "play":
-                if self.playbackTarget == .web { self.remoteWebPlaying = true } else { manager.playFromRemote() }
+                manager.playFromRemote()
             case "pause":
-                if self.playbackTarget == .web { self.remoteWebPlaying = false } else { manager.pauseFromRemote() }
+                manager.pauseFromRemote()
             case "toggle":
-                if self.playbackTarget == .web { self.remoteWebPlaying.toggle() } else { manager.togglePlayPause() }
+                manager.togglePlayPause()
             case "next":
-                let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                 manager.forward()
-                if self.playbackTarget == .web {
-                    manager.pauseFromRemote()
-                    self.remoteWebPosition = 0
-                    self.remoteWebPlaying = wasWebPlaying
-                }
             case "previous":
-                let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                 manager.backward()
-                if self.playbackTarget == .web {
-                    manager.pauseFromRemote()
-                    self.remoteWebPosition = manager.currentTime
-                    self.remoteWebPlaying = wasWebPlaying
-                }
-            case "createPlaylist":
-                if let name = object["name"] as? String {
-                    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        ToyakoUnifiedCache.update { cache in
-                            cache.playlists.append(Playlist(name: trimmed))
-                        }
-                    }
-                }
-            case "playLibrary":
-                if let id = object["id"] as? String {
-                    let pool = manager.originalQueue.isEmpty ? manager.queue : manager.originalQueue
-                    if let index = pool.firstIndex(where: { $0.id.uuidString == id }) {
-                        manager.startQueue(tracks: pool, startIndex: index)
-                    }
-                }
             case "playQueue":
                 if let index = object["index"] as? Int {
-                    let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                     manager.playQueuedTrack(at: index)
-                    if self.playbackTarget == .web {
-                        manager.pauseFromRemote()
-                        self.remoteWebPosition = 0
-                        self.remoteWebPlaying = wasWebPlaying
-                    }
                 }
             case "seek":
-                if let position = object["position"] as? Double {
-                    if self.playbackTarget == .web { self.remoteWebPosition = max(0, position) }
-                    else { manager.seek(to: position) }
-                }
-            case "handoffToWeb":
-                self.playbackTarget = .web
-                self.remoteWebPosition = manager.currentTime
-                self.remoteWebPlaying = manager.isPlaying
-                manager.pauseFromRemote()
-            case "handoffToIPad":
-                let position = (object["position"] as? Double) ?? self.remoteWebPosition
-                let shouldPlay = (object["playing"] as? Bool) ?? self.remoteWebPlaying
-                self.remoteWebPosition = position
-                self.remoteWebPlaying = shouldPlay
-                manager.seek(to: position)
-                self.playbackTarget = .ipad
-                if shouldPlay { manager.playFromRemote() } else { manager.pauseFromRemote() }
-            case "remoteSync":
-                if self.playbackTarget == .web {
-                    if let position = object["position"] as? Double { self.remoteWebPosition = max(0, position) }
-                    if let playing = object["playing"] as? Bool { self.remoteWebPlaying = playing }
-                }
+                if let position = object["position"] as? Double { manager.seek(to: position) }
             case "volume":
                 if let value = object["value"] as? Double {
                     // The Now Playing slider controls the iPad's actual output
@@ -409,92 +291,6 @@ final class RemoteServer: ObservableObject {
         sendJSON(connection, object: ["ok": true])
     }
 
-    private func handleMediaRequest(rawPath: String, request: String, connection: NWConnection) {
-        guard let manager = audioManager, let track = manager.currentTrack else {
-            sendError(connection, status: 404, message: "No track")
-            return
-        }
-
-        let query = rawPath.components(separatedBy: "?").dropFirst().joined(separator: "?")
-        let params = query.split(separator: "&").reduce(into: [String: String]()) { result, item in
-            let pair = item.split(separator: "=", maxSplits: 1).map(String.init)
-            if pair.count == 2 { result[pair[0]] = pair[1].removingPercentEncoding ?? pair[1] }
-        }
-        if let requestedID = params["id"], requestedID != track.id.uuidString {
-            sendError(connection, status: 404, message: "Track is no longer current")
-            return
-        }
-
-        guard let handle = try? FileHandle(forReadingFrom: track.url) else {
-            sendError(connection, status: 404, message: "Media file unavailable")
-            return
-        }
-        defer { try? handle.close() }
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: track.url.path),
-              let fileSize = attributes[.size] as? NSNumber else {
-            sendError(connection, status: 404, message: "Media file unavailable")
-            return
-        }
-        let total = Int64(fileSize.int64Value)
-        let rangeHeader = headerValue(in: request, name: "Range")
-        var start: Int64 = 0
-        var end: Int64 = max(0, total - 1)
-        var status = 200
-        if let rangeHeader, rangeHeader.hasPrefix("bytes=") {
-            let value = String(rangeHeader.dropFirst(6)).split(separator: "-", maxSplits: 1).map(String.init)
-            if let first = Int64(value.first ?? ""), first >= 0 {
-                start = first
-                if value.count > 1, let requestedEnd = Int64(value[1]), requestedEnd >= start { end = min(requestedEnd, total - 1) }
-                else { end = total - 1 }
-                status = 206
-            }
-        }
-        guard total > 0, start < total, start <= end else {
-            let header = "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */\(total)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-            connection.send(content: Data(header.utf8), completion: .contentProcessed { _ in connection.cancel() })
-            return
-        }
-
-        let length = Int(end - start + 1)
-        do {
-            try handle.seek(toOffset: UInt64(start))
-            let data = try handle.read(upToCount: length) ?? Data()
-            let contentType = Self.mimeType(for: track.url.pathExtension)
-            let reason = status == 206 ? "Partial Content" : "OK"
-            var header = "HTTP/1.1 \(status) \(reason)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nAccept-Ranges: bytes\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n"
-            if status == 206 { header += "Content-Range: bytes \(start)-\(start + Int64(data.count) - 1)/\(total)\r\n" }
-            header += "\r\n"
-            connection.send(content: Data(header.utf8) + data, completion: .contentProcessed { _ in connection.cancel() })
-        } catch {
-            sendError(connection, status: 500, message: "Could not read media")
-        }
-    }
-
-    private func headerValue(in request: String, name: String) -> String? {
-        for line in request.components(separatedBy: "\r\n").dropFirst() {
-            let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
-            if parts.count == 2, parts[0].trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame {
-                return parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        return nil
-    }
-
-    private static func mimeType(for ext: String) -> String {
-        switch ext.lowercased() {
-        case "mp3": return "audio/mpeg"
-        case "m4a", "mp4": return "audio/mp4"
-        case "aac": return "audio/aac"
-        case "wav": return "audio/wav"
-        case "aiff", "aif": return "audio/aiff"
-        case "flac": return "audio/flac"
-        case "caf": return "audio/x-caf"
-        case "opus": return "audio/ogg"
-        case "ogg": return "audio/ogg"
-        default: return "application/octet-stream"
-        }
-    }
-
     private func statePayload() -> [String: Any] {
         guard let manager = audioManager else { return ["available": false] }
         let track = manager.currentTrack
@@ -525,38 +321,11 @@ final class RemoteServer: ObservableObject {
         }
 
         let defaults = UserDefaults.standard
-        let cache = ToyakoUnifiedCache.load()
-        let libraryTracks = manager.originalQueue.isEmpty ? manager.queue : manager.originalQueue
-        let trackByPath = Dictionary(uniqueKeysWithValues: libraryTracks.map { ($0.url.standardizedFileURL.path, $0) })
-        let playlistPayload: [[String: Any]] = (cache?.playlists ?? []).map { playlist in
-            let resolved = playlist.trackURLs.compactMap { trackByPath[$0.standardizedFileURL.path] }
-            let artworkURLs = Array(resolved.prefix(4)).map { "/api/artwork?id=\($0.id.uuidString)" }
-            return [
-                "id": playlist.id.uuidString,
-                "name": playlist.name,
-                "trackIDs": resolved.map { $0.id.uuidString },
-                "trackCount": resolved.count,
-                "duration": resolved.reduce(0) { $0 + $1.duration },
-                "artworkURLs": artworkURLs
-            ]
-        }
-        let recentPayload: [[String: Any]] = (cache?.recentlyPlayed ?? []).prefix(20).map { track in
-            [
-                "id": track.id.uuidString,
-                "title": track.title,
-                "artist": track.artist,
-                "album": track.album,
-                "duration": track.duration,
-                "artworkURL": "/api/artwork?id=\(track.id.uuidString)"
-            ]
-        }
         return [
             "available": true,
-            "playing": playbackTarget == .web ? remoteWebPlaying : manager.isPlaying,
-            "position": playbackTarget == .web ? remoteWebPosition : manager.currentTime,
+            "playing": manager.isPlaying,
+            "position": manager.currentTime,
             "duration": track?.duration ?? 0,
-            "playbackTarget": playbackTarget.rawValue,
-            "playbackDeviceName": currentNativeOutputName(),
             "volume": AVAudioSession.sharedInstance().outputVolume,
             "shuffle": manager.isShuffle,
             "repeat": manager.repeatMode.rawValue,
@@ -569,18 +338,6 @@ final class RemoteServer: ObservableObject {
                 "artworkURL": track == nil ? NSNull() : "/api/artwork"
             ],
             "queue": queue,
-            "playlists": playlistPayload,
-            "recentlyPlayed": recentPayload,
-            "library": manager.originalQueue.isEmpty ? queue : manager.originalQueue.map { item in
-                [
-                    "id": item.id.uuidString,
-                    "title": item.title,
-                    "artist": item.artist,
-                    "album": item.album,
-                    "duration": item.duration,
-                    "artworkURL": "/api/artwork?id=\(item.id.uuidString)"
-                ] as [String: Any]
-            },
             "lyrics": lyrics,
             "lyricsSource": manager.selectedLyricsSourceID as Any,
             "settings": [
@@ -594,11 +351,6 @@ final class RemoteServer: ObservableObject {
                 ToyakoPreferences.lyricsAnimationStyleKey: defaults.string(forKey: ToyakoPreferences.lyricsAnimationStyleKey) ?? LyricsAnimationStyle.dynamic.rawValue
             ]
         ]
-    }
-
-    private func currentNativeOutputName() -> String {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        return outputs.first?.portName ?? "This iPad"
     }
 
     private func audioFormatSummary(for track: LocalTrack) -> String? {
@@ -685,57 +437,238 @@ final class RemoteServer: ObservableObject {
 <!doctype html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1118">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Toyako">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <title>Toyako</title>
 <style>
-:root{color-scheme:dark;--bg:#090e14;--bg2:#050608;--panel:rgba(255,255,255,.085);--panel2:rgba(255,255,255,.12);--text:#fff;--secondary:rgba(255,255,255,.62);--tertiary:rgba(255,255,255,.4);--line:rgba(255,255,255,.12);--radius:22px}
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:linear-gradient(180deg,#0c141d 0%,#07090c 62%,#030405 100%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}button,input{font:inherit}button{border:0;color:inherit;background:none;cursor:pointer}.app{min-height:100dvh}.content{min-height:100dvh;overflow:auto}.page{padding:8px 28px 170px;max-width:1500px;margin:0 auto}.topbar{height:96px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 16px;position:sticky;top:0;z-index:20;background:linear-gradient(180deg,rgba(10,15,21,.96),rgba(10,15,21,.75),transparent);backdrop-filter:blur(18px)}.top-title{font-size:31px;font-weight:760;letter-spacing:-.035em}.top-actions{display:flex;justify-content:flex-end;gap:10px}.circle{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.09);border:1px solid var(--line);display:grid;place-items:center}.circle svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}.seg{display:flex;align-items:center;gap:2px;padding:4px;background:rgba(255,255,255,.095);border:1px solid rgba(255,255,255,.13);border-radius:34px;box-shadow:0 8px 28px rgba(0,0,0,.25)}.seg button{padding:12px 20px;border-radius:28px;font-size:20px;font-weight:560;white-space:nowrap}.seg .seg-icon{width:48px;padding:12px}.seg .seg-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.seg button.active{background:#0b0d10;font-weight:720}.hero-title{font-size:48px;line-height:1.02;letter-spacing:-.05em;margin:8px 0 22px}.library-sub{font-size:20px;color:var(--secondary);margin-bottom:28px}.actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:42px}.pill{height:70px;border-radius:36px;background:rgba(255,255,255,.105);border:1px solid var(--line);font-size:21px;font-weight:620}.section{margin-top:34px}.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.section-title{font-size:27px;font-weight:740;letter-spacing:-.025em}.section-more{color:var(--secondary);font-size:15px}.horizontal{display:flex;gap:18px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none}.horizontal::-webkit-scrollbar{display:none}.card{flex:0 0 248px;text-align:left;padding:12px;border-radius:24px;background:rgba(255,255,255,.09);border:1px solid var(--line);overflow:hidden}.card .art,.card .fallback{width:100%;aspect-ratio:1;border-radius:18px;object-fit:cover;background:rgba(255,255,255,.06)}.fallback{display:grid;place-items:center;font-size:42px;color:var(--secondary)}.card-title{font-size:20px;font-weight:650;margin-top:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card-sub{font-size:16px;color:var(--secondary);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px}.grid .card{width:auto}.list{display:flex;flex-direction:column;gap:8px}.row{display:grid;grid-template-columns:66px minmax(0,1fr) auto;align-items:center;gap:14px;padding:10px 14px;border-radius:18px;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.08);text-align:left}.row-art{width:58px;height:58px;border-radius:12px;object-fit:cover;background:rgba(255,255,255,.06)}.row-main{min-width:0}.row-title{font-size:17px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-sub{font-size:14px;color:var(--secondary);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-tail{color:var(--secondary);font-size:14px}.empty{color:var(--secondary);padding:80px 20px;text-align:center;font-size:18px}.playlist-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,320px));justify-content:center;gap:24px}.playlist-card{padding:14px;border-radius:24px;background:rgba(255,255,255,.09);border:1px solid var(--line);text-align:left}.playlist-cover{aspect-ratio:1;border-radius:17px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;background:#17191c}.playlist-cover img{width:100%;height:100%;object-fit:cover}.playlist-info{padding:12px 2px 4px}.playlist-name{font-size:21px;font-weight:650}.playlist-meta{display:flex;justify-content:space-between;color:var(--secondary);margin-top:12px;font-size:15px}.detail{display:grid;grid-template-columns:330px 1fr;gap:42px;align-items:start}.detail-sidebar{background:rgba(255,255,255,.055);border-radius:0 26px 26px 0;padding:20px 14px;min-height:600px}.detail-main{padding-top:20px}.detail-head{display:flex;gap:26px;align-items:center}.detail-avatar{width:240px;height:240px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.06);border:4px solid rgba(255,255,255,.8)}.detail-name{font-size:38px;font-weight:760;letter-spacing:-.04em}.detail-count{color:var(--secondary);font-size:18px;margin-top:10px}.detail-actions{display:flex;gap:12px;margin:28px 0}.detail-play{height:64px;border-radius:34px;background:#fff;color:#000;font-size:20px;font-weight:700;flex:0 1 440px}.detail-shuffle{height:64px;border-radius:34px;background:rgba(255,255,255,.1);font-size:20px;font-weight:650;flex:0 1 440px}.sidebar-search{height:52px;border-radius:16px;background:rgba(255,255,255,.08);padding:0 16px;color:var(--secondary);width:100%;outline:none}.artist-list{margin-top:14px}.artist-item{width:100%;display:flex;align-items:center;gap:14px;padding:11px 8px;border-radius:16px;text-align:left}.artist-item.active{background:rgba(255,255,255,.15)}.artist-icon{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.09);display:grid;place-items:center;color:var(--secondary)}.artist-icon svg{width:24px;height:24px}.artist-copy{min-width:0}.artist-copy strong{display:block;font-size:18px}.artist-copy span{display:block;color:var(--secondary);font-size:14px;margin-top:3px}.mini{position:fixed;left:19%;right:19%;bottom:22px;height:78px;border-radius:40px;background:rgba(36,36,36,.88);border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(30px);box-shadow:0 18px 55px rgba(0,0,0,.45);display:grid;grid-template-columns:minmax(260px,1fr) auto minmax(220px,1fr);align-items:center;padding:8px 14px;z-index:60}.mini-track{display:flex;align-items:center;gap:12px;min-width:0}.mini-art{width:58px;height:58px;border-radius:12px;object-fit:cover;background:rgba(255,255,255,.06)}.mini-text{min-width:0}.mini-title{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini-artist{font-size:14px;color:var(--secondary);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini-controls{display:flex;align-items:center;gap:14px}.mini-controls .circle{background:transparent;border:0}.mini-extra{display:flex;align-items:center;justify-content:flex-end;gap:10px;color:var(--secondary);font-size:12px}.mini-device{max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.progress{position:absolute;left:74px;right:74px;bottom:0;height:3px;background:rgba(255,255,255,.18);border-radius:99px;overflow:hidden}.progress i{display:block;height:100%;background:#fff;width:0}.now-playing{position:fixed;inset:0;background:#0b1118;z-index:100;display:none;overflow:auto}.now-playing.open{display:block}.np-backdrop{position:absolute;inset:0;background-position:center;background-size:cover;filter:blur(35px);transform:scale(1.12);opacity:.42}.np-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,12,16,.92),rgba(8,12,16,.52),rgba(8,12,16,.35))}.np-inner{position:relative;min-height:100%;padding:18px 32px 40px;display:grid;grid-template-columns:460px 1fr;gap:48px;align-items:center}.np-art{width:100%;aspect-ratio:1;border-radius:18px;object-fit:cover;box-shadow:0 30px 90px rgba(0,0,0,.45)}.np-right{max-width:760px}.np-song{font-size:34px;font-weight:760;letter-spacing:-.04em}.np-artist{font-size:19px;color:var(--secondary);margin-top:6px}.np-format{font-size:14px;color:var(--secondary);margin-top:5px}.seek{margin-top:30px}.range{width:100%;accent-color:#fff}.times{display:flex;justify-content:space-between;color:var(--secondary);font-size:13px;margin-top:6px}.np-controls{display:flex;justify-content:center;align-items:center;gap:18px;margin-top:28px}.np-controls .circle{background:transparent;border:0}.play{width:62px;height:62px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center}.play svg{width:24px;height:24px;fill:currentColor}.np-volume{display:flex;gap:12px;align-items:center;margin-top:25px}.np-volume svg{width:20px;height:20px;fill:#fff}.lyrics{margin-top:30px;max-height:360px;overflow:auto;text-align:left;color:var(--secondary);line-height:1.55}.lyric{font-size:19px;padding:6px 0}.lyric.active{color:#fff;font-size:25px;font-weight:750}.np-output{display:flex;align-items:center;gap:10px;margin-top:22px;color:var(--secondary);font-size:14px}.np-output strong{color:#fff;font-weight:650}.output-icon{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.1);border:1px solid var(--line)}.output-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.mobile-nav{display:none}
-@media(max-width:1100px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}.mini{left:12%;right:12%}.detail{grid-template-columns:1fr}.detail-sidebar{display:none}.np-inner{grid-template-columns:minmax(280px,44vw) 1fr;gap:28px}.seg button{padding:11px 14px;font-size:17px}}
-@media(max-width:760px){.topbar{height:78px;grid-template-columns:1fr auto}.top-title{font-size:24px}.seg{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:max-content}.seg button{padding:9px 12px;font-size:13px}.top-actions{gap:6px}.top-actions .circle{width:42px;height:42px}.page{padding:8px 18px 145px}.hero-title{font-size:36px}.actions{grid-template-columns:1fr;gap:10px}.actions .pill{height:58px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{padding:9px;border-radius:18px}.card-title{font-size:16px}.card-sub{font-size:13px}.section-title{font-size:23px}.mini{left:10px;right:10px;bottom:68px;height:68px;border-radius:20px;grid-template-columns:1fr auto;padding:6px 9px}.mini-art{width:52px;height:52px}.mini-controls{gap:2px}.mini-controls .optional{display:none}.mini-extra{display:none}.progress{left:62px;right:62px}.mobile-nav{position:fixed;display:flex;left:10px;right:10px;bottom:8px;height:54px;border-radius:18px;background:rgba(24,24,24,.92);border:1px solid var(--line);backdrop-filter:blur(28px);z-index:70;justify-content:space-around;padding:4px}.mobile-nav button{flex:1;color:var(--secondary);font-size:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:13px}.mobile-nav button.active{color:#fff;background:rgba(255,255,255,.1)}.mobile-nav svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.playlist-grid{grid-template-columns:1fr}.np-inner{display:flex;flex-direction:column;padding:18px 22px 30px;align-items:stretch}.np-art{width:min(82vw,420px);margin:26px auto 0}.np-right{max-width:none}.np-song{font-size:27px;margin-top:22px}.lyrics{max-height:240px}.np-output{margin-bottom:15px}}
+:root{color-scheme:dark;--white:#fff;--muted:rgba(255,255,255,.62);--faint:rgba(255,255,255,.28);--line:rgba(255,255,255,.22)}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;background:#08090b;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+body{position:relative;min-height:100vh;min-height:100svh;min-height:100dvh}
+#backdrop{position:fixed;inset:-8%;width:116%;height:116%;object-fit:cover;filter:blur(55px) saturate(.72);opacity:.48;transform:scale(1.05);display:none;pointer-events:none}
+#backdrop.visible{display:block}
+.backdrop-shade{position:fixed;inset:0;background:linear-gradient(90deg,rgba(5,7,10,.55),rgba(5,7,10,.36) 48%,rgba(5,7,10,.48)),rgba(6,8,11,.34);pointer-events:none}
+.shell{position:relative;width:100%;height:100vh;height:100svh;height:100dvh;min-height:0;padding:clamp(12px,2.2vh,26px) clamp(20px,4vw,48px) clamp(12px,2.2vh,26px);display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:clamp(32px,4.5vh,42px);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
+.icon-btn{border:0;background:transparent;color:white;padding:10px;margin:-10px;cursor:pointer;display:grid;place-items:center;opacity:.94;flex:0 0 auto}
+.icon-btn svg{width:clamp(22px,2.2vw,25px);height:clamp(22px,2.2vw,25px);fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.install-btn{display:none}.install-btn.visible{display:grid}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,0.9fr) minmax(0,1.1fr);gap:clamp(28px,5vw,72px);align-items:stretch;padding:clamp(2px,1vh,10px) 0;overflow:hidden}
+.left{min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;max-width:760px;width:100%;margin:auto}
+.art-wrap{width:min(100%,42vw,60dvh,calc(100dvh - 430px),760px);aspect-ratio:1/1;flex:0 1 auto;display:grid;place-items:center;margin:0 auto}
+.art{width:100%;height:100%;object-fit:cover;border-radius:18px;display:block;box-shadow:0 26px 60px rgba(0,0,0,.26);transition:transform .42s cubic-bezier(.22,.8,.2,1),opacity .25s}
+.art.paused{transform:scale(.70)}
+.fallback{width:100%;height:100%;border-radius:18px;background:rgba(255,255,255,.055);display:grid;place-items:center;color:rgba(255,255,255,.15);font-size:72px}
+.info{margin-top:clamp(12px,2.2vh,24px);width:100%;text-align:left}
+.title{font-size:clamp(22px,2.2vw,28px);font-weight:750;letter-spacing:-.035em;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artist{font-size:clamp(15px,1.45vw,18px);font-weight:500;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.audio-info{font-size:clamp(12px,1.15vw,14px);color:rgba(255,255,255,.47);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scrub{width:100%;margin-top:clamp(14px,2.2vh,28px)}
+.range{width:100%;height:5px;appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.23);border-radius:999px;outline:none;margin:0;padding:0;display:block;touch-action:none}
+.range::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:white;border:0;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.range::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:white;border:0}
+.times{display:flex;justify-content:space-between;margin-top:7px;font-size:clamp(11px,1vw,13px);color:rgba(255,255,255,.56);font-variant-numeric:tabular-nums}
+.controls{width:100%;display:flex;align-items:center;justify-content:center;gap:clamp(16px,3vw,48px);margin-top:clamp(10px,2.2vh,25px)}
+.control{border:0;background:transparent;color:white;display:grid;place-items:center;padding:8px;cursor:pointer;opacity:.96;flex:0 0 auto}
+.control.dim{color:rgba(255,255,255,.35)}
+.control svg{width:clamp(22px,2.4vw,27px);height:clamp(22px,2.4vw,27px);fill:currentColor;stroke:none}
+.control.play{width:clamp(46px,4.8vw,58px);height:clamp(46px,4.8vw,58px);padding:0}
+.control.play svg{width:clamp(34px,3.8vw,43px);height:clamp(34px,3.8vw,43px)}
+.control:active{transform:scale(.91)}
+.volume{width:100%;display:flex;align-items:center;gap:12px;margin-top:clamp(8px,1.8vh,18px)}
+.volume svg{width:21px;height:21px;fill:white;opacity:.9;flex:0 0 auto}
+.volume .range{height:5px}
+.bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:10px}
+.chip{border:0;background:transparent;color:white;font-size:15px;font-weight:600;padding:8px 10px;cursor:pointer;opacity:.9}
+.chip.off{opacity:.34}
+.right{min-width:0;min-height:0;height:100%;display:flex;align-items:stretch;overflow:hidden}
+.lyrics{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 clamp(8px,2.2vw,28px);mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 13%,#000 87%,transparent 100%)}
+.lyrics-inner{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:clamp(20px,3vh,30px);padding:clamp(120px,30%,260px) 0;transition:none}
+.line{font-size:50px;font-weight:750;line-height:1.1;letter-spacing:-.025em;color:white;opacity:.27;filter:blur(1.6px);transform:scale(.985);transform-origin:left center;cursor:pointer;transition:opacity .4s,filter .4s,transform .4s}
+.line.past{opacity:.12;filter:blur(3.8px);transform:scale(.972)}
+.line.active{opacity:1;filter:none;transform:scale(1)}
+.roman{font-size:22px;font-weight:500;line-height:1.2;color:white;opacity:.18;margin-top:7px;letter-spacing:0}
+.line.active .roman{opacity:.72}
+.no-lyrics{font-size:22px;color:rgba(255,255,255,.42);font-weight:600}
+button,input{font:inherit}
+button{-webkit-tap-highlight-color:transparent}
+input[type="range"]{accent-color:white}
+@media (pointer:coarse){.icon-btn{padding:14px;margin:-14px}.control{padding:12px}.control.play{padding:0}.range{height:8px}.range::-webkit-slider-thumb{width:22px;height:22px}.range::-moz-range-thumb{width:22px;height:22px}}
+@media (hover:none){.queue-item:hover{background:transparent}}
+.queue-panel{position:fixed;z-index:10;right:24px;top:70px;width:min(430px,calc(100vw - 48px));max-height:72vh;overflow:auto;background:rgba(20,22,25,.88);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.11);border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.5);display:none}
+.queue-panel.open{display:block}.queue-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-weight:700}.queue-item{display:block;width:100%;padding:12px 10px;border-radius:12px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}.queue-item:hover{background:rgba(255,255,255,.07)}.queue-item:active{background:rgba(255,255,255,.12);transform:scale(.995)}.queue-item.active{background:rgba(255,255,255,.10)}.queue-item small{display:block;color:var(--muted);margin-top:3px;pointer-events:none}.queue-item div{pointer-events:none}
+.error{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);color:#ffb3b3;font-size:13px;background:rgba(30,8,8,.75);padding:8px 12px;border-radius:10px;display:none;z-index:20}
+@media(max-width:700px){
+  .shell{padding:12px 18px max(16px,env(safe-area-inset-bottom))}
+  .main{display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;position:relative;overflow:hidden;gap:0;padding:8px 0 0}
+  .left{max-width:none;display:flex;width:100%;height:auto;min-height:0}
+  .art-wrap{width:min(86vw,390px,52vh);max-width:100%;margin:0 auto}
+  .info{margin-top:clamp(12px,2vh,17px)}
+  .title{font-size:clamp(20px,6vw,23px)}
+  .artist{font-size:clamp(14px,4.3vw,16px)}
+  .audio-info{font-size:clamp(11px,3.2vw,12px)}
+  .scrub{margin-top:clamp(14px,2.5vh,20px)}
+  .controls{margin-top:clamp(12px,2vh,18px);gap:clamp(14px,5vw,24px)}
+  .volume{margin-top:clamp(8px,1.8vh,12px)}
+  .right{height:min(54dvh,430px);min-height:220px;width:100%;display:none;order:0}
+  .line{font-size:clamp(25px,8vw,32px);line-height:1.08}
+  .roman{font-size:clamp(14px,4vw,16px)}
+  .bottom-actions{display:none}
+  .portrait-lyrics-button{display:grid}
+  .main.lyrics-mode .art-wrap{display:none}
+  .main.lyrics-mode .right{display:flex;position:absolute;left:0;right:0;top:0;height:min(56dvh,460px);min-height:220px}
+  .main.lyrics-mode .info{margin-top:10px}
+  .main.lyrics-mode .left{max-width:none;padding-top:min(56dvh,460px)}
+  .main.lyrics-mode .lyrics-toggle-icon{transform:rotate(180deg)}
+}
+@media(min-width:701px){.portrait-lyrics-button{display:none}}
+
+
 </style>
 </head>
 <body>
-<div class="app"><main class="content">
-<header class="topbar"><div class="top-actions" style="justify-content:flex-start"><button class="circle" onclick="refresh()" aria-label="Refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 5v4h4M4 13a8 8 0 0 0 14.9 3M20 19v-4h-4"/></svg></button></div><nav class="seg" id="seg"><button class="seg-icon" aria-label="Library"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/></svg></button><button data-page="home" class="active" onclick="go('home')">Home</button><button data-page="tracks" onclick="go('tracks')">Tracks</button><button data-page="albums" onclick="go('albums')">Albums</button><button data-page="artists" onclick="go('artists')">Artists</button><button data-page="playlists" onclick="go('playlists')">Playlists</button></nav><div class="top-actions"><button class="circle" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"/><path d="m19.4 15 .1.1a2 2 0 0 1-2.8 2.8l-.1-.1a2 2 0 0 0-3.4 1.4v.2a2 2 0 0 1-4 0v-.2A2 2 0 0 0 5.8 17l-.1.1A2 2 0 0 1 2.9 14.3L3 14.2a2 2 0 0 0-1.4-3.4h-.2a2 2 0 0 1 0-4h.2A2 2 0 0 0 3 3.4l-.1-.1A2 2 0 0 1 5.7.5l.1.1a2 2 0 0 0 3.4-1.4V-1a2 2 0 0 1 4 0v.2a2 2 0 0 0 3.4 1.4l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a2 2 0 0 0 1.4 3.4h.2a2 2 0 0 1 0 4h-.2a2 2 0 0 0-1.4 3.4Z"/></svg></button><button class="circle" onclick="createPlaylist()" aria-label="Create playlist"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div></header>
-<div class="page" id="page"></div>
-<nav class="mobile-nav"><button data-page="home" class="active" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/></svg>Home</button><button data-page="tracks" onclick="go('tracks')"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Tracks</button><button data-page="albums" onclick="go('albums')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/></svg>Albums</button><button data-page="artists" onclick="go('artists')"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>Artists</button><button data-page="playlists" onclick="go('playlists')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>Playlists</button></nav>
-</main></div>
-<div class="mini" onclick="openNowPlaying()"><div class="mini-track"><img class="mini-art" id="miniArt" src="" alt=""><div class="mini-text"><div class="mini-title" id="miniTitle">Nothing Playing</div><div class="mini-artist" id="miniArtist"></div></div></div><div class="mini-controls"><button class="circle optional" onclick="event.stopPropagation();cmd('previous')"><svg viewBox="0 0 24 24"><path d="M6 5v14h2V5H6Zm3 7 9 7V5l-9 7Z" fill="currentColor"/></svg></button><button class="play" id="miniPlay" onclick="event.stopPropagation();cmd('toggle')"><svg viewBox="0 0 24 24"><path id="miniPlayPath" d="M8 5v14l11-7L8 5Z"/></svg></button><button class="circle optional" onclick="event.stopPropagation();cmd('next')"><svg viewBox="0 0 24 24"><path d="M16 5v14h2V5h-2Zm-1 7L6 5v14l9-7Z" fill="currentColor"/></svg></button></div><div class="mini-extra"><span>Playing on</span><strong class="mini-device" id="miniDevice">This iPad</strong></div><div class="progress"><i id="miniProgress"></i></div></div>
-<div class="now-playing" id="nowPlaying"><div class="np-backdrop" id="npBackdrop"></div><div class="np-shade"></div><div class="np-inner"><button class="circle" style="position:absolute;left:18px;top:18px;z-index:2" onclick="closeNowPlaying()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button><img class="np-art" id="npArt" src="" alt=""><div class="np-right"><div class="np-song" id="npTitle">Nothing Playing</div><div class="np-artist" id="npArtist"></div><div class="np-format" id="npFormat"></div><div class="seek"><input id="seek" class="range" type="range" min="0" max="1" value="0" step="0.01"><div class="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div></div><div class="np-controls"><button class="circle" onclick="cmd('shuffle',{value:true})"><svg viewBox="0 0 24 24"><path d="M16 3h5v5M20 4l-5 5M4 5h3a4 4 0 0 1 3.3 1.7l4.4 6.6A4 4 0 0 0 18 15h3M4 19h3a4 4 0 0 0 3.3-1.7l1.2-1.8M20 20l-4-4"/></svg></button><button class="circle" onclick="cmd('previous')"><svg viewBox="0 0 24 24"><path d="M6 5v14h2V5H6Zm3 7 9 7V5l-9 7Z" fill="currentColor"/></svg></button><button class="play" id="npPlay" onclick="cmd('toggle')"><svg viewBox="0 0 24 24"><path id="npPlayPath" d="M8 5v14l11-7L8 5Z"/></svg></button><button class="circle" onclick="cmd('next')"><svg viewBox="0 0 24 24"><path d="M16 5v14h2V5h-2Zm-1 7L6 5v14l9-7Z" fill="currentColor"/></svg></button><button class="circle" onclick="cmd('repeat',{value:'all'})"><svg viewBox="0 0 24 24"><path d="M7 7h10V4l4 4-4 4V9H7a3 3 0 0 0-3 3M17 17H7v3l-4-4 4-4v3h10a3 3 0 0 0 3-3"/></svg></button></div><div class="np-volume"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="volume" class="range" type="range" min="0" max="1" value="1" step="0.01"></div><div class="np-output"><span class="output-icon"><svg viewBox="0 0 24 24"><path d="M5 17h14M7 13h10M9 9h6M12 5v12"/></svg></span><span>Playing on <strong id="npDevice">This iPad</strong></span></div><div class="lyrics" id="lyrics"></div></div></div></div>
+<img id="backdrop" alt="">
+<div class="backdrop-shade"></div>
+<div class="shell">
+  <div class="topbar">
+    <button class="icon-btn" onclick="window.history.back()" aria-label="Close">
+      <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div style="display:flex;align-items:center;gap:18px">
+      <button class="icon-btn portrait-lyrics-button" onclick="togglePortraitLyrics()" aria-label="Show lyrics">
+        <svg class="lyrics-toggle-icon" viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>
+      </button>
+      <button class="icon-btn install-btn" id="installBtn" onclick="installWebApp()" aria-label="Install Toyako">
+        <svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M5 15v4h14v-4"/></svg>
+      </button>
+      <button class="icon-btn" onclick="toggleQueue()" aria-label="Queue">
+      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h9"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="main" id="main">
+    <section class="left">
+      <div class="art-wrap" id="artWrap"><div class="fallback">♪</div></div>
+      <div class="info">
+        <div class="title" id="title">Nothing Playing</div>
+        <div class="artist" id="artist"></div>
+        <div class="audio-info" id="audioInfo"></div>
+      </div>
+      <div class="scrub">
+        <input id="seek" class="range" type="range" min="0" max="1" value="0" step="0.01">
+        <div class="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
+      </div>
+      <div class="controls">
+        <button class="control" id="shuffle" onclick="toggleShuffle()" aria-label="Shuffle"><svg viewBox="0 0 24 24"><path d="M16 3h5v5h-2V6.41l-3.29 3.3-1.42-1.42L17.59 5H16V3ZM4 5h2.5c1.45 0 2.82.7 3.66 1.88l6.18 8.7A2.5 2.5 0 0 0 18.38 17H21v2h-2.62a4.5 4.5 0 0 1-3.86-2.18l-6.18-8.7A2.5 2.5 0 0 0 6.5 7H4V5Zm0 12h2.5a2.5 2.5 0 0 0 2.03-1.04l1.16-1.63 1.42 1.42-1 1.41A4.5 4.5 0 0 1 6.5 19H4v-2Z"/></svg></button>
+        <button class="control" onclick="cmd('previous')" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14h2V5H6Zm3 7 9 7V5l-9 7Z"/></svg></button>
+        <button class="control play" id="play" onclick="cmd('toggle')" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path id="playPath" d="M8 5v14l11-7L8 5Z"/></svg></button>
+        <button class="control" onclick="cmd('next')" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M16 5v14h2V5h-2Zm-1 7L6 5v14l9-7Z"/></svg></button>
+        <button class="control" id="repeat" onclick="cycleRepeat()" aria-label="Repeat"><svg viewBox="0 0 24 24"><path d="M7 7h10V4l4 4-4 4V9H7a3 3 0 0 0-3 3H2a5 5 0 0 1 5-5Zm10 10H7v3l-4-4 4-4v3h10a3 3 0 0 0 3-3h2a5 5 0 0 1-5 5Z"/></svg></button>
+      </div>
+      <div class="volume">
+        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="volume" class="range" type="range" min="0" max="1" value="1" step="0.01">
+        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+    </section>
+    <section class="right">
+      <div class="lyrics" id="lyrics"><div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div></div>
+    </section>
+  </div>
+</div>
+<div class="queue-panel" id="queuePanel"><div class="queue-head"><span>Queue</span><button class="icon-btn" onclick="toggleQueue()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div id="queue"></div></div>
+<div class="error" id="error"></div>
 <script>
-let state=null,page='home',localPosition=0;
-const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const fmt=s=>{s=Math.max(0,Math.floor(s||0));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`};
-async function api(path,options={}){const r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
-async function cmd(command,extra={}){try{await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){console.error(e)}}
-function go(p){page=p;renderPage();window.scrollTo({top:0,behavior:'smooth'})}
-function setNav(){document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('pageTitle').textContent=page==='playlists'?'All Playlists':page[0].toUpperCase()+page.slice(1)}
-function tracks(){return state?.library||[]}
-function albums(){const m=new Map();tracks().forEach(t=>{const k=t.album||'Unknown Album';if(!m.has(k))m.set(k,{name:k,artist:t.artist,track:t,tracks:[]});m.get(k).tracks.push(t)});return [...m.values()]}
-function artists(){const m=new Map();tracks().forEach(t=>{const k=t.artist||'Unknown Artist';if(!m.has(k))m.set(k,{name:k,track:t,tracks:[]});m.get(k).tracks.push(t)});return [...m.values()]}
-function art(t,cls='art'){return t?.artworkURL?`<img class="${cls}" src="${t.artworkURL}" loading="lazy" onerror="this.style.display='none'">`:`<div class="${cls==='row-art'?'row-art fallback':'fallback'}">♪</div>`}
-function card(t,onclick){return `<button class="card" onclick="${onclick}">${art(t)}<div class="card-title">${esc(t.title||t.name)}</div><div class="card-sub">${esc(t.artist||'')}</div></button>`}
-function trackRows(items){if(!items.length)return '<div class="empty">No tracks.</div>';return `<div class="list">${items.map((t,i)=>`<button class="row" onclick="cmd('playLibrary',{id:'${t.id}'})">${art(t,'row-art')}<div class="row-main"><div class="row-title">${esc(t.title)}</div><div class="row-sub">${esc(t.artist)}${t.album?' · '+esc(t.album):''}</div></div><div class="row-tail">${fmt(t.duration)}</div></button>`).join('')}</div>`}
-function playlistCover(p){const imgs=(p.artworkURLs||[]).filter(Boolean).slice(0,4);if(!imgs.length)return '<div class="playlist-cover"><div class="fallback">♪</div></div>';return `<div class="playlist-cover">${imgs.map(u=>`<img src="${u}" loading="lazy">`).join('')}</div>`}
-function playlistCard(p){return `<button class="playlist-card" onclick="goPlaylist('${esc(p.id)}')">${playlistCover(p)}<div class="playlist-info"><div class="playlist-name">${esc(p.name)}</div><div class="playlist-meta"><span>${p.trackCount} Tracks</span><span>${fmt(p.duration)}</span></div></div></button>`}
-function home(){const ts=tracks(),recent=(state?.recentlyPlayed||[]).filter(t=>t.id!==state?.track?.id),current=state?.track?.id?ts.find(t=>t.id===state.track.id)||state.track:null,as=albums(),ars=artists(),ps=state?.playlists||[];let h=`<h1 class="hero-title">Home</h1><div class="library-sub">${ts.length} tracks ready to play offline.</div><div class="actions"><button class="pill" onclick="shuffleAll()">⇄ &nbsp; Shuffle All</button><button class="pill" onclick="alert('Import music on the iPad to add it to the library.')">＋ &nbsp; Import</button><button class="pill" onclick="createPlaylist()">☷ &nbsp; Playlist</button></div>`;if(current?.title)h+=`<div class="section"><div class="section-title">Continue Listening</div><button class="row" style="margin-top:18px" onclick="cmd('toggle')">${art(current,'row-art')}<div class="row-main"><div class="row-title">${esc(current.title)}</div><div class="row-sub">${esc(current.artist)}</div><div class="row-sub">${state?.playing?'Playing now':'Paused'}</div></div><div class="circle">${state?.playing?'Ⅱ':'▶'}</div></button></div>`;if(recent.length)h+=`<div class="section"><div class="section-title">Recently Played</div><div class="horizontal">${recent.slice(0,10).map(t=>card(t,`cmd('playLibrary',{id:'${t.id}'})`)).join('')}</div></div>`;if(as.length)h+=`<div class="section"><div class="section-head"><div class="section-title">Albums</div><button class="section-more" onclick="go('albums')">See All</button></div><div class="horizontal">${as.slice(0,10).map(a=>card({...a.track,title:a.name},`goAlbum('${esc(a.name)}')`)).join('')}</div></div>`;if(ars.length)h+=`<div class="section"><div class="section-head"><div class="section-title">Artists</div><button class="section-more" onclick="go('artists')">See All</button></div><div class="horizontal">${ars.slice(0,10).map(a=>card({...a.track,title:a.name,artist:''},`goArtist('${esc(a.name)}')`)).join('')}</div></div>`;if(ps.length)h+=`<div class="section"><div class="section-head"><div class="section-title">For You</div><button class="section-more" onclick="go('playlists')">See All</button></div><div class="playlist-grid">${ps.slice(0,3).map(playlistCard).join('')}</div></div>`;return h}
-function renderPage(){setNav();let h='';if(page==='home')h=home();else if(page==='tracks')h=`<div class="section"><div class="section-title">Tracks</div>${trackRows(tracks())}</div>`;else if(page==='albums')h=`<div class="section"><div class="section-title">Albums</div><div class="grid">${albums().map(a=>card({...a.track,title:a.name},`goAlbum('${esc(a.name)}')`)).join('')}</div></div>`;else if(page==='artists')h=`<div class="section"><div class="section-title">Artists</div><div class="grid">${artists().map(a=>card({...a.track,title:a.name,artist:''},`goArtist('${esc(a.name)}')`)).join('')}</div></div>`;else h=`<div class="section"><div class="section-title">All Playlists</div><div class="playlist-grid" style="margin-top:24px">${(state?.playlists||[]).map(playlistCard).join('')||'<div class="empty">No playlists yet.</div>'}</div></div>`;$('page').innerHTML=h}
-function goAlbum(name){const a=albums().find(x=>x.name===name);const items=a?.tracks||[];$('pageTitle').textContent=name;$('page').innerHTML=`<div class="section"><div class="section-title">${esc(name)}</div><div class="section" style="display:flex;gap:20px;align-items:center">${art(a?.track,'detail-avatar')}<div><div class="detail-name">${esc(name)}</div><div class="detail-count">${items.length} ${items.length===1?'Song':'Songs'} · ${fmt(items.reduce((s,t)=>s+(t.duration||0),0))}</div></div></div>${trackRows(items)}</div>`}
-function goArtist(name){const a=artists().find(x=>x.name===name);const items=a?.tracks||[];$('pageTitle').textContent=name;$('page').innerHTML=`<div class="detail"><aside class="detail-sidebar"><div style="font-size:27px;font-weight:740;margin:10px 8px">Artists</div><input class="sidebar-search" placeholder="Search artists..." oninput="filterArtists(this.value)"><div class="artist-list" id="artistList">${artistSidebar(name)}</div></aside><section class="detail-main"><div class="detail-head"><div class="detail-avatar" style="border-color:rgba(255,255,255,.75)">${art(a?.track,'detail-avatar')}</div><div><div class="detail-name">${esc(name)}</div><div class="detail-count">${items.length} ${items.length===1?'Track':'Tracks'} · ${new Set(items.map(t=>t.album)).size} ${new Set(items.map(t=>t.album)).size===1?'Album':'Albums'}</div></div></div><div class="detail-actions"><button class="detail-play" onclick="${items[0]?`cmd('playLibrary',{id:'${items[0].id}'})`:''}">▶ &nbsp; Play</button><button class="detail-shuffle" onclick="${items[0]?`cmd('playLibrary',{id:'${items[Math.floor(Math.random()*items.length)].id}'})`:''}">⇄ &nbsp; Shuffle</button><button class="circle">•••</button></div><div class="section-title">Popular Tracks</div>${trackRows(items)}<div class="section"><div class="section-title">Albums</div><div class="horizontal">${[...new Set(items.map(t=>t.album))].map(n=>{const t=items.find(x=>x.album===n);return card({...t,title:n},`goAlbum('${esc(n)}')`)}).join('')}</div></div></section></div>`}
-function artistSidebar(active){return artists().slice(0,80).map(a=>`<button class="artist-item ${a.name===active?'active':''}" onclick="goArtist('${esc(a.name)}')"><span class="artist-icon">${a.track?.artworkURL?`<img src="${a.track.artworkURL}" style="width:54px;height:54px;border-radius:50%;object-fit:cover">`:'●'}</span><span class="artist-copy"><strong>${esc(a.name)}</strong><span>${a.tracks.length} Track${a.tracks.length===1?'':'s'}</span></span></button>`).join('')}
-function filterArtists(q){const list=artists().filter(a=>a.name.toLowerCase().includes(q.toLowerCase())).slice(0,80);$('artistList').innerHTML=list.map(a=>`<button class="artist-item" onclick="goArtist('${esc(a.name)}')"><span class="artist-icon">●</span><span class="artist-copy"><strong>${esc(a.name)}</strong><span>${a.tracks.length} Track${a.tracks.length===1?'':'s'}</span></span></button>`).join('')}
-function goPlaylist(id){const p=(state?.playlists||[]).find(x=>x.id===id);if(!p)return;const items=tracks().filter(t=>(p.trackIDs||[]).includes(t.id));$('pageTitle').textContent=p.name;$('page').innerHTML=`<div class="section"><div style="display:flex;gap:28px;align-items:center">${playlistCover(p)}<div><div class="detail-name">${esc(p.name)}</div><div class="detail-count">${p.trackCount} Tracks · ${fmt(p.duration)}</div></div></div><div class="detail-actions"><button class="detail-play" onclick="${items[0]?`cmd('playLibrary',{id:'${items[0].id}'})`:''}">▶ &nbsp; Play</button><button class="detail-shuffle">⇄ &nbsp; Shuffle</button></div>${trackRows(items)}</div>`}
-function shuffleAll(){const ts=tracks();if(ts.length)cmd('playLibrary',{id:ts[Math.floor(Math.random()*ts.length)].id})}
-function createPlaylist(){const name=prompt('Playlist name');if(!name)return;cmd('createPlaylist',{name})}
-function renderState(){const t=state?.track||{};const device=state?.playbackDeviceName||'This iPad';$('miniTitle').textContent=t.title||'Nothing Playing';$('miniArtist').textContent=t.artist||'';$('miniDevice').textContent=device;$('npTitle').textContent=t.title||'Nothing Playing';$('npArtist').textContent=t.artist||'';$('npFormat').textContent=t.audioInfo||'';$('npDevice').textContent=device;['miniArt','npArt'].forEach(id=>{const el=$(id);el.src=t.artworkURL||'';el.style.display=t.artworkURL?'block':'none'});$('npBackdrop').style.backgroundImage=t.artworkURL?`url('${t.artworkURL}')`:'';const path=state?.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z';$('miniPlayPath').setAttribute('d',path);$('npPlayPath').setAttribute('d',path);localPosition=state?.position||0;$('seek').max=state?.duration||1;$('seek').value=localPosition;$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state?.duration||0)-localPosition));$('volume').value=state?.volume??1;const pct=state?.duration?Math.min(100,(localPosition/state.duration)*100):0;$('miniProgress').style.width=pct+'%';$('lyrics').innerHTML=(state?.lyrics||[]).map((l,i)=>`<div class="lyric ${l.time<=localPosition&&(!state.lyrics[i+1]||localPosition<state.lyrics[i+1].time)?'active':''}">${esc(l.text)}</div>`).join('')}
-function openNowPlaying(){$('nowPlaying').classList.add('open');renderState()}function closeNowPlaying(){$('nowPlaying').classList.remove('open')}
-$('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state?.duration||0)-localPosition))});$('seek').addEventListener('change',e=>cmd('seek',{position:Number(e.target.value)}));$('volume').addEventListener('change',e=>cmd('volume',{value:Number(e.target.value)}));
-async function refresh(){try{state=await api('/api/state');renderState();renderPage()}catch(e){console.error(e)}}
-setInterval(()=>{if(state?.playing){localPosition=Math.min(state.duration||0,localPosition+0.5);const pct=state?.duration?Math.min(100,(localPosition/state.duration)*100):0;$('miniProgress').style.width=pct+'%';$('seek').value=localPosition;$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state?.duration||0)-localPosition))}},500);refresh();
-</script></body></html>
+let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',lastLyricsSignature='',manualLyricsScroll=false,portraitLyrics=false,deferredInstallPrompt=null;
+const $=id=>document.getElementById(id);
+const fmt=s=>{s=Math.max(0,Math.floor(s||0));let m=Math.floor(s/60),sec=String(s%60).padStart(2,'0');return `${m}:${sec}`};
+async function api(path,options={}){let r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
+async function cmd(command,extra={}){try{await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){showError(e)}}
+function showError(e){$('error').textContent=e?.message||String(e);$('error').style.display='block';setTimeout(()=>$('error').style.display='none',3500)}
+function renderArtwork(){let wrap=$('artWrap');if(state?.track?.artworkURL){let img=wrap.querySelector('img');if(!img){img=document.createElement('img');img.className='art';wrap.replaceChildren(img)}let url=state.track.artworkURL+'?t='+encodeURIComponent(state.track.id);if(img.src!==location.origin+url)img.src=url;img.classList.toggle('paused',!state.playing);let bg=$('backdrop');bg.src=url;bg.classList.add('visible')}else{wrap.innerHTML='<div class="fallback">♪</div>';let bg=$('backdrop');bg.removeAttribute('src');bg.classList.remove('visible')}}
+function lyricsSignature(){
+  const lines=state?.lyrics||[];
+  const source=state?.lyricsSource||'';
+  return source+'|'+lines.length+'|'+lines.map(l=>String(l.time)+':'+String(l.text)).join('\n');
+}
+function renderLyrics(force=false){
+  let box=$('lyrics'),lines=state?.lyrics||[];
+  const signature=lyricsSignature();
+  if(!lines.length){
+    if(force||signature!==lastLyricsSignature){box.innerHTML='<div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div>';}
+    activeIndex=-1;
+    lastLyricsSignature=signature;
+    return;
+  }
+  let idx=0;
+  for(let i=0;i<lines.length;i++){if(lines[i].time<=localPosition)idx=i}
+  if(!force&&idx===activeIndex&&signature===lastLyricsSignature)return;
+  if(signature!==lastLyricsSignature){activeIndex=-1;manualLyricsScroll=false;}
+  activeIndex=idx;
+  lastLyricsSignature=signature;
+  let inner=document.createElement('div');inner.className='lyrics-inner';
+  lines.forEach((l,i)=>{
+    let d=document.createElement('div');d.className='line '+(i<idx?'past':i===idx?'active':'future');d.dataset.i=i;
+    d.innerHTML=escapeHTML(l.text)+(state.settings['Toyako.Lyrics.ShowRomanization']&&l.romanized?`<div class="roman">${escapeHTML(l.romanized)}</div>`:'');
+    d.onclick=()=>cmd('seek',{position:l.time});
+    inner.appendChild(d);
+  });
+  box.replaceChildren(inner);
+  requestAnimationFrame(()=>{
+    let active=inner.querySelector('.active');
+    if(active && !manualLyricsScroll){active.scrollIntoView({block:'center',behavior:force?'auto':'smooth'});}
+  });
+}
+
+function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map((x,i)=>`<button type="button" class="queue-item ${x.id===state.track.id?'active':''}" data-index="${i}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></button>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>';document.querySelectorAll('#queue .queue-item').forEach(el=>el.addEventListener('click',async()=>{await cmd('playQueue',{index:Number(el.dataset.index)});toggleQueue();}))}
+function render(){if(!state?.available)return;const trackChanged=lastTrackId!==state.track.id;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.volume??1;$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');if(trackChanged){activeIndex=-1;lastLyricsSignature='';manualLyricsScroll=false;}renderArtwork();renderLyrics(trackChanged);renderQueue();lastTrackId=state.track.id}
+async function refresh(){try{let next=await api('/api/state');let wasPlaying=state?.playing;state=next;let now=Date.now();if(!wasPlaying||!state.playing)localPosition=state.position||0;else{localPosition=Math.max(0,state.position||0)}lastTick=now;render();$('error').style.display='none'}catch(e){showError(e)}}
+function toggleShuffle(){cmd('shuffle',{value:!state.shuffle})}
+function cycleRepeat(){let modes=['off','all','one'];let i=modes.indexOf(state.repeat);cmd('repeat',{value:modes[(i+1)%modes.length]})}
+function toggleQueue(){$('queuePanel').classList.toggle('open')}
+$('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));renderLyrics()});$('seek').addEventListener('change',e=>cmd('seek',{position:Number(e.target.value)}));$('volume').addEventListener('input',e=>{if(state)state.volume=Number(e.target.value)});$('volume').addEventListener('change',e=>cmd('volume',{value:Number(e.target.value)}));
+function togglePortraitLyrics(){portraitLyrics=!portraitLyrics;manualLyricsScroll=false;render();if(portraitLyrics)requestAnimationFrame(()=>renderLyrics(true));}
+function updateOrientation(){if(window.innerWidth>600){portraitLyrics=false;document.querySelector('.main')?.classList.remove('lyrics-mode')}else{render()}}
+window.addEventListener('resize',updateOrientation,{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(updateOrientation,120),{passive:true});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('installBtn').classList.add('visible');});
+window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;$('installBtn').classList.remove('visible');});
+async function installWebApp(){
+  if(!deferredInstallPrompt){
+    showError(location.protocol==='http:'?'Install is available only when this remote is served from a secure browser context (HTTPS or localhost).':'Use your browser menu and choose Install Toyako if your browser provides it.');
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt=null;
+  $('installBtn').classList.remove('visible');
+}
+if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.target instanceof HTMLInputElement) return;
+  if(e.code==='Space'){e.preventDefault();cmd('toggle')}
+  else if(e.code==='ArrowRight'){e.preventDefault();cmd('next')}
+  else if(e.code==='ArrowLeft'){e.preventDefault();cmd('previous')}
+  else if(e.key.toLowerCase()==='q'){e.preventDefault();toggleQueue()}
+  else if(e.key.toLowerCase()==='l' && window.innerWidth<=700){e.preventDefault();togglePortraitLyrics()}
+});
+$('lyrics').addEventListener('wheel',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
+$('lyrics').addEventListener('scroll',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
+setInterval(()=>{let now=Date.now(),dt=(now-lastTick)/1000;lastTick=now;if(state?.playing){localPosition=Math.min(state.duration||Infinity,localPosition+dt);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').value=Math.min(state.duration||1,localPosition);renderLyrics()}},250);
+setInterval(refresh,1000);refresh();
+function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+</script>
+</body></html>
 """#
+
     static let manifest = #"""
 {
   "name": "Toyako Remote",
