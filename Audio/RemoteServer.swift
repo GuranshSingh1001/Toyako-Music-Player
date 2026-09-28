@@ -15,10 +15,15 @@ extension Notification.Name {
 /// current track, artwork, queue, lyrics and playback position and can send
 /// playback commands back to the iPad.
 final class RemoteServer: ObservableObject {
+    enum PlaybackTarget: String { case ipad, web }
+
     @Published private(set) var isRunning = false
     @Published private(set) var address: String?
     @Published private(set) var port: UInt16 = 0
     @Published private(set) var lastError: String?
+    @Published private(set) var playbackTarget: PlaybackTarget = .ipad
+    @Published private(set) var remoteWebPosition: TimeInterval = 0
+    @Published private(set) var remoteWebPlaying = false
 
     private var listener: NWListener?
     private weak var audioManager: AudioEngineManager?
@@ -112,6 +117,57 @@ final class RemoteServer: ObservableObject {
         if isRunning { stop() } else { start() }
     }
 
+    func handoffToWeb() {
+        guard let manager = audioManager, manager.currentTrack != nil else { return }
+        DispatchQueue.main.async {
+            self.remoteWebPosition = manager.currentTime
+            self.remoteWebPlaying = manager.isPlaying
+            self.playbackTarget = .web
+            manager.pauseFromRemote()
+        }
+    }
+
+    func handoffToIPad(position: TimeInterval, playing: Bool) {
+        guard let manager = audioManager, manager.currentTrack != nil else { return }
+        DispatchQueue.main.async {
+            manager.seek(to: position)
+            self.remoteWebPosition = position
+            self.remoteWebPlaying = playing
+            self.playbackTarget = .ipad
+            if playing { manager.playFromRemote() } else { manager.pauseFromRemote() }
+        }
+    }
+
+    func togglePlayback() {
+        if playbackTarget == .web {
+            remoteWebPlaying.toggle()
+        } else {
+            audioManager?.togglePlayPause()
+        }
+    }
+
+    func previousPlayback() {
+        guard let manager = audioManager else { return }
+        let wasWebPlaying = remoteWebPlaying
+        manager.backward()
+        if playbackTarget == .web {
+            manager.pauseFromRemote()
+            remoteWebPosition = manager.currentTime
+            remoteWebPlaying = wasWebPlaying
+        }
+    }
+
+    func nextPlayback() {
+        guard let manager = audioManager else { return }
+        let wasWebPlaying = remoteWebPlaying
+        manager.forward()
+        if playbackTarget == .web {
+            manager.pauseFromRemote()
+            remoteWebPosition = 0
+            remoteWebPlaying = wasWebPlaying
+        }
+    }
+
     private func handle(_ connection: NWConnection) {
         connection.stateUpdateHandler = { [weak self, weak connection] state in
             guard let connection else { return }
@@ -174,6 +230,8 @@ final class RemoteServer: ObservableObject {
             sendWebIcon(connection, resource: "WebIcon-512", status: 200)
         case ("GET", "/api/state"):
             sendJSON(connection, object: statePayload())
+        case ("GET", "/api/media"):
+            handleMediaRequest(rawPath: rawPath, request: request, connection: connection)
         case ("GET", "/api/artwork"):
             guard let track = audioManager?.currentTrack else {
                 sendError(connection, status: 404, message: "No artwork")
@@ -213,21 +271,60 @@ final class RemoteServer: ObservableObject {
         DispatchQueue.main.async {
             switch command {
             case "play":
-                manager.playFromRemote()
+                if self.playbackTarget == .web { self.remoteWebPlaying = true } else { manager.playFromRemote() }
             case "pause":
-                manager.pauseFromRemote()
+                if self.playbackTarget == .web { self.remoteWebPlaying = false } else { manager.pauseFromRemote() }
             case "toggle":
-                manager.togglePlayPause()
+                if self.playbackTarget == .web { self.remoteWebPlaying.toggle() } else { manager.togglePlayPause() }
             case "next":
+                let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                 manager.forward()
+                if self.playbackTarget == .web {
+                    manager.pauseFromRemote()
+                    self.remoteWebPosition = 0
+                    self.remoteWebPlaying = wasWebPlaying
+                }
             case "previous":
+                let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                 manager.backward()
+                if self.playbackTarget == .web {
+                    manager.pauseFromRemote()
+                    self.remoteWebPosition = manager.currentTime
+                    self.remoteWebPlaying = wasWebPlaying
+                }
             case "playQueue":
                 if let index = object["index"] as? Int {
+                    let wasWebPlaying = self.playbackTarget == .web ? self.remoteWebPlaying : false
                     manager.playQueuedTrack(at: index)
+                    if self.playbackTarget == .web {
+                        manager.pauseFromRemote()
+                        self.remoteWebPosition = 0
+                        self.remoteWebPlaying = wasWebPlaying
+                    }
                 }
             case "seek":
-                if let position = object["position"] as? Double { manager.seek(to: position) }
+                if let position = object["position"] as? Double {
+                    if self.playbackTarget == .web { self.remoteWebPosition = max(0, position) }
+                    else { manager.seek(to: position) }
+                }
+            case "handoffToWeb":
+                self.playbackTarget = .web
+                self.remoteWebPosition = manager.currentTime
+                self.remoteWebPlaying = manager.isPlaying
+                manager.pauseFromRemote()
+            case "handoffToIPad":
+                let position = (object["position"] as? Double) ?? self.remoteWebPosition
+                let shouldPlay = (object["playing"] as? Bool) ?? self.remoteWebPlaying
+                self.remoteWebPosition = position
+                self.remoteWebPlaying = shouldPlay
+                manager.seek(to: position)
+                self.playbackTarget = .ipad
+                if shouldPlay { manager.playFromRemote() } else { manager.pauseFromRemote() }
+            case "remoteSync":
+                if self.playbackTarget == .web {
+                    if let position = object["position"] as? Double { self.remoteWebPosition = max(0, position) }
+                    if let playing = object["playing"] as? Bool { self.remoteWebPlaying = playing }
+                }
             case "volume":
                 if let value = object["value"] as? Double {
                     // The Now Playing slider controls the iPad's actual output
@@ -286,6 +383,92 @@ final class RemoteServer: ObservableObject {
         sendJSON(connection, object: ["ok": true])
     }
 
+    private func handleMediaRequest(rawPath: String, request: String, connection: NWConnection) {
+        guard let manager = audioManager, let track = manager.currentTrack else {
+            sendError(connection, status: 404, message: "No track")
+            return
+        }
+
+        let query = rawPath.components(separatedBy: "?").dropFirst().joined(separator: "?")
+        let params = query.split(separator: "&").reduce(into: [String: String]()) { result, item in
+            let pair = item.split(separator: "=", maxSplits: 1).map(String.init)
+            if pair.count == 2 { result[pair[0]] = pair[1].removingPercentEncoding ?? pair[1] }
+        }
+        if let requestedID = params["id"], requestedID != track.id.uuidString {
+            sendError(connection, status: 404, message: "Track is no longer current")
+            return
+        }
+
+        guard let handle = try? FileHandle(forReadingFrom: track.url) else {
+            sendError(connection, status: 404, message: "Media file unavailable")
+            return
+        }
+        defer { try? handle.close() }
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: track.url.path),
+              let fileSize = attributes[.size] as? NSNumber else {
+            sendError(connection, status: 404, message: "Media file unavailable")
+            return
+        }
+        let total = Int64(fileSize.int64Value)
+        let rangeHeader = headerValue(in: request, name: "Range")
+        var start: Int64 = 0
+        var end: Int64 = max(0, total - 1)
+        var status = 200
+        if let rangeHeader, rangeHeader.hasPrefix("bytes=") {
+            let value = String(rangeHeader.dropFirst(6)).split(separator: "-", maxSplits: 1).map(String.init)
+            if let first = Int64(value.first ?? ""), first >= 0 {
+                start = first
+                if value.count > 1, let requestedEnd = Int64(value[1]), requestedEnd >= start { end = min(requestedEnd, total - 1) }
+                else { end = total - 1 }
+                status = 206
+            }
+        }
+        guard total > 0, start < total, start <= end else {
+            let header = "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */\(total)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            connection.send(content: Data(header.utf8), completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
+
+        let length = Int(end - start + 1)
+        do {
+            try handle.seek(toOffset: UInt64(start))
+            let data = try handle.read(upToCount: length) ?? Data()
+            let contentType = Self.mimeType(for: track.url.pathExtension)
+            let reason = status == 206 ? "Partial Content" : "OK"
+            var header = "HTTP/1.1 \(status) \(reason)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nAccept-Ranges: bytes\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n"
+            if status == 206 { header += "Content-Range: bytes \(start)-\(start + Int64(data.count) - 1)/\(total)\r\n" }
+            header += "\r\n"
+            connection.send(content: Data(header.utf8) + data, completion: .contentProcessed { _ in connection.cancel() })
+        } catch {
+            sendError(connection, status: 500, message: "Could not read media")
+        }
+    }
+
+    private func headerValue(in request: String, name: String) -> String? {
+        for line in request.components(separatedBy: "\r\n").dropFirst() {
+            let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2, parts[0].trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame {
+                return parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return nil
+    }
+
+    private static func mimeType(for ext: String) -> String {
+        switch ext.lowercased() {
+        case "mp3": return "audio/mpeg"
+        case "m4a", "mp4": return "audio/mp4"
+        case "aac": return "audio/aac"
+        case "wav": return "audio/wav"
+        case "aiff", "aif": return "audio/aiff"
+        case "flac": return "audio/flac"
+        case "caf": return "audio/x-caf"
+        case "opus": return "audio/ogg"
+        case "ogg": return "audio/ogg"
+        default: return "application/octet-stream"
+        }
+    }
+
     private func statePayload() -> [String: Any] {
         guard let manager = audioManager else { return ["available": false] }
         let track = manager.currentTrack
@@ -318,9 +501,11 @@ final class RemoteServer: ObservableObject {
         let defaults = UserDefaults.standard
         return [
             "available": true,
-            "playing": manager.isPlaying,
-            "position": manager.currentTime,
+            "playing": playbackTarget == .web ? remoteWebPlaying : manager.isPlaying,
+            "position": playbackTarget == .web ? remoteWebPosition : manager.currentTime,
             "duration": track?.duration ?? 0,
+            "playbackTarget": playbackTarget.rawValue,
+            "playbackDeviceName": playbackTarget == .web ? "Web Remote" : currentNativeOutputName(),
             "volume": AVAudioSession.sharedInstance().outputVolume,
             "shuffle": manager.isShuffle,
             "repeat": manager.repeatMode.rawValue,
@@ -346,6 +531,11 @@ final class RemoteServer: ObservableObject {
                 ToyakoPreferences.lyricsAnimationStyleKey: defaults.string(forKey: ToyakoPreferences.lyricsAnimationStyleKey) ?? LyricsAnimationStyle.dynamic.rawValue
             ]
         ]
+    }
+
+    private func currentNativeOutputName() -> String {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        return outputs.first?.portName ?? "This iPad"
     }
 
     private func audioFormatSummary(for track: LocalTrack) -> String? {
@@ -478,7 +668,7 @@ body{position:relative;min-height:100vh;min-height:100svh;min-height:100dvh}
 .volume{width:100%;display:flex;align-items:center;gap:12px;margin-top:clamp(8px,1.8vh,18px)}
 .volume svg{width:21px;height:21px;fill:white;opacity:.9;flex:0 0 auto}
 .volume .range{height:5px}
-.bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:10px}
+.bottom-actions{width:100%;display:flex;justify-content:center;gap:30px;margin-top:10px}.output-row{width:100%;display:flex;align-items:center;gap:10px;margin-top:12px;color:var(--muted);font-size:13px}.output-label{color:rgba(255,255,255,.48)}.output-button{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:white;border-radius:999px;padding:8px 12px;font-weight:650;cursor:pointer}.output-menu{position:absolute;z-index:12;display:none;left:0;bottom:46px;min-width:210px;padding:8px;background:rgba(22,24,27,.96);backdrop-filter:blur(25px);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5)}.output-menu.open{display:block}.output-wrap{position:relative}.output-option{display:block;width:100%;border:0;background:transparent;color:white;text-align:left;padding:11px 12px;border-radius:10px;cursor:pointer}.output-option:hover{background:rgba(255,255,255,.08)}.output-option.active{background:rgba(255,255,255,.12)}
 .chip{border:0;background:transparent;color:white;font-size:15px;font-weight:600;padding:8px 10px;cursor:pointer;opacity:.9}
 .chip.off{opacity:.34}
 .right{min-width:0;min-height:0;height:100%;display:flex;align-items:stretch;overflow:hidden}
@@ -570,6 +760,16 @@ input[type="range"]{accent-color:white}
         <input id="volume" class="range" type="range" min="0" max="1" value="1" step="0.01">
         <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </div>
+      <div class="output-row">
+        <span class="output-label">Playing on</span>
+        <div class="output-wrap">
+          <button class="output-button" id="outputButton" onclick="toggleOutputMenu()">iPad</button>
+          <div class="output-menu" id="outputMenu">
+            <button class="output-option" id="ipadOutput" onclick="selectOutput('ipad')">This iPad</button>
+            <button class="output-option" id="webOutput" onclick="selectOutput('web')">This phone / Web Remote</button>
+          </div>
+        </div>
+      </div>
     </section>
     <section class="right">
       <div class="lyrics" id="lyrics"><div class="lyrics-inner"><div class="no-lyrics">Lyrics Unavailable</div></div></div>
@@ -577,14 +777,58 @@ input[type="range"]{accent-color:white}
   </div>
 </div>
 <div class="queue-panel" id="queuePanel"><div class="queue-head"><span>Queue</span><button class="icon-btn" onclick="toggleQueue()"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div id="queue"></div></div>
+<audio id="remoteAudio" preload="auto" playsinline></audio>
 <div class="error" id="error"></div>
 <script>
-let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',lastLyricsSignature='',manualLyricsScroll=false,portraitLyrics=false,deferredInstallPrompt=null;
+let state=null,localPosition=0,lastTick=Date.now(),activeIndex=-1,lastTrackId='',lastLyricsSignature='',manualLyricsScroll=false,portraitLyrics=false,deferredInstallPrompt=null,remoteAudioTrackId='',lastRemoteSync=0;
 const $=id=>document.getElementById(id);
 const fmt=s=>{s=Math.max(0,Math.floor(s||0));let m=Math.floor(s/60),sec=String(s%60).padStart(2,'0');return `${m}:${sec}`};
 async function api(path,options={}){let r=await fetch(path,{cache:'no-store',...options});if(!r.ok)throw new Error(await r.text());return r.json()}
-async function cmd(command,extra={}){try{await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){showError(e)}}
+async function cmd(command,extra={}){try{if(state?.playbackTarget==='web'&&(command==='toggle'||command==='play'||command==='pause')){if(command==='toggle'){if(remoteAudio.paused)await remoteAudio.play();else remoteAudio.pause()}else if(command==='play'){await remoteAudio.play()}else{remoteAudio.pause()}syncRemotePlayback();return;}await api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...extra})});await refresh()}catch(e){showError(e)}}
 function showError(e){$('error').textContent=e?.message||String(e);$('error').style.display='block';setTimeout(()=>$('error').style.display='none',3500)}
+const remoteAudio=$('remoteAudio');
+let remoteBrowserVolume=1;
+function toggleOutputMenu(){$('outputMenu').classList.toggle('open')}
+async function selectOutput(target){
+  $('outputMenu').classList.remove('open');
+  try{
+    if(target==='web'){
+      await cmd('handoffToWeb');
+      await refresh();
+      await syncRemoteAudioFromState(true);
+    }else{
+      const position=remoteAudioTrackId?remoteAudio.currentTime:(state?.position||0);
+      const playing=state?.playbackTarget==='web' ? !remoteAudio.paused : !!state?.playing;
+      remoteAudio.pause();
+      await cmd('handoffToIPad',{position,playing});
+    }
+  }catch(e){showError(e)}
+}
+async function syncRemoteAudioFromState(force=false){
+  if(!state||state.playbackTarget!=='web'||!state.track?.id){ remoteAudio.pause(); return; }
+  const trackChanged=remoteAudioTrackId!==state.track.id;
+  if(force||trackChanged){
+    remoteAudio.pause();
+    remoteAudio.src='/api/media?id='+encodeURIComponent(state.track.id);
+    remoteAudioTrackId=state.track.id;
+    try{remoteAudio.currentTime=Math.max(0,Math.min(state.duration||0,state.position||0))}catch(e){}
+    if(state.playing){try{await remoteAudio.play()}catch(e){showError('Tap Play to start audio on this phone.')}}
+  }else if(Math.abs(remoteAudio.currentTime-(state.position||0))>2&&!remoteAudio.seeking){
+    try{remoteAudio.currentTime=state.position||0}catch(e){}
+  }
+  if(state.playing&&remoteAudio.paused){try{await remoteAudio.play()}catch(e){}}
+  if(!state.playing&&!remoteAudio.paused)remoteAudio.pause();
+}
+function syncRemotePlayback(){
+  if(state?.playbackTarget!=='web')return;
+  const now=Date.now(); if(now-lastRemoteSync<700)return; lastRemoteSync=now;
+  api('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'remoteSync',position:remoteAudio.currentTime||0,playing:!remoteAudio.paused})}).catch(()=>{});
+}
+remoteAudio.addEventListener('timeupdate',syncRemotePlayback);
+remoteAudio.addEventListener('play',syncRemotePlayback);
+remoteAudio.addEventListener('pause',syncRemotePlayback);
+remoteAudio.addEventListener('ended',()=>cmd('next'));
+
 function renderArtwork(){let wrap=$('artWrap');if(state?.track?.artworkURL){let img=wrap.querySelector('img');if(!img){img=document.createElement('img');img.className='art';wrap.replaceChildren(img)}let url=state.track.artworkURL+'?t='+encodeURIComponent(state.track.id);if(img.src!==location.origin+url)img.src=url;img.classList.toggle('paused',!state.playing);let bg=$('backdrop');bg.src=url;bg.classList.add('visible')}else{wrap.innerHTML='<div class="fallback">♪</div>';let bg=$('backdrop');bg.removeAttribute('src');bg.classList.remove('visible')}}
 function lyricsSignature(){
   const lines=state?.lyrics||[];
@@ -621,12 +865,12 @@ function renderLyrics(force=false){
 }
 
 function renderQueue(){let q=state?.queue||[];$('queue').innerHTML=q.length?q.map((x,i)=>`<button type="button" class="queue-item ${x.id===state.track.id?'active':''}" data-index="${i}"><div>${escapeHTML(x.title)}</div><small>${escapeHTML(x.artist)}${x.album?' · '+escapeHTML(x.album):''}</small></button>`).join(''):'<div style="color:rgba(255,255,255,.5)">Queue is empty</div>';document.querySelectorAll('#queue .queue-item').forEach(el=>el.addEventListener('click',async()=>{await cmd('playQueue',{index:Number(el.dataset.index)});toggleQueue();}))}
-function render(){if(!state?.available)return;const trackChanged=lastTrackId!==state.track.id;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.volume??1;$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');if(trackChanged){activeIndex=-1;lastLyricsSignature='';manualLyricsScroll=false;}renderArtwork();renderLyrics(trackChanged);renderQueue();lastTrackId=state.track.id}
+function render(){if(!state?.available)return;const trackChanged=lastTrackId!==state.track.id;document.querySelector('.main').classList.toggle('lyrics-mode',portraitLyrics&&window.innerWidth<=600);$('title').textContent=state.track.title||'Nothing Playing';$('artist').textContent=state.track.artist||'';$('audioInfo').textContent=state.track.audioInfo||'';$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').max=state.duration||1;$('seek').value=Math.min(state.duration||1,localPosition);$('volume').value=state.playbackTarget==='web'?remoteBrowserVolume:(state.volume??1);$('playPath').setAttribute('d',state.playing?'M7 5h4v14H7V5Zm6 0h4v14h-4V5Z':'M8 5v14l11-7L8 5Z');$('shuffle').classList.toggle('dim',!state.shuffle);$('repeat').classList.toggle('dim',state.repeat==='off');$('outputButton').textContent=state.playbackTarget==='web'?'Phone / Web':'iPad';$('ipadOutput').classList.toggle('active',state.playbackTarget==='ipad');$('webOutput').classList.toggle('active',state.playbackTarget==='web');if(trackChanged){activeIndex=-1;lastLyricsSignature='';manualLyricsScroll=false;}renderArtwork();renderLyrics(trackChanged);renderQueue();lastTrackId=state.track.id;if(state.playbackTarget==='web')syncRemoteAudioFromState(trackChanged)}
 async function refresh(){try{let next=await api('/api/state');let wasPlaying=state?.playing;state=next;let now=Date.now();if(!wasPlaying||!state.playing)localPosition=state.position||0;else{localPosition=Math.max(0,state.position||0)}lastTick=now;render();$('error').style.display='none'}catch(e){showError(e)}}
 function toggleShuffle(){cmd('shuffle',{value:!state.shuffle})}
 function cycleRepeat(){let modes=['off','all','one'];let i=modes.indexOf(state.repeat);cmd('repeat',{value:modes[(i+1)%modes.length]})}
 function toggleQueue(){$('queuePanel').classList.toggle('open')}
-$('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));renderLyrics()});$('seek').addEventListener('change',e=>cmd('seek',{position:Number(e.target.value)}));$('volume').addEventListener('input',e=>{if(state)state.volume=Number(e.target.value)});$('volume').addEventListener('change',e=>cmd('volume',{value:Number(e.target.value)}));
+$('seek').addEventListener('input',e=>{localPosition=Number(e.target.value);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));renderLyrics()});$('seek').addEventListener('change',e=>{if(state?.playbackTarget==='web'){remoteAudio.currentTime=Number(e.target.value);syncRemotePlayback()}else cmd('seek',{position:Number(e.target.value)})});$('volume').addEventListener('input',e=>{const v=Number(e.target.value);if(state?.playbackTarget==='web'){remoteBrowserVolume=v;remoteAudio.volume=v}else if(state)state.volume=v});$('volume').addEventListener('change',e=>{const v=Number(e.target.value);if(state?.playbackTarget==='web'){remoteBrowserVolume=v;remoteAudio.volume=v;syncRemotePlayback()}else cmd('volume',{value:v})});
 function togglePortraitLyrics(){portraitLyrics=!portraitLyrics;manualLyricsScroll=false;render();if(portraitLyrics)requestAnimationFrame(()=>renderLyrics(true));}
 function updateOrientation(){if(window.innerWidth>600){portraitLyrics=false;document.querySelector('.main')?.classList.remove('lyrics-mode')}else{render()}}
 window.addEventListener('resize',updateOrientation,{passive:true});
@@ -657,7 +901,7 @@ document.addEventListener('keydown',e=>{
 });
 $('lyrics').addEventListener('wheel',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
 $('lyrics').addEventListener('scroll',()=>{manualLyricsScroll=true;clearTimeout(window.__lyricsScrollTimer);window.__lyricsScrollTimer=setTimeout(()=>manualLyricsScroll=false,1800)},{passive:true});
-setInterval(()=>{let now=Date.now(),dt=(now-lastTick)/1000;lastTick=now;if(state?.playing){localPosition=Math.min(state.duration||Infinity,localPosition+dt);$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').value=Math.min(state.duration||1,localPosition);renderLyrics()}},250);
+setInterval(()=>{let now=Date.now(),dt=(now-lastTick)/1000;lastTick=now;if(state?.playbackTarget==='web'){localPosition=remoteAudio.currentTime||0}else if(state?.playing){localPosition=Math.min(state.duration||Infinity,localPosition+dt)}if(state?.playing||state?.playbackTarget==='web'){$('elapsed').textContent=fmt(localPosition);$('remaining').textContent='-'+fmt(Math.max(0,(state.duration||0)-localPosition));$('seek').value=Math.min(state.duration||1,localPosition);renderLyrics()}},250);
 setInterval(refresh,1000);refresh();
 function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 </script>

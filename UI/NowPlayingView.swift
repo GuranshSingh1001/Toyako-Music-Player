@@ -9,6 +9,7 @@ struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
     @EnvironmentObject var clock: PlaybackClock
+    @EnvironmentObject var remoteServer: RemoteServer
 
     @State private var dragOffset: CGFloat = 0
     @State private var playPausePressed = false
@@ -31,8 +32,14 @@ struct NowPlayingView: View {
     @State private var artworkTint: Color = .black
     @State private var audioFormatInfo: AudioFormatInfo?
     @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
+    @State private var audioRouteName: String = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "This iPad"
 
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
+
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -124,6 +131,10 @@ struct NowPlayingView: View {
             withAnimation(.spring(response: 0.42, dampingFraction: 0.88).delay(0.04)) {
                 artworkVisible = true
             }
+            updateAudioRouteName()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { _ in
+            updateAudioRouteName()
         }
         .task(id: audioManager.currentTrack?.id) {
             guard let url = audioManager.currentTrack?.url else {
@@ -261,7 +272,11 @@ struct NowPlayingView: View {
 
             AudioRoutePicker()
                 .frame(width: 48, height: 48)
-                .accessibilityLabel("Audio Output")
+                .accessibilityLabel("AirPlay Audio Output")
+
+            playbackDestinationMenu
+
+            Spacer(minLength: 0)
 
             Button {
                 showQueue = true
@@ -275,6 +290,47 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Queue")
         }
+    }
+
+    private var playbackDestinationMenu: some View {
+        Menu {
+            Button {
+                if remoteServer.playbackTarget != .ipad {
+                    remoteServer.handoffToIPad(position: remoteServerCurrentPosition, playing: remoteServerIsPlaying)
+                }
+            } label: {
+                Label("This iPad", systemImage: remoteServer.playbackTarget == .ipad ? "checkmark" : "ipad")
+            }
+
+            if remoteServer.isRunning {
+                Button {
+                    if remoteServer.playbackTarget != .web {
+                        remoteServer.handoffToWeb()
+                    }
+                } label: {
+                    Label("Web Remote / Phone", systemImage: remoteServer.playbackTarget == .web ? "checkmark" : "iphone")
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: remoteServer.playbackTarget == .web ? "iphone" : "ipad")
+                Text(remoteServer.playbackTarget == .web ? "Phone" : "iPad")
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.9))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(.white.opacity(0.10), in: Capsule())
+        }
+        .accessibilityLabel("Playback device")
+    }
+
+    private var remoteServerCurrentPosition: TimeInterval {
+        remoteServer.playbackTarget == .web ? remoteServer.remoteWebPosition : audioManager.currentTime
+    }
+
+    private var remoteServerIsPlaying: Bool {
+        remoteServer.playbackTarget == .web ? remoteServer.remoteWebPlaying : audioManager.isPlaying
     }
 
     private func lyricsSourceButton(size: CGFloat, opensAbove: Bool = false) -> some View {
@@ -307,7 +363,12 @@ struct NowPlayingView: View {
         @EnvironmentObject private var audioManager: AudioEngineManager
         @Environment(\.dismiss) private var dismiss
 
-        var body: some View {
+        private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
+    }
+
+    var body: some View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Lyrics")
                     .font(.headline)
@@ -407,12 +468,23 @@ struct NowPlayingView: View {
             systemVolumeSlider
                 .padding(.top, 2)
 
-            HStack {
-                Spacer()
+            HStack(spacing: 10) {
                 AudioRoutePicker()
-                    .frame(width: 48, height: 48)
-                    .accessibilityLabel("Audio Output")
-                Spacer()
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("AirPlay Audio Output")
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Playing on")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                    Text(remoteServer.playbackTarget == .web ? "Web Remote / Phone" : audioRouteName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                }
+
+                playbackDestinationMenu
+                Spacer(minLength: 0)
             }
             .padding(.top, 4)
 
@@ -534,7 +606,7 @@ struct NowPlayingView: View {
     private var previousButton: some View {
         Button {
             previousPressed = true
-            audioManager.backward()
+            remoteServer.previousPlayback()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 previousPressed = false
@@ -556,14 +628,14 @@ struct NowPlayingView: View {
     private var playPauseButton: some View {
         Button {
             playPausePressed = true
-            audioManager.togglePlayPause()
+            remoteServer.togglePlayback()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 playPausePressed = false
             }
         } label: {
             Image(
-                systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
+                systemName: (remoteServer.playbackTarget == .web ? remoteServer.remoteWebPlaying : audioManager.isPlaying) ? "pause.fill" : "play.fill"
             )
             .font(.system(size: 38, weight: .medium))
             .foregroundStyle(.white)
@@ -581,7 +653,7 @@ struct NowPlayingView: View {
     private var nextButton: some View {
         Button {
             nextPressed = true
-            audioManager.forward()
+            remoteServer.nextPlayback()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
                 nextPressed = false
@@ -692,6 +764,11 @@ private struct SmoothLyricsView: View {
 
     private var animationStyle: LyricsAnimationStyle {
         LyricsAnimationStyle(rawValue: lyricsAnimationStyle) ?? .dynamic
+    }
+
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
@@ -1011,6 +1088,11 @@ private struct TimedLyricPair: View {
     private var japaneseFont: Font { Font.system(size: compact ? 42 : 50, weight: .bold, design: .rounded) }
     private var romanizedFont: Font { Font.system(size: compact ? 18 : 21, weight: .medium, design: .rounded) }
 
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
+    }
+
     var body: some View {
         Group {
             if state == .active && isPlaying {
@@ -1084,6 +1166,11 @@ private struct JapaneseTimedLine: View {
 
     private var allUnits: [LyricUnit] {
         line.words.flatMap(\.units)
+    }
+
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
@@ -1165,6 +1252,11 @@ private struct JapaneseLyricUnitView: View {
         }
     }
 
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
+    }
+
     var body: some View {
         VStack(spacing: 1) {
             Text(unit.text)
@@ -1198,6 +1290,11 @@ private struct WordFlow: View {
     let font: Font
     let baseOpacity: Double
     let riseAmplitude: CGFloat
+
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
+    }
 
     var body: some View {
         FlowLayout(horizontalSpacing: 10, verticalSpacing: 4) {
@@ -1242,6 +1339,11 @@ private struct WordRiseReveal: View {
         if isActive { return 1.0 }
         if currentTime >= word.endTime { return 0.82 }
         return baseOpacity
+    }
+
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
@@ -1356,6 +1458,11 @@ struct SystemVolumeSlider: View {
 
     private var shownVolume: Double {
         isHolding ? dragVolume : safeVolume
+    }
+
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {
@@ -1553,6 +1660,11 @@ struct AppleMusicScrubberBar: View {
 
     private var displayedTime: TimeInterval {
         duration * shownProgress
+    }
+
+    private func updateAudioRouteName() {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        audioRouteName = outputs.first?.portName ?? "This iPad"
     }
 
     var body: some View {

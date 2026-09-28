@@ -12,13 +12,11 @@ Built with SwiftUI and AVFoundation, Toyako is designed around a simple idea: yo
 
 Now Playing includes a native **Audio Output** control backed by iPadOS `AVRoutePickerView`. Selecting an AirPlay-compatible receiver routes Toyako's audio to that device, so the iPad's own speakers stop producing the track while playback continues on the selected output.
 
-The local web remote is also advertised through **Bonjour** as `_http._tcp` on port `8787`. This lets compatible Toyako clients discover the player without requiring a manually entered IP address.
-
-Bonjour service discovery is not the same thing as changing the iPad's device hostname. A third-party iPad app cannot reliably rename the system-wide `.local` hostname to an arbitrary value such as `toyako.local`. The actual iPad hostname remains system-managed; clients should use Bonjour discovery, or the numeric LAN address shown in Settings.
+The local web remote uses the numeric LAN address shown in Toyako Settings on port `8787`. Toyako does not claim a `.local` hostname. Settings also provides a QR code containing the complete remote URL for one-scan access.
 
 ### Toyako Remote
 
-Toyako includes an optional local-network web remote. When enabled, another device on the same Wi-Fi network can open the Toyako Remote web interface to control playback and mirror the current Now Playing experience. The remote can show album artwork, playback state, queue, timed lyrics, and Japanese romaji, and can send play/pause, next, previous, seek, volume, shuffle, repeat, and lyric-display setting changes back to the iPad. Music files remain on the iPad.
+Toyako includes an optional local-network web remote. When enabled, another device on the same Wi-Fi network can open the Toyako Remote web interface to control playback and mirror the current Now Playing experience. The remote can show album artwork, playback state, queue, timed lyrics, and Japanese romaji, and can send play/pause, next, previous, seek, volume, shuffle, repeat, and lyric-display setting changes back to the iPad. Music files remain on the iPad. The Web Remote can also become the active playback device: the iPad pauses, the browser streams the current local file over the LAN, and playback can be handed back to the iPad with the current position preserved.
 - Fully offline music playback
 - Local music library stored and managed on-device
 - Import music through the iPad Files app
