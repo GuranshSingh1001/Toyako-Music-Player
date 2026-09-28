@@ -14,6 +14,7 @@ enum LibraryCategory: Hashable {
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var audioManager: AudioEngineManager
+    @EnvironmentObject private var remoteServer: RemoteServer
 
     @StateObject private var library =
         LocalLibrary()
