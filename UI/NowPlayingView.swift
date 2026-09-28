@@ -32,6 +32,7 @@ struct NowPlayingView: View {
     @State private var artworkTint: Color = .black
     @State private var audioFormatInfo: AudioFormatInfo?
     @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
+    @State private var audioRouteName = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "This iPad"
 
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
 
@@ -122,11 +123,13 @@ struct NowPlayingView: View {
         }
         .ignoresSafeArea()
         .onAppear {
+            audioRouteName = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "This iPad"
             withAnimation(.spring(response: 0.42, dampingFraction: 0.88).delay(0.04)) {
                 artworkVisible = true
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { _ in
+            audioRouteName = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "This iPad"
         }
         .task(id: audioManager.currentTrack?.id) {
             guard let url = audioManager.currentTrack?.url else {
@@ -262,8 +265,13 @@ struct NowPlayingView: View {
                 lyricsSourceButton(size: 48, opensAbove: true)
             }
 
-            AudioRoutePicker(size: 48)
-
+            HStack(spacing: 8) {
+                AudioRoutePicker(size: 36)
+                Text("Playing on \(audioRouteName)")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 0)
 
@@ -393,7 +401,7 @@ struct NowPlayingView: View {
                 .padding(.top, 2)
 
             HStack(spacing: 10) {
-                AudioRoutePicker(size: 44)
+                AudioRoutePicker(size: 36)
                 Spacer(minLength: 0)
             }
             .padding(.top, 4)
