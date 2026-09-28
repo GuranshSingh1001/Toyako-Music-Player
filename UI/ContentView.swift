@@ -14,7 +14,6 @@ enum LibraryCategory: Hashable {
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var audioManager: AudioEngineManager
-    @EnvironmentObject private var remoteServer: RemoteServer
 
     @StateObject private var library =
         LocalLibrary()
@@ -287,30 +286,6 @@ struct ContentView: View {
         .overlay {
             AudioLifecycleObserver(library: library, scenePhase: scenePhase)
                 .frame(width: 0, height: 0)
-        }
-        .onAppear {
-            remoteServer.updateLibrarySnapshot(
-                tracks: library.tracks,
-                albums: library.albums,
-                artists: library.artists,
-                playlists: library.playlists
-            )
-        }
-        .onChange(of: library.tracks) { _, _ in
-            remoteServer.updateLibrarySnapshot(
-                tracks: library.tracks,
-                albums: library.albums,
-                artists: library.artists,
-                playlists: library.playlists
-            )
-        }
-        .onChange(of: library.playlists) { _, _ in
-            remoteServer.updateLibrarySnapshot(
-                tracks: library.tracks,
-                albums: library.albums,
-                artists: library.artists,
-                playlists: library.playlists
-            )
         }
     }
 
