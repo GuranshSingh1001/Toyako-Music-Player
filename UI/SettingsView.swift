@@ -176,7 +176,7 @@ struct SettingsView: View {
                 }
             }
         }
-        .tint(ToyakoDesign.Color.accent)
+        .tint(.green)
         .onAppear {
             ToyakoPreferences.registerDefaults()
         }

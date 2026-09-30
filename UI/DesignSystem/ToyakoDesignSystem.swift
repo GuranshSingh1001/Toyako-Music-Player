@@ -8,7 +8,9 @@ enum ToyakoDesign {
     enum Color {
         /// Toyako's primary accent. Keep this consistent across navigation, actions,
         /// selected states, sliders and playback affordances.
-        static let accent = SwiftUI.Color.accentColor
+        static let accent = SwiftUI.Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? .white : .black
+        })
         static let canvas = SwiftUI.Color(uiColor: .systemBackground)
         static let surface = SwiftUI.Color(uiColor: .secondarySystemBackground)
         static let subtleSurface = SwiftUI.Color(uiColor: .tertiarySystemBackground)

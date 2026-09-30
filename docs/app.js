@@ -2,7 +2,7 @@
   const root = document.documentElement;
   const toggle = document.getElementById('themeToggle');
   const label = document.getElementById('themeLabel');
-  const icon = document.querySelector('.theme-icon');
+  const icon = toggle;
   const meta = document.getElementById('themeColor');
 
   function applyTheme(theme) {
@@ -10,7 +10,7 @@
     root.classList.toggle('dark', dark);
     root.classList.toggle('light', !dark);
     if (label) label.textContent = dark ? 'Light' : 'Dark';
-    if (icon) icon.textContent = dark ? '☀' : '☾';
+    if (icon) icon.setAttribute('data-theme', dark ? 'dark' : 'light');
     if (toggle) {
       toggle.setAttribute('aria-pressed', String(dark));
       toggle.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
