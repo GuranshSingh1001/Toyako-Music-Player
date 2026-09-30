@@ -162,6 +162,8 @@ struct NowPlayingView: View {
                 dragOffset = 0
             }
         }
+        // Keep the full Now Playing screen visually independent from the library theme.
+        .environment(\.colorScheme, .dark)
     }
 
     // MARK: - Compact Now Playing
