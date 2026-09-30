@@ -3,85 +3,67 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07080c">
-  <meta name="description" content="Toyako — a beautiful native music player for iPadOS. Your local library, beautifully organized.">
-  <meta property="og:title" content="Toyako — Your music, beautifully organized.">
-  <meta property="og:description" content="A native iPadOS music player for your local library, playlists, lyrics and offline listening.">
-  <meta property="og:type" content="website">
+  <meta name="description" content="Toyako — a simple, beautiful music player for iPadOS.">
+  <meta name="theme-color" content="#111111">
   <link rel="icon" href="assets/toyako-icon.png">
   <link rel="stylesheet" href="styles.css">
-  <title>Toyako — Your music, beautifully organized.</title>
+  <title>Toyako — Music Player for iPad</title>
 </head>
 <body>
-  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="grain"></div>
+<header class="site-header">
+  <div class="container nav">
+    <a class="brand" href="#top"><img src="assets/toyako-icon.png" alt="Toyako icon"><strong>Toyako</strong></a>
+    <nav><a href="#features">Features</a><a href="#screenshots">Screenshots</a><a href="#download">Download</a></nav>
+  </div>
+</header>
 
-  <header class="nav wrap">
-    <a class="brand" href="#top" aria-label="Toyako home"><img src="assets/toyako-icon.png" alt="Toyako"><span>Toyako</span></a>
-    <nav aria-label="Primary navigation">
-      <a href="#features">Features</a><a href="#showcase">App</a><a href="#lyrics">Lyrics</a><a href="#download">Download</a>
-    </nav>
-    <div class="nav-actions"><a class="nav-github" id="githubLink" href="#" target="_blank" rel="noreferrer">GitHub ↗</a><a class="nav-download" id="navDownload" href="#download">Get Toyako</a></div>
-  </header>
+<main id="top">
+  <section class="hero container">
+    <div class="hero-text">
+      <p class="small">MUSIC PLAYER FOR IPAD</p>
+      <h1>Your music.<br>Simply yours.</h1>
+      <p class="lead">Toyako is a simple music player for your local library. Browse albums, artists, tracks and playlists, then enjoy your music with a beautiful Now Playing screen.</p>
+      <p class="buttons"><a class="button dark" href="https://github.com/guranshsingh1001/Toyako-Music-Player/releases/latest/download/Toyako.ipa">Download latest IPA</a><a class="button light" href="https://github.com/guranshsingh1001/Toyako-Music-Player/releases/latest">View release</a></p>
+      <p class="note">Free • Local music • Offline listening • Made for iPad</p>
+    </div>
+    <div class="hero-image"><img src="assets/screenshots/home.jpeg" alt="Toyako Home screen"></div>
+  </section>
 
-  <main id="top">
-    <section class="hero wrap">
-      <div class="hero-copy">
-        <div class="eyebrow"><span class="live-dot"></span> Native music player for iPadOS</div>
-        <h1>Your music.<br><span>Beautifully organized.</span></h1>
-        <p class="hero-text">Toyako is a focused music player for the library you already own. Browse, play, organize and read lyrics in a native iPad experience built around your music — not a streaming service.</p>
-        <div class="hero-actions"><a class="button primary" id="heroDownload" href="#download">Download latest IPA <b>↓</b></a><a class="button secondary" id="heroGithub" href="#" target="_blank" rel="noreferrer">View on GitHub <b>↗</b></a></div>
-        <div class="release-line"><span class="status-dot"></span><span id="releaseStatus">Checking the latest GitHub release…</span></div>
-        <div class="trust-row"><span>Offline-first</span><i></i><span>Local library</span><i></i><span>Made for iPad</span></div>
-      </div>
-      <div class="hero-visual">
-        <div class="hero-orbit orbit-1"></div><div class="hero-orbit orbit-2"></div>
-        <div class="hero-device hero-device-main"><div class="device-top"><span>Toyako</span><span>Home</span></div><img src="assets/screenshots/home.jpeg" alt="Toyako Home screen"></div>
-        <div class="hero-device hero-device-float"><img src="assets/screenshots/lyrics-japanese.jpeg" alt="Toyako Now Playing lyrics screen"></div>
-        <div class="floating-badge"><img src="assets/toyako-icon.png" alt=""><div><strong>Toyako</strong><span>Built for your library</span></div></div>
-      </div>
-    </section>
+  <section class="intro container" id="features">
+    <p class="small">ONE APP. YOUR LIBRARY.</p>
+    <h2>Everything you need.<br>Nothing you don't.</h2>
+    <div class="features">
+      <article><h3>Library</h3><p>Keep your tracks, albums, artists and playlists in one clean place.</p></article>
+      <article><h3>Now Playing</h3><p>Simple controls, album artwork, queue, shuffle and repeat.</p></article>
+      <article><h3>Lyrics</h3><p>Enjoy timed lyrics, including Japanese lyrics with romaji support.</p></article>
+      <article><h3>Offline</h3><p>Your local music stays available without depending on a streaming service.</p></article>
+    </div>
+  </section>
 
-    <section class="signal-bar"><div class="wrap signal-inner"><span>LOCAL MUSIC</span><b>•</b><span>OFFLINE PLAYBACK</span><b>•</b><span>PLAYLISTS</span><b>•</b><span>LYRICS</span><b>•</b><span>IPADOS NATIVE</span></div></section>
+  <section class="screens container" id="screenshots">
+    <div class="section-head"><div><p class="small">THE APP</p><h2>See Toyako.</h2></div><p>Real screenshots from the app.</p></div>
+    <div class="shots">
+      <figure><img src="assets/screenshots/home.jpeg" alt="Toyako Home"><figcaption>Home</figcaption></figure>
+      <figure><img src="assets/screenshots/tracks.jpeg" alt="Toyako Tracks"><figcaption>Tracks</figcaption></figure>
+      <figure><img src="assets/screenshots/albums.jpeg" alt="Toyako Albums"><figcaption>Albums</figcaption></figure>
+      <figure><img src="assets/screenshots/artists.jpeg" alt="Toyako Artists"><figcaption>Artists</figcaption></figure>
+      <figure><img src="assets/screenshots/playlist.jpeg" alt="Toyako Playlists"><figcaption>Playlists</figcaption></figure>
+      <figure><img src="assets/screenshots/lyrics-japanese.jpeg" alt="Japanese lyrics and romaji"><figcaption>Japanese + Romaji</figcaption></figure>
+      <figure><img src="assets/screenshots/lyrics-english.jpeg" alt="English lyrics"><figcaption>English Lyrics</figcaption></figure>
+    </div>
+  </section>
 
-    <section class="section wrap" id="features">
-      <div class="section-intro"><div><p class="eyebrow">The Toyako experience</p><h2>Everything feels <em>intentional.</em></h2></div><p>A clean library, powerful organization and an immersive player — designed as one consistent experience.</p></div>
-      <div class="feature-grid">
-        <article class="feature feature-hero"><div class="feature-copy"><span class="feature-number">01</span><h3>Your library, at a glance.</h3><p>Move naturally between Home, Tracks, Albums, Artists and Playlists. Your collection stays easy to browse even when it gets big.</p></div><div class="feature-shot"><img src="assets/screenshots/tracks.jpeg" alt="Toyako Tracks view"></div></article>
-        <article class="feature"><span class="feature-number">02</span><h3>Playlists that stay yours.</h3><p>Create focused collections and keep control of what plays next.</p><div class="mini-ui"><span>Gintama</span><span>49 Tracks</span><span>3 hr 5 min</span></div></article>
-        <article class="feature feature-now"><div><span class="feature-number">03</span><h3>Now Playing, made immersive.</h3><p>Artwork, controls, progress and lyrics live together without getting in the way.</p></div><img src="assets/screenshots/lyrics-english.jpeg" alt="Toyako Now Playing"></article>
-        <article class="feature feature-wide"><div><span class="feature-number">04</span><h3>Made for the way you listen.</h3><p>Background playback, queue management, shuffle, repeat and a local-first workflow keep the focus on the music.</p></div><div class="feature-pills"><span>Queue</span><span>Shuffle</span><span>Repeat</span><span>Background playback</span><span>Search</span></div></article>
-      </div>
-    </section>
+  <section class="download" id="download">
+    <div class="container download-inner">
+      <img src="assets/toyako-icon.png" alt="Toyako icon">
+      <p class="small">LATEST RELEASE</p>
+      <h2>Try Toyako.</h2>
+      <p>Download the IPA from the latest GitHub release.</p>
+      <p class="buttons"><a class="button white" href="https://github.com/guranshsingh1001/Toyako-Music-Player/releases/latest/download/Toyako.ipa">Download IPA</a><a class="button outline" href="https://github.com/guranshsingh1001/Toyako-Music-Player/releases/latest">GitHub Release</a></p>
+    </div>
+  </section>
+</main>
 
-    <section class="showcase" id="showcase">
-      <div class="wrap">
-        <div class="section-intro showcase-intro"><div><p class="eyebrow">Inside the app</p><h2>See Toyako <em>in action.</em></h2></div><p>Real screenshots from the iPad app. No mockups — just the interface you'll actually use.</p></div>
-        <div class="gallery">
-          <figure class="gallery-item gallery-feature"><div class="frame"><img src="assets/screenshots/home.jpeg" alt="Toyako Home"></div><figcaption><strong>Home</strong><span>Your library, recently played and quick actions.</span></figcaption></figure>
-          <figure class="gallery-item"><div class="frame"><img src="assets/screenshots/albums.jpeg" alt="Toyako Albums"></div><figcaption><strong>Albums</strong><span>Browse your collection visually.</span></figcaption></figure>
-          <figure class="gallery-item"><div class="frame"><img src="assets/screenshots/artists.jpeg" alt="Toyako Artists"></div><figcaption><strong>Artists</strong><span>Artist pages with tracks and albums.</span></figcaption></figure>
-          <figure class="gallery-item"><div class="frame"><img src="assets/screenshots/playlist.jpeg" alt="Toyako Playlist"></div><figcaption><strong>Playlists</strong><span>Build collections around your mood.</span></figcaption></figure>
-          <figure class="gallery-item"><div class="frame"><img src="assets/screenshots/tracks.jpeg" alt="Toyako Tracks"></div><figcaption><strong>Tracks</strong><span>A rich grid for your entire library.</span></figcaption></figure>
-        </div>
-      </div>
-    </section>
-
-    <section class="lyrics-section" id="lyrics">
-      <div class="wrap lyrics-layout">
-        <div class="lyrics-copy"><p class="eyebrow">A better way to follow along</p><h2>Lyrics that move<br><em>with the music.</em></h2><p>Timed lyrics become part of the Now Playing experience. Toyako supports LRC and TTML, including Japanese karaoke-style spans and romaji.</p><div class="lyric-list"><span>✓ Timed LRC lyrics</span><span>✓ TTML karaoke rendering</span><span>✓ Japanese + romaji</span><span>✓ English lyrics</span></div></div>
-        <div class="lyrics-stage"><figure class="lyrics-card back"><img src="assets/screenshots/lyrics-japanese.jpeg" alt="Japanese lyrics and romaji in Toyako"><figcaption>Japanese · romaji</figcaption></figure><figure class="lyrics-card front"><img src="assets/screenshots/lyrics-english.jpeg" alt="English lyrics in Toyako"><figcaption>English lyrics</figcaption></figure></div>
-      </div>
-    </section>
-
-    <section class="section philosophy wrap" id="philosophy">
-      <div class="philosophy-title"><p class="eyebrow">Why Toyako</p><h2>Built around<br><em>your music.</em></h2><p>No streaming catalog to navigate. No cloud library to manage. Just a focused player for the music you keep.</p></div>
-      <div class="principles"><div><b>01</b><div><h3>Local first</h3><p>Your collection is the center of the experience.</p></div></div><div><b>02</b><div><h3>Offline ready</h3><p>Listen without depending on a network connection.</p></div></div><div><b>03</b><div><h3>Native iPad experience</h3><p>Designed around iPad layouts, gestures and multitasking.</p></div></div></div>
-    </section>
-
-    <section class="download-section" id="download"><div class="download-glow"></div><div class="wrap download-inner"><img src="assets/toyako-icon.png" alt="Toyako" class="download-icon"><p class="eyebrow">Latest release</p><h2>Ready when<br><em>you are.</em></h2><p>Download the latest Toyako IPA from your GitHub release.</p><a class="button primary big" id="downloadButton" href="#" target="_blank" rel="noreferrer">Download latest IPA ↓</a><div class="release-card"><span class="release-led"></span><div><strong id="downloadStatus">Loading release information…</strong><small>Latest release · GitHub</small></div><a id="releasePage" href="#" target="_blank" rel="noreferrer">Release ↗</a></div></div></section>
-  </main>
-
-  <footer class="footer wrap"><div class="brand"><img src="assets/toyako-icon.png" alt=""><span>Toyako</span></div><span>Local music. Beautifully organized.</span><div><a id="footerGithub" href="#" target="_blank" rel="noreferrer">GitHub ↗</a><a href="#download">Download</a></div></footer>
-  <script src="app.js"></script>
+<footer class="container footer"><span>© Toyako</span><a href="https://github.com/guranshsingh1001/Toyako-Music-Player">GitHub</a></footer>
 </body>
 </html>
