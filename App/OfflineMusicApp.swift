@@ -8,6 +8,7 @@ struct OfflineMusicApp: App {
     @StateObject private var audioManager = AudioEngineManager()
     @StateObject private var remoteServer = RemoteServer()
     @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
+    @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
 
     init() {
         ToyakoPreferences.registerDefaults()
@@ -37,6 +38,7 @@ struct OfflineMusicApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)
                 .background(
                     AppSystemVolumeBridge(value: $systemVolume)
                         .frame(width: 1, height: 1)

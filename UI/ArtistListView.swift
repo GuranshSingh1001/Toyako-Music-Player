@@ -312,6 +312,7 @@ struct ArtistListView: View {
 
 private struct ArtistReflectionBackground: View {
     let artwork: UIImage?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         GeometryReader { proxy in
@@ -354,7 +355,7 @@ private struct ArtistReflectionBackground: View {
 
                 // One uniform translucent dark veil. No top/bottom gradient and no
                 // opaque panel, so the reflected artwork continues through the page.
-                Color.black.opacity(0.43)
+                (colorScheme == .dark ? Color.black : Color.white).opacity(colorScheme == .dark ? 0.43 : 0.12)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
@@ -365,6 +366,7 @@ private struct ArtistReflectionBackground: View {
 }
 
 struct ArtistDetailView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let artist: ArtistGroup
     let library: LocalLibrary
     let usesSharedBackground: Bool
@@ -527,7 +529,7 @@ struct ArtistDetailView: View {
     private func artistArtwork(size: CGFloat) -> some View {
         ZStack {
             Circle()
-                .fill(Color.white.opacity(0.06))
+                .fill((colorScheme == .dark ? Color.white : Color.black).opacity(0.06))
 
             if let artwork {
                 Image(uiImage: artwork)

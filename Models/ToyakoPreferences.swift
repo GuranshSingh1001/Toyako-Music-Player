@@ -25,7 +25,7 @@ struct ToyakoPreferences {
             automaticArtistArtworkKey: false,
             bleedingEffectKey: true,
             libraryArtworkSizeKey: 180.0,
-            appearanceKey: AppAppearance.system.rawValue
+            appearanceKey: "system"
         ])
 
         // Classic was removed because it was visually too close to Smooth.
@@ -47,31 +47,6 @@ enum LyricsAnimationStyle: String, CaseIterable, Identifiable {
         case .dynamic: "Dynamic"
         case .smooth: "Smooth"
         case .minimal: "Minimal"
-        }
-    }
-}
-
-
-enum AppAppearance: String, CaseIterable, Identifiable {
-    case system
-    case light
-    case dark
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .system: "System"
-        case .light: "Light"
-        case .dark: "Dark"
-        }
-    }
-
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
         }
     }
 }
