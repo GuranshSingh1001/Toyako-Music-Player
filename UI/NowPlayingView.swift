@@ -497,7 +497,7 @@ struct NowPlayingView: View {
             Image(systemName: "shuffle")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(
-                    audioManager.isShuffle ? .primary : .primary.opacity(0.34)
+                    audioManager.isShuffle ? Color.primary : Color.primary.opacity(0.34)
                 )
         }
         .buttonStyle(.plain)
@@ -511,8 +511,8 @@ struct NowPlayingView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(
                     audioManager.repeatMode != .off
-                        ? .primary
-                        : .primary.opacity(0.34)
+                        ? Color.primary
+                        : Color.primary.opacity(0.34)
                 )
         }
         .buttonStyle(.plain)

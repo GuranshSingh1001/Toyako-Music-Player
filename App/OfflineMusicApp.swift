@@ -8,7 +8,7 @@ struct OfflineMusicApp: App {
     @StateObject private var audioManager = AudioEngineManager()
     @StateObject private var remoteServer = RemoteServer()
     @State private var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
-    @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.light.rawValue
 
     init() {
         ToyakoPreferences.registerDefaults()

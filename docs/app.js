@@ -1,4 +1,35 @@
 (function(){
+  const root = document.documentElement;
+  const toggle = document.getElementById('themeToggle');
+  const label = document.getElementById('themeLabel');
+  const icon = document.querySelector('.theme-icon');
+  const meta = document.getElementById('themeColor');
+
+  function applyTheme(theme) {
+    const dark = theme === 'dark';
+    root.classList.toggle('dark', dark);
+    root.classList.toggle('light', !dark);
+    if (label) label.textContent = dark ? 'Light' : 'Dark';
+    if (icon) icon.textContent = dark ? '☀' : '☾';
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', String(dark));
+      toggle.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+    }
+    if (meta) meta.setAttribute('content', dark ? '#0d1015' : '#ffffff');
+  }
+
+  // Light is the default. The selection persists in this browser.
+  const saved = localStorage.getItem('toyako-theme');
+  applyTheme(saved === 'dark' ? 'dark' : 'light');
+
+  toggle?.addEventListener('click', () => {
+    const next = root.classList.contains('dark') ? 'light' : 'dark';
+    localStorage.setItem('toyako-theme', next);
+    applyTheme(next);
+  });
+})();
+
+(function(){
   // The site automatically derives OWNER/REPO from a normal GitHub Pages URL:
   // https://owner.github.io/repo/ -> owner/repo
   // For a custom domain, set window.TOYAKO_REPO before this script loads.

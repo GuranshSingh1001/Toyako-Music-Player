@@ -15,7 +15,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
-    @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.light.rawValue
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 

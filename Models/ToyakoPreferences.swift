@@ -25,7 +25,7 @@ struct ToyakoPreferences {
             automaticArtistArtworkKey: false,
             bleedingEffectKey: true,
             libraryArtworkSizeKey: 180.0,
-            appearanceKey: "system"
+            appearanceKey: "light"
         ])
 
         // Classic was removed because it was visually too close to Smooth.
