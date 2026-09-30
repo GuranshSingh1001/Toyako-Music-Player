@@ -16,12 +16,9 @@
     <div class="nav-actions">
       <nav><a href="#features">Features</a><a href="#screenshots">Screenshots</a><a href="#download">Download</a></nav>
       <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" title="Switch theme">
-        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="4"></circle>
-          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
-        </svg>
-        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M20.4 15.6A8.5 8.5 0 0 1 8.4 3.6 8.5 8.5 0 1 0 20.4 15.6Z"></path>
+        <svg class="theme-icon theme-icon-contrast" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5"></circle>
+          <path class="theme-half" d="M12 3.5a8.5 8.5 0 0 1 0 17z"></path>
         </svg>
         <span class="sr-only" id="themeLabel">Dark</span>
       </button>
@@ -38,7 +35,7 @@
       <p class="buttons"><a class="button dark" href="https://github.com/guranshsingh1001/Toyako-Music-Player/releases/latest/download/Toyako.ipa">Download latest IPA</a><a class="button light" href="https://github.com/guranshsingh1001/Toyako-Music-Player/releases/latest">View release</a></p>
       <p class="note">Free • Local music • Offline listening • Made for iPad</p>
     </div>
-    <div class="hero-image"><img src="assets/screenshots/home.jpeg" alt="Toyako Home screen"></div>
+    <div class="hero-image"><img src="assets/screenshots/light/home.jpeg" alt="Toyako Home screen"></div>
   </section>
 
   <section class="intro container" id="features">
@@ -54,14 +51,19 @@
 
   <section class="screens container" id="screenshots">
     <div class="section-head"><div><p class="small">THE APP</p><h2>See Toyako.</h2></div><p>Real screenshots from the app.</p></div>
-    <div class="shots">
-      <figure><img src="assets/screenshots/home.jpeg" alt="Toyako Home"><figcaption>Home</figcaption></figure>
-      <figure><img src="assets/screenshots/tracks.jpeg" alt="Toyako Tracks"><figcaption>Tracks</figcaption></figure>
-      <figure><img src="assets/screenshots/albums.jpeg" alt="Toyako Albums"><figcaption>Albums</figcaption></figure>
-      <figure><img src="assets/screenshots/artists.jpeg" alt="Toyako Artists"><figcaption>Artists</figcaption></figure>
-      <figure><img src="assets/screenshots/playlist.jpeg" alt="Toyako Playlists"><figcaption>Playlists</figcaption></figure>
-      <figure><img src="assets/screenshots/lyrics-japanese.jpeg" alt="Japanese lyrics and romaji"><figcaption>Japanese + Romaji</figcaption></figure>
-      <figure><img src="assets/screenshots/lyrics-english.jpeg" alt="English lyrics"><figcaption>English Lyrics</figcaption></figure>
+    <div class="shots theme-shots theme-shots-light">
+      <figure><img src="assets/screenshots/light/home.jpeg" alt="Toyako Home in Light Mode"><figcaption>Home · Light Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/light/tracks.jpeg" alt="Toyako Tracks in Light Mode"><figcaption>Tracks · Light Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/light/albums.jpeg" alt="Toyako Albums in Light Mode"><figcaption>Albums · Light Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/light/artists.jpeg" alt="Toyako Artists in Light Mode"><figcaption>Artists · Light Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/light/playlist.jpeg" alt="Toyako Playlists in Light Mode"><figcaption>Playlists · Light Mode</figcaption></figure>
+    </div>
+    <div class="shots theme-shots theme-shots-dark">
+      <figure><img src="assets/screenshots/dark/home.jpeg" alt="Toyako Home in Dark Mode"><figcaption>Home · Dark Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/dark/tracks.jpeg" alt="Toyako Tracks in Dark Mode"><figcaption>Tracks · Dark Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/dark/albums.jpeg" alt="Toyako Albums in Dark Mode"><figcaption>Albums · Dark Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/dark/artists.jpeg" alt="Toyako Artists in Dark Mode"><figcaption>Artists · Dark Mode</figcaption></figure>
+      <figure><img src="assets/screenshots/dark/playlist.jpeg" alt="Toyako Playlists in Dark Mode"><figcaption>Playlists · Dark Mode</figcaption></figure>
     </div>
   </section>
 

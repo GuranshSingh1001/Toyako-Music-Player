@@ -4,6 +4,7 @@
   const label = document.getElementById('themeLabel');
   const icon = toggle;
   const meta = document.getElementById('themeColor');
+  const heroImage = document.querySelector('.hero-image img');
 
   function applyTheme(theme) {
     const dark = theme === 'dark';
@@ -16,6 +17,10 @@
       toggle.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
     }
     if (meta) meta.setAttribute('content', dark ? '#0d1015' : '#ffffff');
+    if (heroImage) {
+      heroImage.src = dark ? 'assets/screenshots/dark/home.jpeg' : 'assets/screenshots/light/home.jpeg';
+      heroImage.alt = dark ? 'Toyako Home screen in Dark Mode' : 'Toyako Home screen in Light Mode';
+    }
   }
 
   // Light is the default. The selection persists in this browser.
