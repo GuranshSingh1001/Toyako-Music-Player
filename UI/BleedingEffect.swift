@@ -17,6 +17,7 @@ struct ColorfulArtworkBleedBackground: View {
     let artworkData: Data?
     let accentColor: Color
 
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
 
     @State private var currentPalette = ArtworkBleedPalette.fallback
@@ -27,7 +28,7 @@ struct ColorfulArtworkBleedBackground: View {
     var body: some View {
         GeometryReader { geometry in
             if !bleedingEffect {
-                Color.black
+                Color(uiColor: .systemBackground)
                     .frame(width: geometry.size.width, height: geometry.size.height)
             } else {
                 TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
@@ -66,18 +67,23 @@ struct ColorfulArtworkBleedBackground: View {
                                 height: size.height * 1.35
                             )
                             .saturation(1.25)
-                            .brightness(-0.28)
-                            .opacity(0.045)
+                            .brightness(colorScheme == .dark ? -0.28 : 0.05)
+                            .opacity(colorScheme == .dark ? 0.045 : 0.025)
                             .blur(radius: 105)
                             .scaleEffect(1.06)
                     }
 
-                    // Gentle centre/edge treatment. No white wash.
+                    // Keep the artwork atmosphere visible in both appearances
+                    // without forcing a dark veil over Light Mode.
                     RadialGradient(
-                        colors: [
+                        colors: colorScheme == .dark ? [
                             Color.black.opacity(0.015),
                             Color.black.opacity(0.08),
                             Color.black.opacity(0.26)
+                        ] : [
+                            Color.white.opacity(0.08),
+                            Color.clear,
+                            Color.black.opacity(0.035)
                         ],
                         center: .center,
                         startRadius: min(size.width, size.height) * 0.10,
@@ -550,60 +556,88 @@ private struct ArtworkBleedPalette: Equatable {
 struct ArtworkBleedPageBackground: View {
     let artworkURL: URL?
 
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @State private var artworkData: Data?
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black
+                // The page background is appearance-aware. The previous
+                // implementation always started with black and then added
+                // dark artwork veils, which made Light Mode look like a
+                // dimmed Dark Mode screen.
+                Color(uiColor: .systemBackground)
 
                 if bleedingEffect {
+                    if let artworkData, let image = UIImage(data: artworkData) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(
+                                width: proxy.size.width * 1.18,
+                                height: proxy.size.height * 1.18
+                            )
+                            .blur(radius: colorScheme == .dark ? 72 : 88)
+                            .saturation(1.10)
+                            .opacity(colorScheme == .dark ? 0.22 : 0.075)
+                            .scaleEffect(1.08)
 
-                if let artworkData, let image = UIImage(data: artworkData) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(
-                            width: proxy.size.width * 1.18,
-                            height: proxy.size.height * 1.18
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(
+                                width: proxy.size.width * 1.04,
+                                height: proxy.size.height * 1.04
+                            )
+                            .blur(radius: colorScheme == .dark ? 115 : 130)
+                            .saturation(1.05)
+                            .opacity(colorScheme == .dark ? 0.13 : 0.045)
+                    }
+
+                    if colorScheme == .dark {
+                        LinearGradient(
+                            colors: [
+                                Color.black.opacity(0.52),
+                                Color.black.opacity(0.30),
+                                Color.black.opacity(0.62)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
-                        .blur(radius: 72)
-                        .saturation(1.18)
-                        .opacity(0.22)
-                        .scaleEffect(1.08)
 
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(
-                            width: proxy.size.width * 1.04,
-                            height: proxy.size.height * 1.04
+                        RadialGradient(
+                            colors: [
+                                Color.black.opacity(0.08),
+                                Color.black.opacity(0.34)
+                            ],
+                            center: .center,
+                            startRadius: 80,
+                            endRadius: max(proxy.size.width, proxy.size.height) * 0.78
                         )
-                        .blur(radius: 115)
-                        .saturation(1.05)
-                        .opacity(0.13)
-                }
+                    } else {
+                        // Keep the light appearance bright and readable while
+                        // retaining a very subtle artwork-derived atmosphere.
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.20),
+                                Color.clear,
+                                Color.white.opacity(0.28)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
 
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.52),
-                        Color.black.opacity(0.30),
-                        Color.black.opacity(0.62)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                RadialGradient(
-                    colors: [
-                        Color.black.opacity(0.08),
-                        Color.black.opacity(0.34)
-                    ],
-                    center: .center,
-                    startRadius: 80,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.78
-                )
+                        RadialGradient(
+                            colors: [
+                                Color.white.opacity(0.10),
+                                Color.black.opacity(0.035)
+                            ],
+                            center: .center,
+                            startRadius: 80,
+                            endRadius: max(proxy.size.width, proxy.size.height) * 0.78
+                        )
+                    }
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)

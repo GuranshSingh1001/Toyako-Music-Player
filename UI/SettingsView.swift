@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
+    @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
@@ -22,6 +23,12 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Appearance") {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(AppAppearance.allCases) { option in
+                            Text(option.title).tag(option.rawValue)
+                        }
+                    }
+
                     Toggle("Artwork Bleeding Effect", isOn: $bleedingEffect)
                         .tint(.green)
 

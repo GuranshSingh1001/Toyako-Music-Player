@@ -14,6 +14,7 @@ enum LibraryCategory: Hashable {
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var audioManager: AudioEngineManager
+    @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
 
     @StateObject private var library =
         LocalLibrary()
@@ -129,6 +130,7 @@ struct ContentView: View {
             .sidebarAdaptable
         )
         .tint(ToyakoDesign.Color.accent)
+        .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)
         // The mini-player belongs to the tab destination, not to the outer
         // TabView. This is important for sidebarAdaptable: when the sidebar
         // opens/closes, SwiftUI animates the destination's frame. Because the

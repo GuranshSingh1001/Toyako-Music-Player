@@ -8,6 +8,7 @@ struct NowPlayingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var audioManager: AudioEngineManager
     @EnvironmentObject var clock: PlaybackClock
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var dragOffset: CGFloat = 0
     @State private var playPausePressed = false
@@ -42,7 +43,7 @@ struct NowPlayingView: View {
             let isCompact = !isLandscape || geometry.size.width < 760
 
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
 
                 ColorfulArtworkBleedBackground(
                     artworkData: nowPlayingArtworkData,
@@ -77,7 +78,7 @@ struct NowPlayingView: View {
                 } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(.primary.opacity(0.9))
                         .frame(width: 52, height: 52)
                         .contentShape(Circle())
                 }
@@ -97,7 +98,7 @@ struct NowPlayingView: View {
                         } label: {
                             Image(systemName: "list.bullet")
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.9))
+                                .foregroundStyle(.primary.opacity(0.9))
                                 .frame(width: 52, height: 52)
                                 .contentShape(Circle())
                         }
@@ -247,7 +248,7 @@ struct NowPlayingView: View {
             } label: {
                 Image(systemName: showLyrics ? "photo" : "quote.bubble")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(.primary.opacity(0.88))
                     .frame(width: 48, height: 48)
                     .contentShape(Circle())
             }
@@ -263,7 +264,7 @@ struct NowPlayingView: View {
             } label: {
                 Image(systemName: "list.bullet")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(.primary.opacity(0.88))
                     .frame(width: 48, height: 48)
                     .contentShape(Circle())
             }
@@ -278,7 +279,7 @@ struct NowPlayingView: View {
         } label: {
             Image(systemName: "text.badge.plus")
                 .font(.system(size: size >= 52 ? 18 : 21, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.primary.opacity(0.9))
                 .frame(width: size, height: size)
                 .contentShape(Circle())
         }
@@ -446,18 +447,18 @@ struct NowPlayingView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(audioManager.currentTrack?.title ?? "Unknown Title")
                 .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
 
             Text(audioManager.currentTrack?.artist ?? "Unknown Artist")
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.white.opacity(0.68))
+                .foregroundStyle(.primary.opacity(0.68))
                 .lineLimit(1)
 
             if showAudioInfo, let audioFormatInfo {
                 Text(audioFormatInfo.displayString)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.primary.opacity(0.45))
                     .lineLimit(1)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -496,7 +497,7 @@ struct NowPlayingView: View {
             Image(systemName: "shuffle")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(
-                    audioManager.isShuffle ? .white : .white.opacity(0.34)
+                    audioManager.isShuffle ? .primary : .primary.opacity(0.34)
                 )
         }
         .buttonStyle(.plain)
@@ -510,8 +511,8 @@ struct NowPlayingView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(
                     audioManager.repeatMode != .off
-                        ? .white
-                        : .white.opacity(0.34)
+                        ? .primary
+                        : .primary.opacity(0.34)
                 )
         }
         .buttonStyle(.plain)
@@ -528,7 +529,7 @@ struct NowPlayingView: View {
         } label: {
             Image(systemName: "backward.fill")
                 .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .scaleEffect(previousPressed ? 0.76 : 1)
                 .offset(x: previousPressed ? -2 : 0)
                 .animation(
@@ -552,7 +553,7 @@ struct NowPlayingView: View {
                 systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
             )
             .font(.system(size: 38, weight: .medium))
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .frame(width: 50, height: 50)
             .contentTransition(.symbolEffect(.replace))
             .scaleEffect(playPausePressed ? 0.80 : 1.0)
@@ -575,7 +576,7 @@ struct NowPlayingView: View {
         } label: {
             Image(systemName: "forward.fill")
                 .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .scaleEffect(nextPressed ? 0.76 : 1)
                 .offset(x: nextPressed ? 2 : 0)
                 .animation(
@@ -612,11 +613,11 @@ private func lyricsPane(compact: Bool = false) -> some View {
             VStack(spacing: 12) {
                 Image(systemName: "quote.bubble")
                     .font(.system(size: 40))
-                    .foregroundStyle(.white.opacity(0.18))
+                    .foregroundStyle(.primary.opacity(0.18))
 
                 Text("Lyrics Unavailable")
                     .font(.headline)
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(.primary.opacity(0.42))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -874,7 +875,7 @@ private struct SmoothLyricsView: View {
                     Circle().frame(width: 8, height: 8)
                     Circle().frame(width: 8, height: 8)
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .opacity(state == .active ? 0.9 : 0.18)
                 .padding(.vertical, 10)
             } else if line.hasWordTiming {
@@ -889,7 +890,7 @@ private struct SmoothLyricsView: View {
             } else {
                 Text(line.text)
                     .font(.system(size: (compact ? 42 : 50) * lyricsFontScale, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .opacity(lineOpacity(state))
                     .blur(radius: lineBlur(state))
                     .scaleEffect(lineScale(state), anchor: .leading)
@@ -902,7 +903,7 @@ private struct SmoothLyricsView: View {
                    !romanized.isEmpty {
                     Text(romanized)
                         .font(.system(size: (compact ? 18 : 22) * lyricsFontScale, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .opacity(romanizedOpacity(state))
                         .blur(radius: lineBlur(state))
                         .offset(y: state == .past ? -7 : 0)
@@ -915,7 +916,7 @@ private struct SmoothLyricsView: View {
                    !translated.isEmpty {
                     Text(translated)
                         .font(.system(size: (compact ? 15 : 18) * lyricsFontScale, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(state == .active ? 0.72 : 0.22))
+                        .foregroundStyle(.primary.opacity(state == .active ? 0.72 : 0.22))
                         // Translation follows the exact same blur curve as
                         // the Japanese lyric and romanization. This keeps the
                         // past/future layers visually consistent.
@@ -1088,7 +1089,7 @@ private struct JapaneseTimedLine: View {
             if showTranslation, let translatedText, !translatedText.isEmpty {
                 Text(translatedText)
                     .font(.system(size: 18, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(state == .active ? 0.72 : 0.22))
+                    .foregroundStyle(.primary.opacity(state == .active ? 0.72 : 0.22))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1155,11 +1156,11 @@ private struct JapaneseLyricUnitView: View {
         VStack(spacing: 1) {
             Text(unit.text)
                 .font(japaneseFont)
-                .foregroundStyle(.white.opacity(glyphOpacity))
+                .foregroundStyle(.primary.opacity(glyphOpacity))
                 .offset(y: activeOffset)
                 .scaleEffect(1 + activeScale)
                 .shadow(
-                    color: .white.opacity(karaokeGlow && progress > 0 ? 0.72 * progress : 0),
+                    color: .primary.opacity(karaokeGlow && progress > 0 ? 0.72 * progress : 0),
                     radius: karaokeGlow && progress > 0 ? (animationStyle == .dynamic ? 9.0 : (animationStyle == .smooth ? 7.0 : 5.0)) : 0
                 )
 
@@ -1168,7 +1169,7 @@ private struct JapaneseLyricUnitView: View {
                containsJapaneseCharacters(unit.text) {
                 Text(romanized)
                     .font(romanizedFont)
-                    .foregroundStyle(.white.opacity(romajiOpacity))
+                    .foregroundStyle(.primary.opacity(romajiOpacity))
                     .scaleEffect(1 + CGFloat(progress) * 0.004)
             }
         }
@@ -1233,11 +1234,11 @@ private struct WordRiseReveal: View {
     var body: some View {
         Text(word.text)
             .font(font)
-            .foregroundStyle(.white.opacity(opacity))
+            .foregroundStyle(.primary.opacity(opacity))
             .offset(y: animationStyle == .dynamic || animationStyle == .smooth ? -riseAmplitude * CGFloat(activeProgress) : (0))
             .scaleEffect(animationStyle == .minimal ? 1 : 1 + CGFloat(activeProgress) * (animationStyle == .dynamic ? 0.006 : 0.004), anchor: .center)
             .shadow(
-                color: .white.opacity(karaokeGlow && activeProgress > 0 ? 0.68 * activeProgress : 0),
+                color: .primary.opacity(karaokeGlow && activeProgress > 0 ? 0.68 * activeProgress : 0),
                 radius: karaokeGlow && activeProgress > 0 ? (animationStyle == .dynamic ? 8.0 : 6.0) : 0
             )
             .fixedSize(horizontal: true, vertical: false)
@@ -1348,24 +1349,24 @@ struct SystemVolumeSlider: View {
         HStack(spacing: 12) {
             Image(systemName: "speaker.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(.primary.opacity(0.88))
                 .frame(width: 24)
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(.white.opacity(isHolding ? 0.30 : 0.18))
+                        .fill(.primary.opacity(isHolding ? 0.30 : 0.18))
                         .frame(height: isHolding ? 9 : 5)
 
                     Capsule()
-                        .fill(.white.opacity(isHolding ? 1.0 : 0.88))
+                        .fill(.primary.opacity(isHolding ? 1.0 : 0.88))
                         .frame(
                             width: geometry.size.width * CGFloat(shownVolume),
                             height: isHolding ? 9 : 5
                         )
 
                     Circle()
-                        .fill(.white)
+                        .fill(.primary)
                         .frame(width: isHolding ? 20 : 16, height: isHolding ? 20 : 16)
                         .offset(
                             x: max(0, min(geometry.size.width - (isHolding ? 20 : 16),
@@ -1404,7 +1405,7 @@ struct SystemVolumeSlider: View {
 
             Image(systemName: "speaker.wave.2.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(.primary.opacity(0.88))
                 .frame(width: 24)
         }
         .background(
@@ -1547,7 +1548,7 @@ struct AppleMusicScrubberBar: View {
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(
-                            .white.opacity(
+                            .primary.opacity(
                                 isHolding ? 0.30 : 0.18
                             )
                         )
@@ -1557,7 +1558,7 @@ struct AppleMusicScrubberBar: View {
 
                     Capsule()
                         .fill(
-                            .white.opacity(
+                            .primary.opacity(
                                 isHolding ? 1.0 : 0.88
                             )
                         )
@@ -1667,7 +1668,7 @@ struct AppleMusicScrubberBar: View {
                 )
             )
             .foregroundStyle(
-                .white.opacity(0.62)
+                .primary.opacity(0.62)
             )
             .monospacedDigit()
         }
