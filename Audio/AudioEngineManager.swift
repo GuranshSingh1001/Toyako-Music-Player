@@ -52,6 +52,8 @@ class AudioEngineManager: ObservableObject {
         Any?
 
     private var interruptionObserverToken: NSObjectProtocol?
+    private var appBackgroundObserverToken: NSObjectProtocol?
+    private var appForegroundObserverToken: NSObjectProtocol?
     private var remoteCommandTargets: [(command: MPRemoteCommand, token: Any)] = []
     private var wasPlayingBeforeInterruption = false
 
@@ -135,6 +137,7 @@ class AudioEngineManager: ObservableObject {
         loadRecentlyPlayed()
         setupRemoteControls()
         setupInterruptionHandling()
+        setupApplicationLifecycleHandling()
     }
 
 
@@ -1806,24 +1809,33 @@ class AudioEngineManager: ObservableObject {
 
             guard let self else { return }
 
+            let reasonValue =
+                info[AVAudioSessionInterruptionReasonKey] as? UInt
+            let reason = reasonValue.flatMap {
+                AVAudioSession.InterruptionReason(rawValue: $0)
+            }
+
             if type == .began {
+
+                // iPadOS can report an interruption while the app is being
+                // suspended by the cover/lock transition. Treat that as a
+                // lifecycle event, not as an audio takeover: otherwise the
+                // later Bluetooth Play command can be stranded until the
+                // cover is opened again.
+                if reason == .appWasSuspended {
+                    _ = self.activateAudioSessionForPlayback()
+                    self.updatePlaybackState()
+                    return
+                }
 
                 self.wasPlayingBeforeInterruption = self.isPlaying
                 self.player.pause()
-
-                self.isPlaying =
-                    false
-
+                self.isPlaying = false
                 self.updatePlaybackState()
                 self.savePlaybackState(force: true)
 
             } else {
 
-                // The system may deactivate the session when the Smart Folio
-                // closes or when the app is suspended. Re-activate it when
-                // the interruption ends, but only resume if playback was
-                // actually active before the interruption. A user-initiated
-                // pause must remain paused.
                 guard self.activateAudioSessionForPlayback() else { return }
 
                 if self.wasPlayingBeforeInterruption {
@@ -1838,6 +1850,34 @@ class AudioEngineManager: ObservableObject {
         }
     }
 
+
+    // MARK: - Application Lifecycle
+
+    private func setupApplicationLifecycleHandling() {
+        let center = NotificationCenter.default
+
+        // Keep Now Playing/remote-control state coherent as a covered or
+        // locked iPad moves the app out of the foreground.
+        appBackgroundObserverToken = center.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.currentTrack != nil else { return }
+            self.updatePlaybackState()
+        }
+
+        appForegroundObserverToken = center.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.currentTrack != nil else { return }
+            // Restore the session, but never implicitly resume a user-paused track.
+            _ = self.activateAudioSessionForPlayback()
+            self.updatePlaybackState()
+        }
+    }
 
     // MARK: - Audio Session
 
@@ -2057,6 +2097,12 @@ class AudioEngineManager: ObservableObject {
 
         if let interruptionObserverToken {
             NotificationCenter.default.removeObserver(interruptionObserverToken)
+        }
+        if let appBackgroundObserverToken {
+            NotificationCenter.default.removeObserver(appBackgroundObserverToken)
+        }
+        if let appForegroundObserverToken {
+            NotificationCenter.default.removeObserver(appForegroundObserverToken)
         }
 
 
