@@ -153,15 +153,6 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                     }
                 }
-                
-                if #available(iOS 26.0, *) {
-                        Toggle("Liquid Glass", isOn: $liquidGlassEnabled)
-                            .tint(.green)
-
-                        Text("When enabled, Toyako uses Liquid Glass on iPadOS 26 and later. Turning it off uses the opaque appearance instead.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
 
                 Section("About") {
                     LabeledContent("App", value: "Toyako")
