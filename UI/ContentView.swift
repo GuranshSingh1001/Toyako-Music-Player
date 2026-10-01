@@ -647,7 +647,8 @@ private struct HomeAudioContainer: View {
             currentTrack: audioManager.currentTrack,
             isPlaying: audioManager.isPlaying,
             onPlayTrack: { index in
-                audioManager.startQueue(tracks: tracks, startIndex: index)
+                guard tracks.indices.contains(index) else { return }
+                audioManager.playStandalonePreservingQueue(tracks[index])
             },
             onTogglePlayPause: {
                 audioManager.togglePlayPause()
@@ -658,7 +659,7 @@ private struct HomeAudioContainer: View {
                 if !audioManager.isShuffle {
                     audioManager.toggleShuffle()
                 }
-                audioManager.playPreservingQueue(tracks: tracks, startIndex: index)
+                audioManager.startQueue(tracks: tracks, startIndex: index)
             }
         )
     }

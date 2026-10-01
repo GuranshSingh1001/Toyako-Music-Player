@@ -118,6 +118,11 @@ class AudioEngineManager: ObservableObject {
     @Published var queueIndex:
         Int = 0
 
+    /// When a track is played directly from Home/Recently Played, remember
+    /// where playback was in the queue so Next/Previous can return to it
+    /// without modifying the queue.
+    private var suspendedQueueTrackID: LocalTrack.ID?
+
     @Published var isShuffle:
         Bool = false
 
@@ -948,46 +953,56 @@ class AudioEngineManager: ObservableObject {
     }
 
 
-    /// Plays the requested track(s) without replacing an existing queue.
+    /// Play a track immediately without changing the queue or queue index.
     ///
-    /// Existing queue entries keep their order. Tracks that are not already
-    /// queued are appended, then the requested track is selected for playback.
-    /// This is used by Home so browsing/playing from Home cannot discard the
-    /// queue the user already built.
-    func playPreservingQueue(
-        tracks: [LocalTrack],
-        startIndex: Int
-    ) {
-        guard
-            !tracks.isEmpty,
-            tracks.indices.contains(startIndex)
-        else {
+    /// The first standalone play remembers the queue track that was active.
+    /// Next/Previous can then resume from that queue position.
+    func playStandalonePreservingQueue(_ track: LocalTrack) {
+        guard !queue.isEmpty else {
+            play(track: track)
             return
         }
 
-        let selectedTrack = tracks[startIndex]
-
-        if queue.isEmpty {
-            originalQueue = tracks
-            queue = tracks
-            queueIndex = startIndex
-
-            play(track: selectedTrack)
-            return
+        if suspendedQueueTrackID == nil,
+           queue.indices.contains(queueIndex) {
+            suspendedQueueTrackID = queue[queueIndex].id
         }
 
-        let existingIDs = Set(queue.map(\.id))
-        let additions = tracks.filter { !existingIDs.contains($0.id) }
+        play(track: track)
+        savePlaybackState(force: true)
+    }
 
-        queue.append(contentsOf: additions)
-        originalQueue = queue
+    private func resumeQueueAfterStandalonePlay(direction: Int) -> Bool {
+        guard let savedID = suspendedQueueTrackID else {
+            return false
+        }
 
-        if let selectedIndex = queue.firstIndex(where: { $0.id == selectedTrack.id }) {
-            queueIndex = selectedIndex
-            play(track: queue[selectedIndex])
+        suspendedQueueTrackID = nil
+
+        guard let savedIndex = queue.firstIndex(where: { $0.id == savedID }) else {
+            // The queue may have been deliberately changed while the
+            // standalone track was playing. In that case, normal navigation
+            // should apply to the current queue.
+            return false
+        }
+
+        let targetIndex = savedIndex + direction
+
+        if queue.indices.contains(targetIndex) {
+            queueIndex = targetIndex
+            play(track: queue[targetIndex])
+        } else if repeatMode == .all && !queue.isEmpty {
+            queueIndex = direction > 0 ? 0 : queue.count - 1
+            play(track: queue[queueIndex])
+        } else {
+            // No queue item in that direction: return to the saved queue
+            // track rather than mutating the queue.
+            queueIndex = savedIndex
+            play(track: queue[savedIndex])
         }
 
         savePlaybackState(force: true)
+        return true
     }
 
     func startQueue(
@@ -1263,6 +1278,16 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Play / Pause
 
     func togglePlayPause() {
+        // Manual Play at the end of a completed queue restarts from
+        // the first queue item. This is intentionally manual; the queue never
+        // auto-restarts when the final track finishes.
+        if !isPlaying && !queue.isEmpty && queueIndex >= queue.count - 1 {
+            queueIndex = 0
+            play(track: queue[queueIndex])
+            savePlaybackState(force: true)
+            return
+        }
+
 
         guard currentTrack != nil else {
             return
@@ -1305,6 +1330,10 @@ class AudioEngineManager: ObservableObject {
 
     func forward() {
 
+        if resumeQueueAfterStandalonePlay(direction: 1) {
+            return
+        }
+
         if queueIndex + 1 <
             queue.count {
 
@@ -1341,6 +1370,9 @@ class AudioEngineManager: ObservableObject {
                 to:
                     0.0
             )
+
+        } else if resumeQueueAfterStandalonePlay(direction: -1) {
+            return
 
         } else if queueIndex > 0 {
 
