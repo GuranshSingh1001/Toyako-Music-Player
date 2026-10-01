@@ -333,7 +333,7 @@ struct ContentView: View {
                             }
                         }
                     )
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .toyakoAdaptiveGlass(in: Capsule())
                     .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
                     .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
                     .frame(width: playerWidth)

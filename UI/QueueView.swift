@@ -81,8 +81,7 @@ struct QueueView: View {
             .scrollBounceBehavior(.basedOnSize)
         }
         .clipShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
-        .glassEffect(
-            .regular.interactive(),
+        .toyakoAdaptiveGlass(
             in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
         )
         .padding(8)

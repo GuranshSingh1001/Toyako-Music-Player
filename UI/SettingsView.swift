@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
     @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
@@ -152,6 +153,15 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                     }
                 }
+                
+                if #available(iOS 26.0, *) {
+                        Toggle("Liquid Glass", isOn: $liquidGlassEnabled)
+                            .tint(.green)
+
+                        Text("When enabled, Toyako uses Liquid Glass on iPadOS 26 and later. Turning it off uses the opaque appearance instead.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                 Section("About") {
                     LabeledContent("App", value: "Toyako")

@@ -12,6 +12,7 @@ struct ToyakoPreferences {
     static let bleedingEffectKey = "Toyako.Appearance.BleedingEffect"
     static let libraryArtworkSizeKey = "Toyako.Appearance.LibraryArtworkSize"
     static let appearanceKey = "Toyako.Appearance.ColorScheme"
+    static let liquidGlassKey = "Toyako.Appearance.LiquidGlass"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -25,7 +26,8 @@ struct ToyakoPreferences {
             automaticArtistArtworkKey: false,
             bleedingEffectKey: true,
             libraryArtworkSizeKey: 180.0,
-            appearanceKey: "system"
+            appearanceKey: "system",
+            liquidGlassKey: true
         ])
 
         // Classic was removed because it was visually too close to Smooth.
