@@ -12,6 +12,7 @@ struct HomeView: View {
     let currentTrack: LocalTrack?
     let isPlaying: Bool
     let onPlayTrack: (Int) -> Void
+    let onPlayTrackReplacingQueue: (Int) -> Void
     let onTogglePlayPause: () -> Void
     let onShuffleAll: () -> Void
 
@@ -62,7 +63,7 @@ struct HomeView: View {
                 let recent = recentlyPlayed.filter { $0.id != currentTrack?.id }
                 if !recent.isEmpty {
                     section("Recently Played") {
-                        horizontalTracks(Array(recent.prefix(12)))
+                        horizontalTracks(Array(recent.prefix(12)), preservesQueue: true)
                     }
                 }
 
@@ -86,7 +87,7 @@ struct HomeView: View {
 
                 if !recommendedTracks.isEmpty {
                     section("Recommended for You") {
-                        horizontalTracks(recommendedTracks)
+                        horizontalTracks(recommendedTracks, preservesQueue: false)
                     }
                 }
 
@@ -183,7 +184,10 @@ struct HomeView: View {
         }
     }
 
-    private func horizontalTracks(_ items: [LocalTrack]) -> some View {
+    private func horizontalTracks(
+        _ items: [LocalTrack],
+        preservesQueue: Bool = true
+    ) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             // These sections are intentionally small (12 items max). A regular
             // HStack avoids the repeated child measurement/prefetch work of a
@@ -193,7 +197,11 @@ struct HomeView: View {
                 ForEach(items) { track in
                     Button {
                         if let index = tracks.firstIndex(where: { $0.id == track.id }) {
-                            onPlayTrack(index)
+                            if preservesQueue {
+                                onPlayTrack(index)
+                            } else {
+                                onPlayTrackReplacingQueue(index)
+                            }
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {

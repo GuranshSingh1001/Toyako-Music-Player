@@ -650,6 +650,13 @@ private struct HomeAudioContainer: View {
                 guard tracks.indices.contains(index) else { return }
                 audioManager.playStandalonePreservingQueue(tracks[index])
             },
+            onPlayTrackReplacingQueue: { index in
+                guard library.tracks.indices.contains(index) else { return }
+                audioManager.startQueue(
+                    tracks: library.tracks,
+                    startIndex: index
+                )
+            },
             onTogglePlayPause: {
                 audioManager.togglePlayPause()
             },
