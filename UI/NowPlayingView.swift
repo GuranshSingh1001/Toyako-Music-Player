@@ -722,15 +722,6 @@ private struct SmoothLyricsView: View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: CGFloat(lyricsLineSpacing)) {
-                    // When playback has a long instrumental/vocal gap, give the
-                    // listener a quiet sense of timing instead of leaving a
-                    // mysterious empty stretch between lyric blocks. The cue
-                    // lives in the lyric flow, so it travels naturally with the
-                    // upcoming line and fades away as that line approaches.
-                    if let firstLine = lyrics.first, firstLine.time > currentTime, firstLine.time - currentTime >= longLyricGapThreshold {
-                        lyricGapCue(nextTime: firstLine.time, currentTime: currentTime, compact: compact)
-                    }
-
                     ForEach(Array(lyrics.enumerated()), id: \.element.id) { index, line in
                         lyricLine(
                             line: line,
@@ -744,12 +735,6 @@ private struct SmoothLyricsView: View {
                             onSeek(line.time)
                         }
 
-                        if let nextLine = lyrics[safe: index + 1] {
-                            let gap = nextLine.time - line.time
-                            if gap >= longLyricGapThreshold {
-                                lyricGapCue(nextTime: nextLine.time, currentTime: currentTime, compact: compact)
-                            }
-                        }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -913,40 +898,19 @@ private struct SmoothLyricsView: View {
         }
     }
 
-    private let longLyricGapThreshold: TimeInterval = 2.8
-
-    @ViewBuilder
-    private func lyricGapCue(
-        nextTime: TimeInterval,
-        currentTime: TimeInterval,
-        compact: Bool
-    ) -> some View {
-        let remaining = max(0, nextTime - currentTime)
-        let isApproaching = remaining < 1.15
-
-        HStack(spacing: compact ? 5 : 6) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(.primary.opacity(isApproaching ? 0.30 : 0.18))
-                    .frame(width: compact ? 3 : 3.5, height: compact ? 3 : 3.5)
-                    .scaleEffect(isApproaching ? 1.12 : 0.82)
-                    .animation(
-                        .easeInOut(duration: 1.15)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.16),
-                        value: isApproaching
-                    )
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, compact ? 10 : 13)
-        .opacity(remaining > 0.12 ? (isApproaching ? 0.72 : 0.48) : 0)
-        .scaleEffect(isApproaching ? 1.0 : 0.96)
-        .animation(.easeOut(duration: 0.4), value: isApproaching)
-        .accessibilityLabel("Upcoming lyrics")
-    }
-
     private func lineState(_ line: LyricLine) -> LyricLineState {
+        // TTML paragraphs carry real begin/end intervals. Do not infer that a
+        // line is "past" merely because another singer's paragraph has begun:
+        // two performers can legitimately overlap. Each TTML line therefore
+        // owns its visual state for its full timed interval.
+        if line.hasTimedInterval {
+            if currentTime < line.time { return .future }
+            if currentTime < line.endTime { return .active }
+            return .past
+        }
+
+        // Plain LRC lines normally have only a start timestamp, so preserve
+        // the sequential active/past behavior for those lines.
         if line.id == activeID { return .active }
         if line.time < currentTime { return .past }
         return .future

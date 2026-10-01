@@ -161,6 +161,13 @@ struct LyricLine: Identifiable, Equatable {
         !words.isEmpty
     }
 
+    /// True when this line has an actual interval rather than only an LRC-style
+    /// start timestamp. TTML uses this interval to keep overlapping singers
+    /// visually active until their own paragraph ends.
+    var hasTimedInterval: Bool {
+        hasWordTiming || endTime > time + 0.001
+    }
+
     var containsJapanese: Bool {
         containsJapaneseCharacters(text)
     }
