@@ -352,11 +352,16 @@ struct TTMLParser {
                 ? timedWords.map(\.text).joined(separator: " ")
                 : fallbackText
 
+    
+            let contextualWords = containsJapaneseCharacters(text)
+                ? JapaneseLyricMapper.contextualizedWords(timedWords, lineText: text)
+                : timedWords
+
             return LyricLine(
                 time: lineStart,
                 text: text,
                 endTime: lineEnd,
-                words: timedWords
+                words: contextualWords
             )
         }
     }
