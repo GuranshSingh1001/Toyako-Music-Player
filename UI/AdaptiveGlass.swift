@@ -6,10 +6,11 @@ import SwiftUI
 /// iPadOS 18 through newer releases without requiring Liquid Glass APIs on older systems.
 struct ToyakoAdaptiveGlass<S: Shape>: ViewModifier {
     let shape: S
+    @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), liquidGlassEnabled {
             content.glassEffect(.regular.interactive(), in: shape)
         } else {
             content.background(Color(uiColor: .systemBackground), in: shape)
