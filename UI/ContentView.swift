@@ -658,7 +658,7 @@ private struct HomeAudioContainer: View {
                 if !audioManager.isShuffle {
                     audioManager.toggleShuffle()
                 }
-                audioManager.startQueue(tracks: tracks, startIndex: index)
+                audioManager.playPreservingQueue(tracks: tracks, startIndex: index)
             }
         )
     }

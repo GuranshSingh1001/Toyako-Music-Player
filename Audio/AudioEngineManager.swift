@@ -948,6 +948,48 @@ class AudioEngineManager: ObservableObject {
     }
 
 
+    /// Plays the requested track(s) without replacing an existing queue.
+    ///
+    /// Existing queue entries keep their order. Tracks that are not already
+    /// queued are appended, then the requested track is selected for playback.
+    /// This is used by Home so browsing/playing from Home cannot discard the
+    /// queue the user already built.
+    func playPreservingQueue(
+        tracks: [LocalTrack],
+        startIndex: Int
+    ) {
+        guard
+            !tracks.isEmpty,
+            tracks.indices.contains(startIndex)
+        else {
+            return
+        }
+
+        let selectedTrack = tracks[startIndex]
+
+        if queue.isEmpty {
+            originalQueue = tracks
+            queue = tracks
+            queueIndex = startIndex
+
+            play(track: selectedTrack)
+            return
+        }
+
+        let existingIDs = Set(queue.map(\.id))
+        let additions = tracks.filter { !existingIDs.contains($0.id) }
+
+        queue.append(contentsOf: additions)
+        originalQueue = queue
+
+        if let selectedIndex = queue.firstIndex(where: { $0.id == selectedTrack.id }) {
+            queueIndex = selectedIndex
+            play(track: queue[selectedIndex])
+        }
+
+        savePlaybackState(force: true)
+    }
+
     func startQueue(
         tracks: [LocalTrack],
         startIndex: Int
