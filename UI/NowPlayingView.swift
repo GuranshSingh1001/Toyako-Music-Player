@@ -683,11 +683,55 @@ private struct SmoothLyricsView: View {
         LyricsAnimationStyle(rawValue: lyricsAnimationStyle) ?? .dynamic
     }
 
+    // Start moving the upcoming line into place before its timestamp. The
+    // scroll then finishes as the lyric changes, instead of starting after
+    // the new line has already become active.
+    private var scrollLeadTime: TimeInterval {
+        switch animationStyle {
+        case .dynamic: return 0.58
+        case .smooth: return 0.68
+        case .minimal: return 0.28
+        }
+    }
+
+    private var scrollAnchorID: UUID? {
+        guard !lyrics.isEmpty else { return nil }
+
+        guard let activeIndex = lyrics.lastIndex(where: { $0.time <= currentTime }) else {
+            return lyrics.first?.id
+        }
+
+        let nextIndex = activeIndex + 1
+        guard nextIndex < lyrics.count else {
+            return lyrics[activeIndex].id
+        }
+
+        let nextLine = lyrics[nextIndex]
+        let gap = max(0.01, nextLine.time - lyrics[activeIndex].time)
+        let lead = min(scrollLeadTime, max(0.12, gap * 0.72))
+
+        // Once we're inside the pre-roll window, the upcoming line owns the
+        // scroll position. This changes before activeID does, giving the
+        // scroll animation time to settle exactly on the next lyric.
+        return currentTime >= nextLine.time - lead
+            ? nextLine.id
+            : lyrics[activeIndex].id
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: CGFloat(lyricsLineSpacing)) {
-                    ForEach(lyrics) { line in
+                    // When playback has a long instrumental/vocal gap, give the
+                    // listener a quiet sense of timing instead of leaving a
+                    // mysterious empty stretch between lyric blocks. The cue
+                    // lives in the lyric flow, so it travels naturally with the
+                    // upcoming line and fades away as that line approaches.
+                    if let firstLine = lyrics.first, firstLine.time > currentTime, firstLine.time - currentTime >= longLyricGapThreshold {
+                        lyricGapCue(nextTime: firstLine.time, currentTime: currentTime, compact: compact)
+                    }
+
+                    ForEach(Array(lyrics.enumerated()), id: \.element.id) { index, line in
                         lyricLine(
                             line: line,
                             state: lineState(line),
@@ -698,6 +742,13 @@ private struct SmoothLyricsView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             onSeek(line.time)
+                        }
+
+                        if let nextLine = lyrics[safe: index + 1] {
+                            let gap = nextLine.time - line.time
+                            if gap >= longLyricGapThreshold {
+                                lyricGapCue(nextTime: nextLine.time, currentTime: currentTime, compact: compact)
+                            }
                         }
                     }
                 }
@@ -783,11 +834,15 @@ private struct SmoothLyricsView: View {
                     translationConfiguration = nil
                 }
             }
-            .onChange(of: activeID) { _, newID in
+            .onChange(of: scrollAnchorID) { _, newID in
                 guard let newID else { return }
-                // A deliberately slower, non-bouncy movement keeps the lyric
-                // surface calm. The line itself also fades/settles independently.
-                withAnimation(.timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.62)) {
+
+                // The next line starts traveling into the center before its
+                // timestamp. By the time the audio reaches that line, the
+                // scroll has already settled, so there is no visible "catch-up"
+                // after the lyric changes.
+                let duration: Double = animationStyle == .minimal ? 0.28 : (animationStyle == .smooth ? 0.58 : 0.52)
+                withAnimation(.timingCurve(0.16, 0.78, 0.24, 1.0, duration: duration)) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
             }
@@ -839,7 +894,8 @@ private struct SmoothLyricsView: View {
         // Prefer the actual active line. If playback is before the first timed
         // line, show the first line rather than leaving the lyric area empty.
         // This also makes the initial presentation deterministic.
-        let targetID = activeID
+        let targetID = scrollAnchorID
+            ?? activeID
             ?? lyrics.first(where: { $0.time > currentTime })?.id
             ?? lyrics.last?.id
 
@@ -855,6 +911,39 @@ private struct SmoothLyricsView: View {
                 proxy.scrollTo(targetID, anchor: .center)
             }
         }
+    }
+
+    private let longLyricGapThreshold: TimeInterval = 2.8
+
+    @ViewBuilder
+    private func lyricGapCue(
+        nextTime: TimeInterval,
+        currentTime: TimeInterval,
+        compact: Bool
+    ) -> some View {
+        let remaining = max(0, nextTime - currentTime)
+        let isApproaching = remaining < 1.15
+
+        HStack(spacing: compact ? 5 : 6) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(.primary.opacity(isApproaching ? 0.30 : 0.18))
+                    .frame(width: compact ? 3 : 3.5, height: compact ? 3 : 3.5)
+                    .scaleEffect(isApproaching ? 1.12 : 0.82)
+                    .animation(
+                        .easeInOut(duration: 1.15)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.16),
+                        value: isApproaching
+                    )
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, compact ? 10 : 13)
+        .opacity(remaining > 0.12 ? (isApproaching ? 0.72 : 0.48) : 0)
+        .scaleEffect(isApproaching ? 1.0 : 0.96)
+        .animation(.easeOut(duration: 0.4), value: isApproaching)
+        .accessibilityLabel("Upcoming lyrics")
     }
 
     private func lineState(_ line: LyricLine) -> LyricLineState {
@@ -929,10 +1018,10 @@ private struct SmoothLyricsView: View {
         }
         .animation(
             animationStyle == .minimal
-                ? .easeInOut(duration: 0.22)
+                ? .easeInOut(duration: 0.20)
                 : animationStyle == .smooth
-                        ? .smooth(duration: 0.58)
-                        : .timingCurve(0.22, 0.72, 0.25, 1.0, duration: 0.62),
+                        ? .smooth(duration: 0.52)
+                        : .timingCurve(0.16, 0.78, 0.24, 1.0, duration: 0.48),
             value: state
         )
     }
@@ -1695,5 +1784,12 @@ struct AppleMusicScrubberBar: View {
             seconds / 60,
             seconds % 60
         )
+    }
+}
+
+
+private extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
