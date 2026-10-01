@@ -352,7 +352,11 @@ struct TTMLParser {
                 ? timedWords.map(\.text).joined(separator: " ")
                 : fallbackText
 
-    
+            // Resolve Japanese readings from the complete paragraph before
+            // rendering individual timed spans. A kanji-only span such as
+            // `美` or `溢` cannot reliably determine its reading in isolation.
+            // The TTML timestamps stay untouched; only the romaji attached to
+            // each timed unit is rebuilt from the surrounding Japanese word.
             let contextualWords = containsJapaneseCharacters(text)
                 ? JapaneseLyricMapper.contextualizedWords(timedWords, lineText: text)
                 : timedWords

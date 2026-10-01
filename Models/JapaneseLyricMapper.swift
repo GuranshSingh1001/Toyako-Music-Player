@@ -1,10 +1,12 @@
 import Foundation
+import CoreFoundation
 
 /// Builds character/mora-sized karaoke units for Japanese timed spans.
 ///
 /// TTML timing remains authoritative, but romanization is resolved from the
-/// largest available Japanese context. This is important for kanji
-
+/// largest available Japanese context. This is important for kanji: a timed
+/// span containing only `美` cannot reliably be romanized in isolation because
+/// its reading depends on the surrounding word (`美しい` -> `utsukushii`).
 enum JapaneseLyricMapper {
 
     static func units(
@@ -172,7 +174,7 @@ enum JapaneseLyricMapper {
                 kCFAllocatorDefault,
                 cfText,
                 CFRangeMake(0, length),
-                CFStringTokenizerUnitWordBoundary,
+                kCFStringTokenizerUnitWordBoundary,
                 locale
               ) else { return [] }
 
@@ -182,14 +184,14 @@ enum JapaneseLyricMapper {
         while !tokenType.isEmpty {
             let range = CFStringTokenizerGetCurrentTokenRange(tokenizer)
             let source = (CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) as String)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
             if !source.isEmpty,
                let latin = CFStringTokenizerCopyCurrentTokenAttribute(
                     tokenizer,
                     kCFStringTokenizerAttributeLatinTranscription
                ) as? String {
-                let romanized = latin.trimmingCharacters(in: .whitespacesAndNewlines)
+                let romanized = latin.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
                 if !romanized.isEmpty && romanized != source {
                     result.append(RomanizationToken(source: source, romanized: romanized))
                 }
@@ -365,7 +367,7 @@ enum JapaneseLyricMapper {
         }
 
         if cursor < graphemes.count {
-            output[output.count - 1] = (output.last ?? "") + String(graphemes[cursor...])
+            output[output.count - 1] = (output[output.count - 1] ?? "") + String(graphemes[cursor...])
         }
         return output
     }
