@@ -148,11 +148,12 @@ struct LyricLine: Identifiable, Equatable {
         text: String,
         endTime: TimeInterval? = nil,
         words: [LyricWord] = [],
-        generateRomanization: Bool = true
+        generateRomanization: Bool = true,
+        romanizedOverride: String? = nil
     ) {
         self.time = time
         self.text = text
-        self.romanized = generateRomanization ? text.toJapaneseRomaji() : nil
+        self.romanized = romanizedOverride ?? (generateRomanization ? text.toJapaneseRomaji() : nil)
         self.endTime = max(
             time,
             endTime ?? words.last?.endTime ?? time

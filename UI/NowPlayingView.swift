@@ -1128,17 +1128,49 @@ private struct JapaneseTimedLine: View {
         line.words.flatMap(\.units)
     }
 
+    /// Unit-level romaji is only used when the entire timed line was mapped
+    /// successfully. If even one timed unit has no reading, use the complete
+    /// paragraph-level reading instead. This prevents TTML boundary mismatches
+    /// from producing partial or completely missing romaji.
+    private var hasCompleteUnitRomanization: Bool {
+        let japaneseUnits = allUnits.filter { containsJapaneseCharacters($0.text) }
+        guard !japaneseUnits.isEmpty else { return false }
+        return japaneseUnits.allSatisfy { unit in
+            !(unit.romanized?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            FlowLayout(horizontalSpacing: 4, verticalSpacing: 8) {
-                ForEach(allUnits) { unit in
-                    JapaneseLyricUnitView(
-                        unit: unit,
-                        currentTime: currentTime,
-                        state: state,
-                        japaneseFont: japaneseFont,
-                        romanizedFont: romanizedFont
-                    )
+            if hasCompleteUnitRomanization {
+                FlowLayout(horizontalSpacing: 4, verticalSpacing: 8) {
+                    ForEach(allUnits) { unit in
+                        JapaneseLyricUnitView(
+                            unit: unit,
+                            currentTime: currentTime,
+                            state: state,
+                            japaneseFont: japaneseFont,
+                            romanizedFont: romanizedFont
+                        )
+                    }
+                }
+            } else {
+                // TTML sometimes contains only line/paragraph timing, or its
+                // spans do not map cleanly to Japanese tokenizer words. In
+                // either case, render the original line as one unit and use
+                // the paragraph-level romaji calculated by TTMLParser.
+                Text(line.text)
+                    .font(japaneseFont)
+                    .foregroundStyle(.primary.opacity(state == .active ? 1 : 0.82))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if showRomanization,
+                   let romanized = line.romanized,
+                   !romanized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(romanized)
+                        .font(romanizedFont)
+                        .foregroundStyle(.primary.opacity(state == .active ? 0.78 : 0.42))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             if showTranslation, let translatedText, !translatedText.isEmpty {

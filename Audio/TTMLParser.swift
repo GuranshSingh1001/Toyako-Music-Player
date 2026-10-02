@@ -374,7 +374,12 @@ struct TTMLParser {
                 text: text,
                 endTime: lineEnd,
                 words: contextualWords,
-                generateRomanization: false
+                generateRomanization: false,
+                // Always retain the complete paragraph-level reading. If TTML
+                // has no word timing, or its timed spans cannot be mapped
+                // completely, the renderer can fall back to this exact same
+                // romaji instead of showing a blank line.
+                romanizedOverride: lineRomanized
             )
         }
     }
