@@ -651,7 +651,7 @@ class AudioEngineManager: ObservableObject {
                     .main
 
             ) { [weak self] _ in
-                ToyakoPlaybackDiagnostics.shared.log("END_NOTIFICATION item=\(playerItem) current=\(self?.currentTrack?.title ?? "nil") index=\(self?.queueIndex ?? -1)")
+                ToyakoPlaybackDiagnostics.shared.log("END_NOTIFICATION item=\(item) current=\(self?.currentTrack?.title ?? "nil") index=\(self?.queueIndex ?? -1)")
                 self?.handleTrackEnded()
             }
 
