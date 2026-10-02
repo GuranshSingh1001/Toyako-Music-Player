@@ -1093,53 +1093,94 @@ class AudioEngineManager: ObservableObject {
         track:
             LocalTrack
     ) {
+        let diagnostics = ToyakoPlaybackDiagnostics.shared
         let queueDescription = queue.map { "\($0.id.uuidString.prefix(8)):\($0.title)" }.joined(separator: " | ")
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_BEGIN title=\(track.title) id=\(track.id) url=\(track.url.path) queueIndex=\(queueIndex) queueCount=\(queue.count) queue=[\(queueDescription)] current=\(currentTrack?.title ?? "nil")")
+        let standardizedURL = track.url.standardizedFileURL
+        let fileManager = FileManager.default
+        let exists = fileManager.fileExists(atPath: standardizedURL.path)
+        let resourceValues = try? standardizedURL.resourceValues(forKeys: [
+            .fileSizeKey,
+            .isReadableKey,
+            .isRegularFileKey
+        ])
 
-        // Keep the .playback session active when playback is started from a
-        // queue, remote command, or after returning from the background.
-        guard activateAudioSessionForPlayback() else {
-            ToyakoPlaybackDiagnostics.shared.log("PLAY_ABORT audio session activation failed title=\(track.title)")
+        diagnostics.log("PLAY_BEGIN title=\(track.title) id=\(track.id) url=\(standardizedURL.path) urlAbsolute=\(standardizedURL.absoluteString) queueIndex=\(queueIndex) queueCount=\(queue.count) current=\(currentTrack?.title ?? "nil")")
+        diagnostics.log("PLAY_TARGET_FILE exists=\(exists) readable=\(resourceValues?.isReadable ?? false) regular=\(resourceValues?.isRegularFile ?? false) size=\(resourceValues?.fileSize.map(String.init) ?? "nil") pathExtension=\(standardizedURL.pathExtension)")
+        diagnostics.log("PLAY_TARGET_METADATA title=\(track.title) artist=\(track.artist) album=\(track.album) duration=\(track.duration) id=\(track.id) url=\(standardizedURL.path)")
+        diagnostics.log("PLAY_STATE_BEFORE isPlaying=\(isPlaying) playerRate=\(player.rate) playerItem=\(player.currentItem.map { String(describing: $0) } ?? "nil") playerItemsCount=\(player.items().count) volume=\(volume)")
+        diagnostics.log("PLAY_QUEUE queueIndex=\(queueIndex) queueCount=\(queue.count) queue=[\(queueDescription)]")
+
+        guard exists else {
+            diagnostics.log("PLAY_ABORT target file does not exist")
             return
         }
 
-        currentTrack =
-            track
+        // Keep the .playback session active when playback is started from a
+        // queue, remote command, or after returning from the background.
+        diagnostics.log("PLAY_STEP 01 BEFORE activateAudioSessionForPlayback")
+        guard activateAudioSessionForPlayback() else {
+            diagnostics.log("PLAY_ABORT step=01 audio session activation failed title=\(track.title)")
+            return
+        }
+        diagnostics.log("PLAY_STEP 01 AFTER activateAudioSessionForPlayback")
 
+        diagnostics.log("PLAY_STEP 02 BEFORE currentTrack assignment")
+        currentTrack = track
+        diagnostics.log("PLAY_STEP 02 AFTER currentTrack assignment current=\(currentTrack?.title ?? "nil")")
+
+        diagnostics.log("PLAY_STEP 03 BEFORE recordRecentlyPlayed")
         recordRecentlyPlayed(track)
+        diagnostics.log("PLAY_STEP 03 AFTER recordRecentlyPlayed recentlyPlayedCount=\(recentlyPlayed.count)")
 
+        diagnostics.log("PLAY_STEP 04 BEFORE reset pending seek state")
         pendingSeekTarget = nil
         pendingSeekTrackID = nil
+        diagnostics.log("PLAY_STEP 04 AFTER reset pending seek state")
 
-        currentTime =
-            0
+        diagnostics.log("PLAY_STEP 05 BEFORE reset currentTime")
+        currentTime = 0
+        diagnostics.log("PLAY_STEP 05 AFTER reset currentTime currentTime=\(currentTime)")
 
-        playbackProgress =
-            0
+        diagnostics.log("PLAY_STEP 06 BEFORE reset playbackProgress")
+        playbackProgress = 0
+        diagnostics.log("PLAY_STEP 06 AFTER reset playbackProgress playbackProgress=\(playbackProgress)")
 
+        diagnostics.log("PLAY_STEP 07 BEFORE loadLyrics url=\(standardizedURL.path)")
+        loadLyrics(for: track)
+        diagnostics.log("PLAY_STEP 07 AFTER loadLyrics sources=\(lyricsSources.count) selected=\(selectedLyricsSourceID ?? "nil") lines=\(currentLyrics.count)")
 
-        loadLyrics(
-            for:
-                track
-        )
-
+        diagnostics.log("PLAY_STEP 08 BEFORE detachTimeObserver")
         detachTimeObserver()
+        diagnostics.log("PLAY_STEP 08 AFTER detachTimeObserver")
+
+        diagnostics.log("PLAY_STEP 09 BEFORE detachEndObserver")
         detachEndObserver()
+        diagnostics.log("PLAY_STEP 09 AFTER detachEndObserver")
 
+        diagnostics.log("PLAY_STEP 10 BEFORE makePlayerItem")
+        let playerItem = makePlayerItem(url: standardizedURL)
+        diagnostics.log("PLAY_STEP 10 AFTER makePlayerItem itemStatus=\(playerItem.status.rawValue) itemError=\(playerItem.error?.localizedDescription ?? "nil") asset=\(String(describing: playerItem.asset))")
 
-
-        let playerItem =
-            makePlayerItem(
-                url:
-                    track.url
-            )
-
-
+        diagnostics.log("PLAY_STEP 11 BEFORE player.volume old=\(player.volume) new=\(volume)")
         player.volume = volume
+        diagnostics.log("PLAY_STEP 11 AFTER player.volume actual=\(player.volume)")
+
+        diagnostics.log("PLAY_STEP 12 BEFORE player.removeAllItems count=\(player.items().count)")
         player.removeAllItems()
+        diagnostics.log("PLAY_STEP 12 AFTER player.removeAllItems count=\(player.items().count)")
+
+        diagnostics.log("PLAY_STEP 13 BEFORE player.replaceCurrentItem itemStatus=\(playerItem.status.rawValue)")
         player.replaceCurrentItem(with: playerItem)
+        diagnostics.log("PLAY_STEP 13 AFTER player.replaceCurrentItem currentItemMatches=\(player.currentItem === playerItem) currentItem=\(player.currentItem.map { String(describing: $0) } ?? "nil") count=\(player.items().count)")
+
+        diagnostics.log("PLAY_STEP 14 BEFORE player.play")
         player.play()
+        diagnostics.log("PLAY_STEP 14 AFTER player.play rate=\(player.rate) timeControlStatus=\(player.timeControlStatus.rawValue) reason=\(String(describing: player.reasonForWaitingToPlay))")
+
+        diagnostics.log("PLAY_STEP 15 BEFORE finalizePlay")
         finalizePlay(track: track, playerItem: playerItem)
+        diagnostics.log("PLAY_STEP 15 AFTER finalizePlay isPlaying=\(isPlaying) current=\(currentTrack?.title ?? "nil") playerRate=\(player.rate)")
+        diagnostics.log("PLAY_COMPLETE title=\(track.title) id=\(track.id)")
     }
 
 
