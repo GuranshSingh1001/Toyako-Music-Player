@@ -177,7 +177,7 @@ enum JapaneseLyricMapper {
                 kCFAllocatorDefault,
                 cfText,
                 CFRangeMake(0, length),
-                kCFStringTokenizerUnitWordBoundary,
+                kCFStringTokenizerUnitWord,
                 locale
               ) else { return [] }
 
