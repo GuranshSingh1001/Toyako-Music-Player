@@ -183,7 +183,11 @@ enum JapaneseLyricMapper {
 
         while !tokenType.isEmpty {
             let range = CFStringTokenizerGetCurrentTokenRange(tokenizer)
-            let source = (CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) as String)
+            guard let created = CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) else {
+                tokenType = CFStringTokenizerAdvanceToNextToken(tokenizer)
+                continue
+            }
+            let source = (created as String)
                 .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
             if !source.isEmpty,
