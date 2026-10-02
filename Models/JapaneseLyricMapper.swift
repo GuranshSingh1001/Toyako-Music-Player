@@ -36,6 +36,40 @@ enum JapaneseLyricMapper {
         return makeUnits(pieces, romanizationParts: romanizationParts, startTime: startTime, endTime: endTime)
     }
 
+    /// Applies one paragraph-level romaji result to already-timed words.
+    /// The tokenizer is invoked once for the complete lyric line, never once
+    /// per TTML span. The original TTML timing remains authoritative.
+    static func timedWordsWithRomanization(
+        _ words: [LyricWord],
+        lineText: String,
+        romanized: String?
+    ) -> [LyricWord] {
+        guard !words.isEmpty, let romanized, !romanized.isEmpty else { return words }
+        guard containsJapaneseCharacters(lineText) else { return words }
+
+        let wordParts = allocateRomanization(
+            romanized,
+            to: words.map { Piece(text: $0.text, isAtomicWord: true) }
+        )
+
+        return words.enumerated().map { index, word in
+            let rebuiltUnits = units(
+                for: word.text,
+                startTime: word.startTime,
+                endTime: word.endTime,
+                romanizationOverride: wordParts[index] == nil ? [] : [wordParts[index]]
+            )
+
+            return LyricWord(
+                text: word.text,
+                startTime: word.startTime,
+                endTime: word.endTime,
+                units: rebuiltUnits,
+                generateRomanization: false
+            )
+        }
+    }
+
     /// Rebuilds the timed words using paragraph-level Japanese romanization.
     /// This fixes TTML where a single Japanese word is split across several
     /// timed spans. Each span keeps its original begin/end interval.
@@ -189,7 +223,7 @@ enum JapaneseLyricMapper {
                 kCFAllocatorDefault,
                 cfText,
                 CFRangeMake(0, length),
-                kCFStringTokenizerUnitWordBoundary,
+                kCFStringTokenizerUnitWord,
                 locale
               ) else { return [] }
 
