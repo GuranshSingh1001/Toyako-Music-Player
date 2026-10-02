@@ -151,7 +151,7 @@ enum JapaneseLyricMapper {
                     for (offset, index) in group.enumerated() {
                         output[index] = rebuiltWord(
                             words[index],
-                            romanization: parts[offset]
+                            romanization: parts[offset].first ?? nil
                         )
                         assigned[index] = true
                     }
