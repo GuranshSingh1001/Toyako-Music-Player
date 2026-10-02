@@ -47,27 +47,76 @@ enum JapaneseLyricMapper {
         guard !words.isEmpty, let romanized, !romanized.isEmpty else { return words }
         guard containsJapaneseCharacters(lineText) else { return words }
 
-        let wordParts = allocateRomanization(
-            romanized,
-            to: words.map { Piece(text: $0.text, isAtomicWord: true) }
-        )
+        // Use the complete line for Japanese word segmentation. The previous
+        // implementation simply split the complete romaji string by the
+        // number of timed spans, which is not linguistically aligned. For
+        // example, 美しいままで became roughly `uts` / `ukush` / `iim` /
+        // `am` / `ade`. Here we first recover the Japanese word boundaries
+        // from the complete line, then map each word's reading onto the exact
+        // TTML spans that make up that word.
+        let tokens = japaneseWordTokens(lineText)
+        guard !tokens.isEmpty else { return words }
 
-        return words.enumerated().map { index, word in
-            let rebuiltUnits = units(
-                for: word.text,
-                startTime: word.startTime,
-                endTime: word.endTime,
-                romanizationOverride: wordParts[index] == nil ? [] : [wordParts[index]]
+        var output = words
+        var wordIndex = 0
+
+        for token in tokens {
+            guard wordIndex < words.count else { break }
+
+            var group: [Int] = []
+            var combined = ""
+
+            while wordIndex < words.count {
+                let candidate = words[wordIndex].text
+                if candidate.isEmpty {
+                    wordIndex += 1
+                    continue
+                }
+
+                let next = combined + candidate
+                if token.source.hasPrefix(next) {
+                    combined = next
+                    group.append(wordIndex)
+                    wordIndex += 1
+                    if combined == token.source { break }
+                } else {
+                    break
+                }
+            }
+
+            guard combined == token.source, !group.isEmpty else {
+                // Do not consume an unmatched timed word. A later token may
+                // still match it.
+                continue
+            }
+
+            let romanizationParts = allocateTokenRomanization(
+                source: token.source,
+                romanized: token.romanized,
+                words: group.map { words[$0].text }
             )
 
-            return LyricWord(
-                text: word.text,
-                startTime: word.startTime,
-                endTime: word.endTime,
-                units: rebuiltUnits,
-                generateRomanization: false
-            )
+            for (offset, index) in group.enumerated() {
+                let word = words[index]
+                let override = romanizationParts[offset]
+                let rebuiltUnits = units(
+                    for: word.text,
+                    startTime: word.startTime,
+                    endTime: word.endTime,
+                    romanizationOverride: override
+                )
+
+                output[index] = LyricWord(
+                    text: word.text,
+                    startTime: word.startTime,
+                    endTime: word.endTime,
+                    units: rebuiltUnits,
+                    generateRomanization: false
+                )
+            }
         }
+
+        return output
     }
 
     /// Rebuilds the timed words using paragraph-level Japanese romanization.
@@ -279,7 +328,7 @@ enum JapaneseLyricMapper {
         }
 
         let suffix = String(characters[kanaSuffixStart...])
-        let suffixRomanized = suffix.toJapaneseRomaji() ?? ""
+        let suffixRomanized = romanizeKana(suffix) ?? ""
         var kanjiRomanized = romanized
 
         if !suffix.isEmpty, !suffixRomanized.isEmpty {
@@ -296,7 +345,7 @@ enum JapaneseLyricMapper {
             }
 
             if wordIsAllKana {
-                result[wordIndex] = [word.toJapaneseRomaji() ?? word]
+                result[wordIndex] = [romanizeKana(word) ?? word]
                 continue
             }
 
@@ -307,7 +356,7 @@ enum JapaneseLyricMapper {
                 result[wordIndex] = [remainingKanjiReading]
                 remainingKanjiReading = ""
             } else {
-                result[wordIndex] = [word.toJapaneseRomaji() ?? word]
+                result[wordIndex] = [romanizeKana(word) ?? word]
             }
         }
 
@@ -337,6 +386,24 @@ enum JapaneseLyricMapper {
         }
 
         return result
+    }
+
+    /// Romanizes kana without invoking CFStringTokenizer. This is used only
+    /// for kana-only pieces after the complete Japanese word has already been
+    /// read in context. It keeps the context-sensitive kanji reading in the
+    /// tokenizer while avoiding extra tokenizer calls for suffixes.
+    private static func romanizeKana(_ text: String) -> String? {
+        guard !text.isEmpty, Array(text).allSatisfy({
+            isKana($0.unicodeScalars.first?.value ?? 0)
+        }) else {
+            return nil
+        }
+
+        let result = text
+            .applyingTransform(.toLatin, reverse: false)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return result?.isEmpty == false ? result : nil
     }
 
     private static func removeRomanizedSuffix(_ full: String, _ suffix: String) -> String {
