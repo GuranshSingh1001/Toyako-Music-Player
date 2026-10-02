@@ -190,33 +190,72 @@ func containsJapaneseCharacters(_ text: String) -> Bool {
     }
 }
 
+// CFStringTokenizer's Japanese transliteration path is kept for its accurate
+// kanji readings, but access is serialized because the tokenizer/ICU stack can
+// be entered concurrently while TTML lyrics are being prepared for playback.
+enum JapaneseRomajiTokenizerLock {
+    static let lock = NSLock()
+}
+
 extension String {
-    /// Converts Japanese text to a readable romaji representation without
-    /// using CFStringTokenizer. The tokenizer path was responsible for an
-    /// intermittent crash while TTML lyrics were being constructed.
     func toJapaneseRomaji() -> String? {
-        guard containsJapaneseCharacters(self) else { return nil }
+        JapaneseRomajiTokenizerLock.lock.lock()
+        defer { JapaneseRomajiTokenizerLock.lock.unlock() }
+
+        guard self.range(of: #"[一-龯ぁ-んァ-ヶ]"#, options: .regularExpression) != nil else {
+            return nil
+        }
 
         let sanitized = self
             .replacingOccurrences(of: "、", with: ", ")
             .replacingOccurrences(of: "。", with: ". ")
             .replacingOccurrences(of: "　", with: " ")
 
-        guard !sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let cfText = sanitized as CFString
+        let length = CFStringGetLength(cfText)
+        guard length > 0 else { return nil }
+
+        let localeIdentifier = CFLocaleCreateCanonicalLanguageIdentifierFromString(kCFAllocatorDefault, "ja" as CFString)
+        guard let locale = CFLocaleCreate(kCFAllocatorDefault, localeIdentifier),
+              let tokenizer = CFStringTokenizerCreate(
+                  kCFAllocatorDefault,
+                  cfText,
+                  CFRangeMake(0, length),
+                  kCFStringTokenizerUnitWordBoundary,
+                  locale
+              ) else {
             return nil
         }
 
-        // Foundation/ICU performs the transliteration without the
-        // CFStringTokenizer Japanese LatinTranscription API that previously
-        // crashed for some TTML lyric strings.
-        guard let transformed = sanitized.applyingTransform(.toLatin, reverse: false) else {
-            return nil
+        var words: [String] = []
+        var tokenType = CFStringTokenizerAdvanceToNextToken(tokenizer)
+
+        while !tokenType.isEmpty {
+            if let latin = CFStringTokenizerCopyCurrentTokenAttribute(tokenizer, kCFStringTokenizerAttributeLatinTranscription) as? String {
+                let cleaned = latin.trimmingCharacters(in: CharacterSet.whitespaces)
+                if !cleaned.isEmpty {
+                    words.append(cleaned)
+                }
+            } else {
+                let range = CFStringTokenizerGetCurrentTokenRange(tokenizer)
+                let sub = (CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) as String)
+                    .trimmingCharacters(in: CharacterSet.whitespaces)
+                if !sub.isEmpty {
+                    words.append(sub)
+                }
+            }
+            tokenType = CFStringTokenizerAdvanceToNextToken(tokenizer)
         }
 
-        let result = transformed
-            .replacingOccurrences(of: "  ", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var result = words.joined(separator: " ")
+        result = result.replacingOccurrences(of: " ,", with: ",")
+        result = result.replacingOccurrences(of: " .", with: ".")
+        result = result.replacingOccurrences(of: " !", with: "!")
+        result = result.replacingOccurrences(of: " ?", with: "?")
+        result = result.replacingOccurrences(of: " )", with: ")")
+        result = result.replacingOccurrences(of: "( ", with: "(")
+        result = result.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
-        return result.isEmpty ? nil : result
+        return (result.isEmpty || result == self) ? nil : result
     }
 }
