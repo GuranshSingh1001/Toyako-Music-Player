@@ -190,18 +190,8 @@ func containsJapaneseCharacters(_ text: String) -> Bool {
     }
 }
 
-// CFStringTokenizer's Japanese transliteration path is kept for its accurate
-// kanji readings, but access is serialized because the tokenizer/ICU stack can
-// be entered concurrently while TTML lyrics are being prepared for playback.
-enum JapaneseRomajiTokenizerLock {
-    static let lock = NSLock()
-}
-
 extension String {
     func toJapaneseRomaji() -> String? {
-        JapaneseRomajiTokenizerLock.lock.lock()
-        defer { JapaneseRomajiTokenizerLock.lock.unlock() }
-
         guard self.range(of: #"[一-龯ぁ-んァ-ヶ]"#, options: .regularExpression) != nil else {
             return nil
         }
