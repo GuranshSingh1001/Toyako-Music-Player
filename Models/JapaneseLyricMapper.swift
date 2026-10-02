@@ -48,112 +48,170 @@ enum JapaneseLyricMapper {
         guard !words.isEmpty, let romanized, !romanized.isEmpty else { return words }
         guard containsJapaneseCharacters(lineText) else { return words }
 
-        // Resolve the reading once for the complete line, then align each
-        // tokenizer word to the already-timed TTML spans. Matching ignores
-        // whitespace/punctuation differences so a harmless TTML formatting
-        // difference cannot cause the whole romaji mapping to disappear.
         let tokens = japaneseWordTokens(lineText)
         var output = words
-        var assignedCount = 0
+        var assigned = Array(repeating: false, count: words.count)
         var wordIndex = 0
+        var tokenIndex = 0
 
-        for token in tokens {
-            guard wordIndex < words.count else { break }
+        while wordIndex < words.count && tokenIndex < tokens.count {
+            let wordSource = normalizeJapaneseForMatching(words[wordIndex].text)
+            let tokenSource = normalizeJapaneseForMatching(tokens[tokenIndex].source)
 
-            var group: [Int] = []
-            var combined = ""
-
-            while wordIndex < words.count {
-                let candidate = words[wordIndex].text
-                let next = combined + candidate
-                let normalizedNext = normalizeJapaneseForMatching(next)
-                let normalizedSource = normalizeJapaneseForMatching(token.source)
-
-                if normalizedNext.isEmpty {
-                    wordIndex += 1
-                    continue
-                }
-
-                if normalizedSource.hasPrefix(normalizedNext) {
-                    combined = next
-                    group.append(wordIndex)
-                    wordIndex += 1
-                    if normalizedNext == normalizedSource { break }
-                } else {
-                    break
-                }
+            if wordSource.isEmpty {
+                wordIndex += 1
+                continue
             }
-
-            guard !group.isEmpty,
-                  normalizeJapaneseForMatching(combined) == normalizeJapaneseForMatching(token.source) else {
+            if tokenSource.isEmpty {
+                tokenIndex += 1
                 continue
             }
 
-            let parts = allocateTokenRomanization(
-                source: token.source,
-                romanized: token.romanized,
-                words: group.map { words[$0].text }
-            )
-
-            for (offset, index) in group.enumerated() {
-                let word = words[index]
-                let override = parts[offset]
-                let rebuiltUnits = units(
-                    for: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    romanizationOverride: override
+            if wordSource == tokenSource {
+                output[wordIndex] = rebuiltWord(
+                    words[wordIndex],
+                    romanization: [tokens[tokenIndex].romanized]
                 )
+                assigned[wordIndex] = true
+                wordIndex += 1
+                tokenIndex += 1
+                continue
+            }
 
-                output[index] = LyricWord(
-                    text: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    units: rebuiltUnits,
-                    generateRomanization: false
-                )
-                assignedCount += 1
+            // One timed TTML span can contain several Japanese tokenizer words,
+            // e.g. "はして" can correspond to "は" + "して". Combine the
+            // readings and keep the single TTML time interval intact.
+            if wordSource.hasPrefix(tokenSource) {
+                var combinedSource = ""
+                var combinedRomanization: [String] = []
+                var lookahead = tokenIndex
+
+                while lookahead < tokens.count {
+                    let candidate = normalizeJapaneseForMatching(tokens[lookahead].source)
+                    guard !candidate.isEmpty else {
+                        lookahead += 1
+                        continue
+                    }
+
+                    let next = combinedSource + candidate
+                    if !wordSource.hasPrefix(next) { break }
+
+                    combinedSource = next
+                    combinedRomanization.append(tokens[lookahead].romanized)
+                    lookahead += 1
+
+                    if combinedSource == wordSource { break }
+                }
+
+                if combinedSource == wordSource {
+                    let joined = combinedRomanization.joined(separator: " ")
+                    output[wordIndex] = rebuiltWord(
+                        words[wordIndex],
+                        romanization: [joined]
+                    )
+                    assigned[wordIndex] = true
+                    wordIndex += 1
+                    tokenIndex = lookahead
+                    continue
+                }
+            }
+
+            // One tokenizer word can be split across several timed TTML spans,
+            // e.g. "美しい" -> "美" + "しい". Gather timed spans until the
+            // complete tokenizer word is covered, then allocate its reading.
+            if tokenSource.hasPrefix(wordSource) {
+                var combinedSource = ""
+                var group: [Int] = []
+                var lookahead = wordIndex
+
+                while lookahead < words.count {
+                    let candidate = normalizeJapaneseForMatching(words[lookahead].text)
+                    guard !candidate.isEmpty else {
+                        lookahead += 1
+                        continue
+                    }
+
+                    let next = combinedSource + candidate
+                    if !tokenSource.hasPrefix(next) { break }
+
+                    combinedSource = next
+                    group.append(lookahead)
+                    lookahead += 1
+
+                    if combinedSource == tokenSource { break }
+                }
+
+                if combinedSource == tokenSource, !group.isEmpty {
+                    let parts = allocateTokenRomanization(
+                        source: tokens[tokenIndex].source,
+                        romanized: tokens[tokenIndex].romanized,
+                        words: group.map { words[$0].text }
+                    )
+
+                    for (offset, index) in group.enumerated() {
+                        output[index] = rebuiltWord(
+                            words[index],
+                            romanization: parts[offset]
+                        )
+                        assigned[index] = true
+                    }
+
+                    wordIndex = lookahead
+                    tokenIndex += 1
+                    continue
+                }
+            }
+
+            // The tokenizer and TTML timing sometimes disagree about a boundary.
+            // Do not let one mismatch poison all later words: leave this word for
+            // the deterministic fallback below and advance the smaller side.
+            if wordIndex + 1 < words.count {
+                wordIndex += 1
+            } else {
+                tokenIndex += 1
             }
         }
 
-        // Some valid TTML files do not expose tokenizer boundaries that line
-        // up exactly with their timed spans. In that case retain the known-good
-        // line-level fallback so romaji is still present rather than returning
-        // a completely blank romaji layer.
-        if assignedCount == 0 {
-            let wordParts = allocateRomanization(
-                romanized,
-                to: words.map { Piece(text: $0.text, isAtomicWord: true) }
-            )
+        // Fill every unmatched timed word. This is deliberately done only for
+        // words the contextual tokenizer could not align. It prevents blank
+        // romaji while preserving the more accurate contextual readings above.
+        let fallbackParts = allocateRomanization(
+            romanized,
+            to: words.map { Piece(text: $0.text, isAtomicWord: true) }
+        )
 
-            return words.enumerated().map { index, word in
-                let override = wordParts[index]
-                let rebuiltUnits = units(
-                    for: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    romanizationOverride: override
+        for index in words.indices where !assigned[index] {
+            if let fallback = fallbackParts[index], !fallback.isEmpty {
+                output[index] = rebuiltWord(
+                    words[index],
+                    romanization: [fallback]
                 )
-
-                return LyricWord(
-                    text: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    units: rebuiltUnits,
-                    generateRomanization: false
-                )
+                assigned[index] = true
             }
         }
 
         return output
     }
 
-    private static func normalizeJapaneseForMatching(_ text: String) -> String {
-        text.unicodeScalars.filter { scalar in
-            !CharacterSet.whitespacesAndNewlines.contains(scalar)
-                && !CharacterSet.punctuationCharacters.contains(scalar)
-                && !CharacterSet.symbols.contains(scalar)
-        }.map(String.init).joined()
+    private static func rebuiltWord(
+        _ word: LyricWord,
+        romanization: [String?]
+    ) -> LyricWord {
+        let override = romanization.first ?? nil
+        let rebuiltUnits = units(
+            for: word.text,
+            startTime: word.startTime,
+            endTime: word.endTime,
+            romanizationOverride: override
+        )
+
+        return LyricWord(
+            text: word.text,
+            startTime: word.startTime,
+            endTime: word.endTime,
+            units: rebuiltUnits,
+            generateRomanization: false
+        )
     }
 
     /// Rebuilds the timed words using paragraph-level Japanese romanization.
@@ -372,6 +430,12 @@ enum JapaneseLyricMapper {
             kanjiRomanized = removeRomanizedSuffix(romanized, suffixRomanized)
         }
 
+        if words.allSatisfy({
+            Array($0).allSatisfy { isKana($0.unicodeScalars.first?.value ?? 0) }
+        }) {
+            return words.map { [romanizeKana($0) ?? $0] }
+        }
+
         var result = words.map { _ in [String?]() }
         var remainingKanjiReading = kanjiRomanized
 
@@ -483,8 +547,18 @@ enum JapaneseLyricMapper {
             return [LyricUnit(text: text, startTime: startTime, endTime: endTime)]
         }
         let parts: [String?]
-        if romanizationOverride.count == pieces.count {
+        if pieces.count == romanizationOverride.count {
             parts = romanizationOverride
+        } else if romanizationOverride.count == 1,
+                  !pieces.isEmpty,
+                  !pieces.filter({ containsJapaneseCharacters($0.text) }).isEmpty,
+                  pieces.filter({ containsJapaneseCharacters($0.text) }).allSatisfy({
+                      Array($0.text).allSatisfy { isKana($0.unicodeScalars.first?.value ?? 0) }
+                  }) {
+            parts = pieces.map { piece in
+                guard containsJapaneseCharacters(piece.text) else { return nil }
+                return romanizeKana(piece.text)
+            }
         } else if romanizationOverride.count == 1 {
             parts = allocateRomanization(romanizationOverride[0], to: pieces)
         } else {
