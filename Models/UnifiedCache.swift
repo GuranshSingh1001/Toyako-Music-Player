@@ -35,7 +35,7 @@ struct ToyakoCacheEnvelope: Codable {
 enum ToyakoUnifiedCache {
     private static let filename = "ToyakoCache.bin"
     private static let backupFilename = "ToyakoCache.bin.bak"
-    private static let lock = NSLock()
+    private static let lock = NSRecursiveLock()
 
     static var url: URL {
         FileManager.default

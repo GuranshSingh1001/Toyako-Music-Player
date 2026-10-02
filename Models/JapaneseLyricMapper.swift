@@ -162,6 +162,9 @@ enum JapaneseLyricMapper {
     }
 
     private static func japaneseWordTokens(_ text: String) -> [RomanizationToken] {
+        JapaneseRomajiTokenizerLock.lock.lock()
+        defer { JapaneseRomajiTokenizerLock.lock.unlock() }
+
         let cfText = text as CFString
         let length = CFStringGetLength(cfText)
         guard length > 0 else { return [] }
