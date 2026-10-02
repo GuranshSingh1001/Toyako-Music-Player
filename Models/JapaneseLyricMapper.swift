@@ -263,18 +263,9 @@ enum JapaneseLyricMapper {
             for (offset, index) in group.enumerated() {
                 let word = words[index]
                 let parts = romanizedParts[offset]
-                let rebuiltUnits = units(
-                    for: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    romanizationParts: parts
-                )
-
-                output[index] = LyricWord(
-                    text: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    units: rebuiltUnits
+                output[index] = rebuiltWord(
+                    word,
+                    romanization: parts.first ?? nil
                 )
             }
         }
@@ -452,13 +443,14 @@ enum JapaneseLyricMapper {
             let suffixStart = trailingKanaStart(in: characters)
             if suffixStart < characters.count {
                 let suffix = String(characters[suffixStart...])
-                if let suffixReading = romanizeKana(suffix),
-                   !suffixReading.isEmpty,
+                let suffixReading = romanizeKana(suffix) ?? ""
+
+                if !suffixReading.isEmpty,
                    let range = remaining.range(
-                        of: suffixReading,
-                        options: [.caseInsensitive, .anchored],
-                        range: remaining.startIndex..<remaining.endIndex,
-                        locale: nil
+                       of: suffixReading,
+                       options: [.caseInsensitive, .anchored],
+                       range: remaining.startIndex..<remaining.endIndex,
+                       locale: nil
                    ) {
                     let candidate = String(remaining[..<range.upperBound])
                     result[index] = [candidate]
@@ -469,12 +461,13 @@ enum JapaneseLyricMapper {
                 // The suffix may occur later in the reading because an earlier
                 // timed span owns part of the same contextual word. Find the
                 // first occurrence rather than abandoning the whole token.
-                if let range = remaining.range(
-                    of: suffixReading,
-                    options: [.caseInsensitive],
-                    range: remaining.startIndex..<remaining.endIndex,
-                    locale: nil
-                ) {
+                if !suffixReading.isEmpty,
+                   let range = remaining.range(
+                       of: suffixReading,
+                       options: [.caseInsensitive],
+                       range: remaining.startIndex..<remaining.endIndex,
+                       locale: nil
+                   ) {
                     let candidate = String(remaining[..<range.upperBound])
                     result[index] = [candidate]
                     remaining = String(remaining[range.upperBound...])
@@ -544,7 +537,8 @@ enum JapaneseLyricMapper {
         // preferable to dropping romaji when TTML and tokenizer boundaries do
         // not line up perfectly.
         if !remaining.isEmpty, let last = result.indices.last {
-            result[last] = [(result[last]?.first ?? "") + remaining]
+            let existing = (result[last].first ?? nil) ?? ""
+            result[last] = [existing + remaining]
         }
 
         return result
