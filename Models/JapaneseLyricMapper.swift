@@ -267,7 +267,7 @@ enum JapaneseLyricMapper {
                     for: word.text,
                     startTime: word.startTime,
                     endTime: word.endTime,
-                    romanizationOverride: parts
+                    romanizationParts: parts
                 )
 
                 output[index] = LyricWord(
@@ -610,20 +610,20 @@ enum JapaneseLyricMapper {
         }
     }
 
-    private static func units(
+    private static func unitsFromRomanizationParts(
         for text: String,
         startTime: TimeInterval,
         endTime: TimeInterval,
-        romanizationOverride: [String?]
+        romanizationParts: [String?]
     ) -> [LyricUnit] {
         let pieces = tokenize(text)
         guard !pieces.isEmpty else {
             return [LyricUnit(text: text, startTime: startTime, endTime: endTime)]
         }
         let parts: [String?]
-        if pieces.count == romanizationOverride.count {
-            parts = romanizationOverride
-        } else if romanizationOverride.count == 1,
+        if pieces.count == romanizationParts.count {
+            parts = romanizationParts
+        } else if romanizationParts.count == 1,
                   !pieces.isEmpty,
                   !pieces.filter({ containsJapaneseCharacters($0.text) }).isEmpty,
                   pieces.filter({ containsJapaneseCharacters($0.text) }).allSatisfy({
@@ -633,8 +633,8 @@ enum JapaneseLyricMapper {
                 guard containsJapaneseCharacters(piece.text) else { return nil }
                 return romanizeKana(piece.text)
             }
-        } else if romanizationOverride.count == 1 {
-            parts = allocateRomanization(romanizationOverride[0], to: pieces)
+        } else if romanizationParts.count == 1 {
+            parts = allocateRomanization(romanizationParts[0], to: pieces)
         } else {
             parts = allocateRomanization(text.toJapaneseRomaji(), to: pieces)
         }
