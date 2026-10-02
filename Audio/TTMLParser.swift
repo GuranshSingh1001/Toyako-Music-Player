@@ -27,7 +27,7 @@ struct TTMLParser {
         var lines: [TTMLParagraph] = []
 
         private var paragraph: TTMLParagraph?
-        private var span: TTMLSpan?
+        private var spanStack: [TTMLSpan] = []
 
         func parser(
             _ parser: XMLParser,
@@ -44,7 +44,7 @@ struct TTMLParser {
                     end: parseTime(attributeDict["end"]),
                     duration: parseTime(attributeDict["dur"])
                 )
-                span = nil
+                spanStack.removeAll(keepingCapacity: true)
                 return
             }
 
@@ -52,10 +52,12 @@ struct TTMLParser {
                 return
             }
 
-            span = TTMLSpan(
-                start: parseTime(attributeDict["begin"]),
-                end: parseTime(attributeDict["end"]),
-                duration: parseTime(attributeDict["dur"])
+            spanStack.append(
+                TTMLSpan(
+                    start: parseTime(attributeDict["begin"]),
+                    end: parseTime(attributeDict["end"]),
+                    duration: parseTime(attributeDict["dur"])
+                )
             )
         }
 
@@ -63,8 +65,8 @@ struct TTMLParser {
             _ parser: XMLParser,
             foundCharacters string: String
         ) {
-            if let span {
-                span.text += string
+            if !spanStack.isEmpty {
+                spanStack[spanStack.count - 1].text += string
                 paragraph?.plainText += string
             } else if let paragraph {
                 // IMPORTANT: text outside a <span> is part of the TTML
@@ -86,17 +88,24 @@ struct TTMLParser {
             let name = localName(elementName)
 
             if name == "span" {
-                if let span {
+                guard !spanStack.isEmpty else { return }
+                let span = spanStack.removeLast()
+
+                // A span can be a structural wrapper (for example an
+                // Apple/TTML `ttm:role="x-bg"` container) around a timed
+                // child span. Only timed/visible leaf spans become karaoke
+                // events. This prevents a nested span from overwriting the
+                // parser's previous span and losing document structure.
+                if span.start != nil || span.end != nil || span.duration != nil {
                     paragraph?.events.append(.span(span))
                     paragraph?.spans.append(span)
                 }
-                span = nil
             } else if name == "p" {
                 if let paragraph {
                     lines.append(paragraph)
                 }
                 self.paragraph = nil
-                self.span = nil
+                self.spanStack.removeAll(keepingCapacity: true)
             }
         }
 
