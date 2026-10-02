@@ -48,6 +48,65 @@ enum JapaneseLyricMapper {
         let isAtomicWord: Bool
     }
 
+    private static func tokenize(_ text: String) -> [Piece] {
+        var result: [Piece] = []
+        var japaneseBuffer = ""
+        var latinBuffer = ""
+
+        func flushJapanese() {
+            guard !japaneseBuffer.isEmpty else { return }
+            result.append(contentsOf: japaneseMorae(japaneseBuffer).map {
+                Piece(text: $0, isAtomicWord: false)
+            })
+            japaneseBuffer = ""
+        }
+
+        func flushLatin() {
+            guard !latinBuffer.isEmpty else { return }
+            result.append(Piece(text: latinBuffer, isAtomicWord: true))
+            latinBuffer = ""
+        }
+
+        for character in text {
+            let value = character.unicodeScalars.first?.value ?? 0
+
+            if isLatinOrNumber(value) {
+                flushJapanese()
+                latinBuffer.append(character)
+                continue
+            }
+
+            flushLatin()
+
+            if containsJapaneseCharacters(String(character)) {
+                japaneseBuffer.append(character)
+            } else {
+                flushJapanese()
+                result.append(Piece(text: String(character), isAtomicWord: true))
+            }
+        }
+
+        flushJapanese()
+        flushLatin()
+        return result
+    }
+
+    private static func japaneseMorae(_ text: String) -> [String] {
+        var result: [String] = []
+        for character in text {
+            let value = character.unicodeScalars.first?.value ?? 0
+            let string = String(character)
+            if isSmallKana(value), let last = result.indices.last {
+                result[last].append(contentsOf: string)
+            } else if value == 0x30FC, let last = result.indices.last {
+                result[last].append(contentsOf: string)
+            } else {
+                result.append(string)
+            }
+        }
+        return result
+    }
+
     private static func allocateTokenRomanization(
         source: String,
         romanized: String,
