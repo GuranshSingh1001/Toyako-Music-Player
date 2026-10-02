@@ -13,7 +13,8 @@ enum JapaneseLyricMapper {
         for text: String,
         startTime: TimeInterval,
         endTime: TimeInterval,
-        generateRomanization: Bool = true
+        generateRomanization: Bool = true,
+        romanizationOverride: String? = nil
     ) -> [LyricUnit] {
         let duration = max(0, endTime - startTime)
         let pieces = tokenize(text)
@@ -22,7 +23,7 @@ enum JapaneseLyricMapper {
             return [LyricUnit(text: text, startTime: startTime, endTime: endTime)]
         }
 
-        guard generateRomanization else {
+        if !generateRomanization && romanizationOverride == nil {
             return makeUnits(
                 pieces,
                 romanizationParts: Array(repeating: nil, count: pieces.count),
@@ -31,7 +32,7 @@ enum JapaneseLyricMapper {
             )
         }
 
-        let romanized = text.toJapaneseRomaji()
+        let romanized = romanizationOverride ?? text.toJapaneseRomaji()
         let romanizationParts = allocateRomanization(romanized, to: pieces)
         return makeUnits(pieces, romanizationParts: romanizationParts, startTime: startTime, endTime: endTime)
     }
