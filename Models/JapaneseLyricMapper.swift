@@ -599,6 +599,15 @@ enum JapaneseLyricMapper {
         return output
     }
 
+    private static func normalizeJapaneseForMatching(_ text: String) -> String {
+        text
+            .precomposedStringWithCanonicalMapping
+            .replacingOccurrences(of: "\u{200B}", with: "")
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined()
+    }
+
     private static func isKana(_ value: UInt32) -> Bool {
         (0x3040...0x309F).contains(value) || (0x30A0...0x30FF).contains(value)
     }
