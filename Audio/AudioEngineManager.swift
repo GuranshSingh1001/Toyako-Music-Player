@@ -152,13 +152,15 @@ class AudioEngineManager: ObservableObject {
     private func setupPlaybackDiagnosticsNotifications() {
         let center = NotificationCenter.default
         center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { [weak self] notification in
+            ToyakoPlaybackDiagnostics.shared.log("NOTIFICATION AVPlayerItemFailedToPlayToEndTime")
             let item = notification.object as? AVPlayerItem
             ToyakoPlaybackDiagnostics.shared.log("ITEM_FAILED_TO_END error=\(item?.error?.localizedDescription ?? "unknown") current=\(self?.currentTrack?.title ?? "nil")")
         }
         center.addObserver(forName: .AVPlayerItemNewErrorLogEntry, object: nil, queue: .main) { [weak self] notification in
+            ToyakoPlaybackDiagnostics.shared.log("NOTIFICATION AVPlayerItemNewErrorLogEntry")
             let item = notification.object as? AVPlayerItem
             let entry = item?.errorLog()?.events.last
-            ToyakoPlaybackDiagnostics.shared.log("ITEM_ERROR_LOG current=\(self?.currentTrack?.title ?? "nil") uri=\(entry?.URI ?? "nil") status=\(entry?.errorStatusCode ?? 0) domain=\(entry?.errorDomain ?? "nil") comment=\(entry?.errorComment ?? "nil")")
+            ToyakoPlaybackDiagnostics.shared.log("ITEM_ERROR_LOG current=\(self?.currentTrack?.title ?? "nil") entry=\(entry.map { String(describing: $0) } ?? "nil")")
         }
     }
 
@@ -649,7 +651,7 @@ class AudioEngineManager: ObservableObject {
                     .main
 
             ) { [weak self] _ in
-
+                ToyakoPlaybackDiagnostics.shared.log("END_NOTIFICATION item=\(playerItem) current=\(self?.currentTrack?.title ?? "nil") index=\(self?.queueIndex ?? -1)")
                 self?.handleTrackEnded()
             }
 
@@ -729,6 +731,7 @@ class AudioEngineManager: ObservableObject {
     func playNext(
         _ track: LocalTrack
     ) {
+        ToyakoPlaybackDiagnostics.shared.log("QUEUE_PLAY_NEXT_BEGIN title=\(track.title) id=\(track.id) count=\(queue.count) index=\(queueIndex)")
 
         guard
             !queue.isEmpty
@@ -778,6 +781,7 @@ class AudioEngineManager: ObservableObject {
     func removeFromQueue(
         at offsets: IndexSet
     ) {
+        ToyakoPlaybackDiagnostics.shared.log("QUEUE_REMOVE_BEGIN offsets=\(Array(offsets)) count=\(queue.count) index=\(queueIndex) current=\(currentTrack?.title ?? "nil")")
 
         let currentID =
             currentTrack?.id
@@ -871,6 +875,7 @@ class AudioEngineManager: ObservableObject {
         from source: IndexSet,
         to destination: Int
     ) {
+        ToyakoPlaybackDiagnostics.shared.log("QUEUE_MOVE_BEGIN source=\(Array(source)) destination=\(destination) count=\(queue.count) index=\(queueIndex)")
 
         guard
             !source.isEmpty
@@ -912,6 +917,7 @@ class AudioEngineManager: ObservableObject {
 
 
     func clearQueue() {
+        ToyakoPlaybackDiagnostics.shared.log("QUEUE_CLEAR_BEGIN count=\(queue.count) index=\(queueIndex) current=\(currentTrack?.title ?? "nil")")
 
         guard
             let current =
@@ -953,6 +959,7 @@ class AudioEngineManager: ObservableObject {
     func playQueuedTrack(
         at index: Int
     ) {
+        ToyakoPlaybackDiagnostics.shared.log("QUEUE_PLAY_AT requestedIndex=\(index) count=\(queue.count) currentIndex=\(queueIndex)")
 
         guard
             queue.indices.contains(index)
@@ -975,6 +982,7 @@ class AudioEngineManager: ObservableObject {
     /// The first standalone play remembers the queue track that was active.
     /// Next/Previous can then resume from that queue position.
     func playStandalonePreservingQueue(_ track: LocalTrack) {
+        ToyakoPlaybackDiagnostics.shared.log("STANDALONE_BEGIN title=\(track.title) id=\(track.id) queueIndex=\(queueIndex) count=\(queue.count) suspended=\(suspendedQueueTrackID?.uuidString ?? "nil")")
         guard !queue.isEmpty else {
             play(track: track)
             return
@@ -1026,6 +1034,7 @@ class AudioEngineManager: ObservableObject {
         tracks: [LocalTrack],
         startIndex: Int
     ) {
+        ToyakoPlaybackDiagnostics.shared.log("QUEUE_START requestedCount=\(tracks.count) startIndex=\(startIndex) shuffle=\(isShuffle) repeat=\(repeatMode.rawValue)")
 
         guard
             !tracks.isEmpty,
@@ -1143,7 +1152,7 @@ class AudioEngineManager: ObservableObject {
         playerItem:
             AVPlayerItem
     ) {
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_COMMIT title=\(track.title) id=\(track.id) itemStatus=\(playerItem.status.rawValue)")
+        ToyakoPlaybackDiagnostics.shared.log("PLAY_COMMIT title=\(track.title) id=\(track.id) itemStatus=\(playerItem.status.rawValue) playerItems=\(player.items().count) queueIndex=\(queueIndex) queueCount=\(queue.count)")
 
         itemStatusObservation?.invalidate()
         itemStatusObservation = playerItem.observe(\AVPlayerItem.status, options: [.initial, .new]) { [weak self] item, _ in
@@ -1196,7 +1205,7 @@ class AudioEngineManager: ObservableObject {
                     .main
 
             ) { [weak self] _ in
-
+                ToyakoPlaybackDiagnostics.shared.log("END_NOTIFICATION item=\(playerItem) current=\(self?.currentTrack?.title ?? "nil") index=\(self?.queueIndex ?? -1)")
                 self?.handleTrackEnded()
             }
     }
@@ -1936,6 +1945,8 @@ class AudioEngineManager: ObservableObject {
                 AVAudioSession.InterruptionReason(rawValue: $0)
             }
 
+            ToyakoPlaybackDiagnostics.shared.log("INTERRUPTION type=\(typeValue) reason=\(reason.map { String(describing: $0) } ?? "nil") playing=\(self.isPlaying) current=\(self.currentTrack?.title ?? "nil")")
+
             if type == .began {
 
                 // iPadOS can report an interruption while the app is being
@@ -1984,7 +1995,11 @@ class AudioEngineManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self, self.currentTrack != nil else { return }
+            guard let self, self.currentTrack != nil else {
+                ToyakoPlaybackDiagnostics.shared.log("APP_BACKGROUND noCurrentTrack")
+                return
+            }
+            ToyakoPlaybackDiagnostics.shared.log("APP_BACKGROUND playing=\(self.isPlaying) current=\(self.currentTrack?.title ?? "nil") index=\(self.queueIndex)")
             self.updatePlaybackState()
         }
 
@@ -1993,7 +2008,11 @@ class AudioEngineManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self, self.currentTrack != nil else { return }
+            guard let self, self.currentTrack != nil else {
+                ToyakoPlaybackDiagnostics.shared.log("APP_FOREGROUND noCurrentTrack")
+                return
+            }
+            ToyakoPlaybackDiagnostics.shared.log("APP_FOREGROUND playing=\(self.isPlaying) current=\(self.currentTrack?.title ?? "nil") index=\(self.queueIndex)")
             // Restore the session, but never implicitly resume a user-paused track.
             _ = self.activateAudioSessionForPlayback()
             self.updatePlaybackState()
