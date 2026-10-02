@@ -401,92 +401,166 @@ enum JapaneseLyricMapper {
         romanized: String,
         words: [String]
     ) -> [[String?]] {
-        let pieces = words.map { tokenize($0) }
-        let flatPieces = pieces.flatMap { $0 }
-        guard !flatPieces.isEmpty else {
-            return words.map { _ in [romanized] }
+        guard !words.isEmpty else { return [] }
+        guard words.count > 1 else { return [[romanized]] }
+
+        let compactRomanized = romanized
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !compactRomanized.isEmpty else {
+            return words.map { _ in [nil] }
         }
 
-        // Kana can be romanized independently. For mixed kanji/kana words,
-        // reserve the reading of the visible kana suffix first, leaving the
-        // context-dependent kanji reading for the kanji portion. Example:
-        // 溢して -> kobo + shite, 欲しい -> ho + shii.
-        let characters = Array(source)
-        var kanaSuffixStart = characters.count
-        while kanaSuffixStart > 0 {
-            let scalar = characters[kanaSuffixStart - 1].unicodeScalars.first?.value ?? 0
-            if isKana(scalar) {
-                kanaSuffixStart -= 1
+        // First handle kana-only spans directly. Their reading is deterministic
+        // and does not require any kanji context.
+        var result = words.map { _ in [String?]() }
+        var remaining = compactRomanized
+
+        for index in words.indices {
+            let word = words[index]
+            let characters = Array(word)
+            guard !characters.isEmpty else {
+                result[index] = [nil]
+                continue
+            }
+
+            let allKana = characters.allSatisfy {
+                isKana($0.unicodeScalars.first?.value ?? 0)
+            }
+
+            if allKana {
+                let reading = romanizeKana(word) ?? word
+                if !reading.isEmpty {
+                    result[index] = [reading]
+                    if remaining.lowercased().hasPrefix(reading.lowercased()) {
+                        remaining = String(remaining.dropFirst(reading.count))
+                    }
+                }
+                continue
+            }
+
+            // Mixed kanji/kana spans are especially important for TTML because
+            // a timed span can split a Japanese word at an arbitrary point.
+            // Use the visible trailing kana as an anchor in the complete
+            // contextual reading. Example:
+            //   持ち寄り / mochiyori
+            //   持ち -> mochi, 寄り -> yori
+            // and:
+            //   知ってる / shitteru
+            //   知って -> shitte, る -> ru
+            let suffixStart = trailingKanaStart(in: characters)
+            if suffixStart < characters.count {
+                let suffix = String(characters[suffixStart...])
+                if let suffixReading = romanizeKana(suffix),
+                   !suffixReading.isEmpty,
+                   let range = remaining.range(
+                        of: suffixReading,
+                        options: [.caseInsensitive, .anchored],
+                        range: remaining.startIndex..<remaining.endIndex,
+                        locale: nil
+                   ) {
+                    let candidate = String(remaining[..<range.upperBound])
+                    result[index] = [candidate]
+                    remaining = String(remaining[range.upperBound...])
+                    continue
+                }
+
+                // The suffix may occur later in the reading because an earlier
+                // timed span owns part of the same contextual word. Find the
+                // first occurrence rather than abandoning the whole token.
+                if let range = remaining.range(
+                    of: suffixReading,
+                    options: [.caseInsensitive],
+                    range: remaining.startIndex..<remaining.endIndex,
+                    locale: nil
+                ) {
+                    let candidate = String(remaining[..<range.upperBound])
+                    result[index] = [candidate]
+                    remaining = String(remaining[range.upperBound...])
+                    continue
+                }
+            }
+
+            // If the following timed spans are pure kana, reserve their known
+            // readings from the end of the contextual reading. This handles
+            // 美しい -> 美 + しい without guessing the kanji reading.
+            var futureKanaReading = ""
+            var futureIndex = index + 1
+            while futureIndex < words.count {
+                let futureChars = Array(words[futureIndex])
+                guard !futureChars.isEmpty,
+                      futureChars.allSatisfy({
+                          isKana($0.unicodeScalars.first?.value ?? 0)
+                      }) else {
+                    break
+                }
+                futureKanaReading += romanizeKana(words[futureIndex]) ?? words[futureIndex]
+                futureIndex += 1
+            }
+
+            if !futureKanaReading.isEmpty,
+               remaining.lowercased().hasSuffix(futureKanaReading.lowercased()),
+               remaining.count > futureKanaReading.count {
+                let splitIndex = remaining.index(
+                    remaining.endIndex,
+                    offsetBy: -futureKanaReading.count
+                )
+                result[index] = [String(remaining[..<splitIndex])]
+                remaining = String(remaining[splitIndex...])
+                continue
+            }
+
+            // Finally, when adjacent timed spans are all kanji (for example
+            // 遅 + 刻 in 遅刻), distribute the remaining contextual reading by
+            // source-character weight. This gives stable results such as
+            // chikoku -> chi + koku while keeping the complete reading intact.
+            let remainingWords = Array(words[index...])
+            let totalWeight = max(
+                1,
+                remainingWords.reduce(0) { partial, item in
+                    partial + max(1, Array(item).count)
+                }
+            )
+            let currentWeight = max(1, characters.count)
+            let futureWeight = remainingWords.dropFirst().reduce(0) { partial, item in
+                partial + max(1, Array(item).count)
+            }
+
+            if futureWeight > 0, remaining.count > 1 {
+                let ideal = Double(remaining.count) * Double(currentWeight) / Double(totalWeight)
+                var take = max(1, Int(ideal.rounded(.down)))
+                take = min(take, max(1, remaining.count - 1))
+                let splitIndex = remaining.index(remaining.startIndex, offsetBy: take)
+                result[index] = [String(remaining[..<splitIndex])]
+                remaining = String(remaining[splitIndex...])
+            } else {
+                result[index] = [remaining]
+                remaining = ""
+            }
+        }
+
+        // Any final unmatched reading belongs to the last timed span. This is
+        // preferable to dropping romaji when TTML and tokenizer boundaries do
+        // not line up perfectly.
+        if !remaining.isEmpty, let last = result.indices.last {
+            result[last] = [(result[last]?.first ?? "") + remaining]
+        }
+
+        return result
+    }
+
+    private static func trailingKanaStart(in characters: [Character]) -> Int {
+        var index = characters.count
+        while index > 0 {
+            let value = characters[index - 1].unicodeScalars.first?.value ?? 0
+            if isKana(value) {
+                index -= 1
             } else {
                 break
             }
         }
-
-        let suffix = String(characters[kanaSuffixStart...])
-        let suffixRomanized = romanizeKana(suffix) ?? ""
-        var kanjiRomanized = romanized
-
-        if !suffix.isEmpty, !suffixRomanized.isEmpty {
-            kanjiRomanized = removeRomanizedSuffix(romanized, suffixRomanized)
-        }
-
-        if words.allSatisfy({
-            Array($0).allSatisfy { isKana($0.unicodeScalars.first?.value ?? 0) }
-        }) {
-            return words.map { [romanizeKana($0) ?? $0] }
-        }
-
-        var result = words.map { _ in [String?]() }
-        var remainingKanjiReading = kanjiRomanized
-
-        for (wordIndex, word) in words.enumerated() {
-            let wordChars = Array(word)
-            let wordIsAllKana = wordChars.allSatisfy {
-                isKana($0.unicodeScalars.first?.value ?? 0)
-            }
-
-            if wordIsAllKana {
-                result[wordIndex] = [romanizeKana(word) ?? word]
-                continue
-            }
-
-            // The first non-kana unit in a mixed token owns the contextual
-            // kanji reading. This preserves the full reading instead of
-            // dropping kanji that cannot be romanized in isolation.
-            if !remainingKanjiReading.isEmpty {
-                result[wordIndex] = [remainingKanjiReading]
-                remainingKanjiReading = ""
-            } else {
-                result[wordIndex] = [romanizeKana(word) ?? word]
-            }
-        }
-
-        // If the word sequence is mora-sized, split a suffix such as しい over
-        // the corresponding timed units so the visual timing remains useful.
-        let assignedSuffix = suffixRomanized
-        if !assignedSuffix.isEmpty {
-            var suffixWordIndices: [Int] = []
-            for index in words.indices.reversed() {
-                let chars = Array(words[index])
-                if chars.allSatisfy({ isKana($0.unicodeScalars.first?.value ?? 0) }) {
-                    suffixWordIndices.insert(index, at: 0)
-                } else {
-                    break
-                }
-            }
-
-            if suffixWordIndices.count > 1 {
-                let suffixPieces = suffixWordIndices.map { words[$0] }
-                let allocated = allocateRomanization(assignedSuffix, to: suffixPieces.map {
-                    Piece(text: $0, isAtomicWord: false)
-                })
-                for (offset, index) in suffixWordIndices.enumerated() {
-                    result[index] = [allocated[offset] ?? words[index]]
-                }
-            }
-        }
-
-        return result
+        return index
     }
 
     /// Romanizes kana without invoking CFStringTokenizer. This is used only
