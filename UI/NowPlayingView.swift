@@ -1123,56 +1123,56 @@ private struct JapaneseTimedLine: View {
     let translatedText: String?
 
     @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
+    @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
 
     private var allUnits: [LyricUnit] {
         line.words.flatMap(\.units)
     }
 
-    /// Unit-level romaji is only used when the entire timed line was mapped
-    /// successfully. If even one timed unit has no reading, use the complete
-    /// paragraph-level reading instead. This prevents TTML boundary mismatches
-    /// from producing partial or completely missing romaji.
     private var hasCompleteUnitRomanization: Bool {
         let japaneseUnits = allUnits.filter { containsJapaneseCharacters($0.text) }
         guard !japaneseUnits.isEmpty else { return false }
+
         return japaneseUnits.allSatisfy { unit in
-            !(unit.romanized?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            guard let romanized = unit.romanized else { return false }
+            return !romanized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    private var shouldUseLineRomanization: Bool {
+        guard showRomanization, line.containsJapanese else { return false }
+
+        // If there is no usable word/unit timing, or the mapper could not
+        // produce complete unit-level romaji, use the exact line-level result.
+        return !hasCompleteUnitRomanization
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if hasCompleteUnitRomanization {
-                FlowLayout(horizontalSpacing: 4, verticalSpacing: 8) {
-                    ForEach(allUnits) { unit in
-                        JapaneseLyricUnitView(
-                            unit: unit,
-                            currentTime: currentTime,
-                            state: state,
-                            japaneseFont: japaneseFont,
-                            romanizedFont: romanizedFont
-                        )
-                    }
-                }
-            } else {
-                // TTML sometimes contains only line/paragraph timing, or its
-                // spans do not map cleanly to Japanese tokenizer words. In
-                // either case, render the original line as one unit and use
-                // the paragraph-level romaji calculated by TTMLParser.
-                Text(line.text)
-                    .font(japaneseFont)
-                    .foregroundStyle(.primary.opacity(state == .active ? 1 : 0.82))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if showRomanization,
-                   let romanized = line.romanized,
-                   !romanized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(romanized)
-                        .font(romanizedFont)
-                        .foregroundStyle(.primary.opacity(state == .active ? 0.78 : 0.42))
-                        .fixedSize(horizontal: false, vertical: true)
+            FlowLayout(horizontalSpacing: 4, verticalSpacing: 8) {
+                ForEach(allUnits) { unit in
+                    JapaneseLyricUnitView(
+                        unit: unit,
+                        currentTime: currentTime,
+                        state: state,
+                        japaneseFont: japaneseFont,
+                        romanizedFont: romanizedFont,
+                        showRomanization: !shouldUseLineRomanization
+                    )
                 }
             }
+
+            if shouldUseLineRomanization,
+               let romanized = line.romanized,
+               !romanized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(romanized)
+                    .font(romanizedFont)
+                    .foregroundStyle(
+                        .primary.opacity(state == .active ? 0.72 : 0.18)
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if showTranslation, let translatedText, !translatedText.isEmpty {
                 Text(translatedText)
                     .font(.system(size: 18, weight: .medium, design: .rounded))
@@ -1193,8 +1193,9 @@ private struct JapaneseLyricUnitView: View {
     let state: LyricLineState
     let japaneseFont: Font
     let romanizedFont: Font
+    let showRomanization: Bool
 
-    @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
+    @AppStorage(ToyakoPreferences.showRomanizationKey) private var storedShowRomanization = true
     @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
     @AppStorage(ToyakoPreferences.lyricsAnimationStyleKey) private var lyricsAnimationStyle = LyricsAnimationStyle.dynamic.rawValue
 
@@ -1251,7 +1252,7 @@ private struct JapaneseLyricUnitView: View {
                     radius: karaokeGlow && progress > 0 ? (animationStyle == .dynamic ? 9.0 : (animationStyle == .smooth ? 7.0 : 5.0)) : 0
                 )
 
-            if showRomanization, let romanized = unit.romanized,
+            if storedShowRomanization && showRomanization, let romanized = unit.romanized,
                !romanized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                containsJapaneseCharacters(unit.text) {
                 Text(romanized)
