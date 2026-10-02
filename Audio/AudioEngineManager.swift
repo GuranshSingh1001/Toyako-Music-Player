@@ -1577,15 +1577,15 @@ class AudioEngineManager: ObservableObject {
         // IMPORTANT: lyric loading runs synchronously on the playback path.
         // Keep each operation independently logged so a runtime crash can be
         // localized to the exact lyric file/parser operation.
-        diagnostics.log("LYRICS_BEGIN title=\(track.title) id=\(track.id) url=\(track.url.path)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_BEGIN title=\(track.title) id=\(track.id) url=\(track.url.path)")
 
         let fileManager = FileManager.default
         let audioURL = track.url.standardizedFileURL
-        diagnostics.log("LYRICS_STEP 01 audioURL_STANDARDIZED path=\(audioURL.path)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 01 audioURL_STANDARDIZED path=\(audioURL.path)")
 
         let directoryURL = audioURL.deletingLastPathComponent()
         let audioName = audioURL.deletingPathExtension().lastPathComponent
-        diagnostics.log("LYRICS_STEP 02 DERIVED directory=\(directoryURL.path) audioName=\(audioName)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 02 DERIVED directory=\(directoryURL.path) audioName=\(audioName)")
 
         var sources: [LyricsSource] = []
 
@@ -1595,21 +1595,21 @@ class AudioEngineManager: ObservableObject {
         let exactTTMLURL = directoryURL
             .appendingPathComponent(audioName)
             .appendingPathExtension("ttml")
-        diagnostics.log("LYRICS_STEP 03 TTML_EXACT path=\(exactTTMLURL.path)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 03 TTML_EXACT path=\(exactTTMLURL.path)")
 
         var ttmlURL: URL?
 
         if fileManager.fileExists(atPath: exactTTMLURL.path) {
-            diagnostics.log("LYRICS_STEP 04 TTML_EXACT_EXISTS true")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 04 TTML_EXACT_EXISTS true")
             ttmlURL = exactTTMLURL
         } else {
-            diagnostics.log("LYRICS_STEP 04 TTML_EXACT_EXISTS false")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 04 TTML_EXACT_EXISTS false")
             if let files = try? fileManager.contentsOfDirectory(
                 at: directoryURL,
                 includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
                 options: [.skipsHiddenFiles]
             ) {
-                diagnostics.log("LYRICS_STEP 05 TTML_DIRECTORY_READ count=\(files.count)")
+                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 05 TTML_DIRECTORY_READ count=\(files.count)")
                 ttmlURL = files.first { url in
                     guard url.pathExtension.lowercased() == "ttml" else { return false }
                     let lyricName = url.deletingPathExtension().lastPathComponent
@@ -1618,21 +1618,21 @@ class AudioEngineManager: ObservableObject {
                         options: [.caseInsensitive, .diacriticInsensitive]
                     ) == .orderedSame
                 }
-                diagnostics.log("LYRICS_STEP 06 TTML_MATCH matched=\(ttmlURL?.path ?? "nil")")
+                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 06 TTML_MATCH matched=\(ttmlURL?.path ?? "nil")")
             } else {
-                diagnostics.log("LYRICS_STEP 05 TTML_DIRECTORY_READ failed")
+                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 05 TTML_DIRECTORY_READ failed")
             }
         }
 
         if let ttmlURL {
-            diagnostics.log("LYRICS_STEP 07 TTML_READ_BEGIN path=\(ttmlURL.path)")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 07 TTML_READ_BEGIN path=\(ttmlURL.path)")
             if let content = readLyricsFile(ttmlURL) {
-                diagnostics.log("LYRICS_STEP 08 TTML_READ_OK chars=\(content.count)")
-                diagnostics.log("LYRICS_STEP 09 TTML_PARSE_BEGIN")
+                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 08 TTML_READ_OK chars=\(content.count)")
+                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 09 TTML_PARSE_BEGIN")
                 let parsed = TTMLParser.parse(content: content)
-                diagnostics.log("LYRICS_STEP 10 TTML_PARSE_OK lines=\(parsed.count)")
+                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 10 TTML_PARSE_OK lines=\(parsed.count)")
                 if !parsed.isEmpty {
-                    diagnostics.log("LYRICS_STEP 11 TTML_SOURCE_APPEND")
+                    ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 11 TTML_SOURCE_APPEND")
                     sources.append(
                         LyricsSource(
                             id: "ttml",
@@ -1643,10 +1643,10 @@ class AudioEngineManager: ObservableObject {
                     )
                 }
             } else {
-                diagnostics.log("LYRICS_STEP 08 TTML_READ_FAILED")
+                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 08 TTML_READ_FAILED")
             }
         } else {
-            diagnostics.log("LYRICS_STEP 07 TTML_NOT_FOUND")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 07 TTML_NOT_FOUND")
         }
 
         // ---------------------------------------------------------
@@ -1655,13 +1655,13 @@ class AudioEngineManager: ObservableObject {
         let lrcURL = directoryURL
             .appendingPathComponent(audioName)
             .appendingPathExtension("lrc")
-        diagnostics.log("LYRICS_STEP 12 LRC_READ_BEGIN path=\(lrcURL.path)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 12 LRC_READ_BEGIN path=\(lrcURL.path)")
 
         if let content = readLyricsFile(lrcURL) {
-            diagnostics.log("LYRICS_STEP 13 LRC_READ_OK chars=\(content.count)")
-            diagnostics.log("LYRICS_STEP 14 LRC_PARSE_BEGIN")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 13 LRC_READ_OK chars=\(content.count)")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 14 LRC_PARSE_BEGIN")
             let parsed = LRCParser.parse(content: content)
-            diagnostics.log("LYRICS_STEP 15 LRC_PARSE_OK lines=\(parsed.count)")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 15 LRC_PARSE_OK lines=\(parsed.count)")
             if !parsed.isEmpty {
                 sources.append(
                     LyricsSource(
@@ -1673,13 +1673,13 @@ class AudioEngineManager: ObservableObject {
                 )
             }
         } else {
-            diagnostics.log("LYRICS_STEP 13 LRC_NOT_FOUND_OR_UNREADABLE")
+            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 13 LRC_NOT_FOUND_OR_UNREADABLE")
         }
 
-        diagnostics.log("LYRICS_STEP 16 SOURCES_READY count=\(sources.count)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 16 SOURCES_READY count=\(sources.count)")
         lyricsSources = sources
 
-        diagnostics.log("LYRICS_STEP 17 SELECT_BEGIN preferred=\(selectedLyricsSourceID ?? "nil")")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 17 SELECT_BEGIN preferred=\(selectedLyricsSourceID ?? "nil")")
         if let ttml = sources.first(where: { $0.id == "ttml" }) {
             selectedLyricsSourceID = ttml.id
             currentLyrics = ttml.lyrics
@@ -1692,8 +1692,8 @@ class AudioEngineManager: ObservableObject {
             selectedLyricsSourceID = nil
             currentLyrics = []
         }
-        diagnostics.log("LYRICS_STEP 18 SELECT_DONE selected=\(selectedLyricsSourceID ?? "nil") lines=\(currentLyrics.count)")
-        diagnostics.log("LYRICS_COMPLETE title=\(track.title) sources=\(sources.count)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 18 SELECT_DONE selected=\(selectedLyricsSourceID ?? "nil") lines=\(currentLyrics.count)")
+        ToyakoPlaybackDiagnostics.shared.log("LYRICS_COMPLETE title=\(track.title) sources=\(sources.count)")
     }
 
     /// Switches the active lyric source without reloading or interrupting
