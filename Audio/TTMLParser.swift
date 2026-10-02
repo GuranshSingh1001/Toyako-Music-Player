@@ -27,7 +27,7 @@ struct TTMLParser {
         var lines: [TTMLParagraph] = []
 
         private var paragraph: TTMLParagraph?
-        private var spanStack: [TTMLSpan] = []
+        private var span: TTMLSpan?
 
         func parser(
             _ parser: XMLParser,
@@ -44,7 +44,7 @@ struct TTMLParser {
                     end: parseTime(attributeDict["end"]),
                     duration: parseTime(attributeDict["dur"])
                 )
-                spanStack.removeAll(keepingCapacity: true)
+                span = nil
                 return
             }
 
@@ -52,12 +52,10 @@ struct TTMLParser {
                 return
             }
 
-            spanStack.append(
-                TTMLSpan(
-                    start: parseTime(attributeDict["begin"]),
-                    end: parseTime(attributeDict["end"]),
-                    duration: parseTime(attributeDict["dur"])
-                )
+            span = TTMLSpan(
+                start: parseTime(attributeDict["begin"]),
+                end: parseTime(attributeDict["end"]),
+                duration: parseTime(attributeDict["dur"])
             )
         }
 
@@ -65,8 +63,8 @@ struct TTMLParser {
             _ parser: XMLParser,
             foundCharacters string: String
         ) {
-            if !spanStack.isEmpty {
-                spanStack[spanStack.count - 1].text += string
+            if let span {
+                span.text += string
                 paragraph?.plainText += string
             } else if let paragraph {
                 // IMPORTANT: text outside a <span> is part of the TTML
@@ -88,24 +86,17 @@ struct TTMLParser {
             let name = localName(elementName)
 
             if name == "span" {
-                guard !spanStack.isEmpty else { return }
-                let span = spanStack.removeLast()
-
-                // A span can be a structural wrapper (for example an
-                // Apple/TTML `ttm:role="x-bg"` container) around a timed
-                // child span. Only timed/visible leaf spans become karaoke
-                // events. This prevents a nested span from overwriting the
-                // parser's previous span and losing document structure.
-                if span.start != nil || span.end != nil || span.duration != nil {
+                if let span {
                     paragraph?.events.append(.span(span))
                     paragraph?.spans.append(span)
                 }
+                span = nil
             } else if name == "p" {
                 if let paragraph {
                     lines.append(paragraph)
                 }
                 self.paragraph = nil
-                self.spanStack.removeAll(keepingCapacity: true)
+                self.span = nil
             }
         }
 
@@ -211,7 +202,8 @@ struct TTMLParser {
                     LyricWord(
                         text: text,
                         startTime: start,
-                        endTime: finalEnd
+                        endTime: finalEnd,
+                        generateRomanization: false
                     )
                 )
 
@@ -284,7 +276,8 @@ struct TTMLParser {
                                 LyricWord(
                                     text: text,
                                     startTime: start,
-                                    endTime: end
+                                    endTime: end,
+                                    generateRomanization: false
                                 )
                             )
                         }
@@ -366,15 +359,14 @@ struct TTMLParser {
             // `美` or `溢` cannot reliably determine its reading in isolation.
             // The TTML timestamps stay untouched; only the romaji attached to
             // each timed unit is rebuilt from the surrounding Japanese word.
-            let contextualWords = containsJapaneseCharacters(text)
-                ? JapaneseLyricMapper.contextualizedWords(timedWords, lineText: text)
-                : timedWords
+            let contextualWords = timedWords
 
             return LyricLine(
                 time: lineStart,
                 text: text,
                 endTime: lineEnd,
-                words: contextualWords
+                words: contextualWords,
+                generateRomanization: false
             )
         }
     }

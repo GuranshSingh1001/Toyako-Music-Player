@@ -120,7 +120,8 @@ struct LyricWord: Identifiable, Equatable {
         text: String,
         startTime: TimeInterval,
         endTime: TimeInterval,
-        units: [LyricUnit]? = nil
+        units: [LyricUnit]? = nil,
+        generateRomanization: Bool = true
     ) {
         self.text = text
         self.startTime = startTime
@@ -128,7 +129,8 @@ struct LyricWord: Identifiable, Equatable {
         self.units = units ?? JapaneseLyricMapper.units(
             for: text,
             startTime: startTime,
-            endTime: endTime
+            endTime: endTime,
+            generateRomanization: generateRomanization
         )
     }
 }
@@ -145,11 +147,12 @@ struct LyricLine: Identifiable, Equatable {
         time: TimeInterval,
         text: String,
         endTime: TimeInterval? = nil,
-        words: [LyricWord] = []
+        words: [LyricWord] = [],
+        generateRomanization: Bool = true
     ) {
         self.time = time
         self.text = text
-        self.romanized = text.toJapaneseRomaji()
+        self.romanized = generateRomanization ? text.toJapaneseRomaji() : nil
         self.endTime = max(
             time,
             endTime ?? words.last?.endTime ?? time

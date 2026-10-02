@@ -12,13 +12,23 @@ enum JapaneseLyricMapper {
     static func units(
         for text: String,
         startTime: TimeInterval,
-        endTime: TimeInterval
+        endTime: TimeInterval,
+        generateRomanization: Bool = true
     ) -> [LyricUnit] {
         let duration = max(0, endTime - startTime)
         let pieces = tokenize(text)
 
         guard !pieces.isEmpty else {
             return [LyricUnit(text: text, startTime: startTime, endTime: endTime)]
+        }
+
+        guard generateRomanization else {
+            return makeUnits(
+                pieces,
+                romanizationParts: Array(repeating: nil, count: pieces.count),
+                startTime: startTime,
+                endTime: endTime
+            )
         }
 
         let romanized = text.toJapaneseRomaji()
@@ -31,8 +41,10 @@ enum JapaneseLyricMapper {
     /// timed spans. Each span keeps its original begin/end interval.
     static func contextualizedWords(
         _ words: [LyricWord],
-        lineText: String
+        lineText: String,
+        generateRomanization: Bool = true
     ) -> [LyricWord] {
+        guard generateRomanization else { return words }
         guard !words.isEmpty, containsJapaneseCharacters(lineText) else { return words }
 
         let tokens = japaneseWordTokens(lineText)
