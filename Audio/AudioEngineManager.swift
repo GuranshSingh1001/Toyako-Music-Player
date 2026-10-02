@@ -158,7 +158,7 @@ class AudioEngineManager: ObservableObject {
         center.addObserver(forName: .AVPlayerItemNewErrorLogEntry, object: nil, queue: .main) { [weak self] notification in
             let item = notification.object as? AVPlayerItem
             let entry = item?.errorLog()?.events.last
-            ToyakoPlaybackDiagnostics.shared.log("ITEM_ERROR_LOG current=\(self?.currentTrack?.title ?? "nil") uri=\(entry?.URI ?? "nil") status=\(entry?.statusCode ?? 0) domain=\(entry?.errorDomain ?? "nil") comment=\(entry?.errorComment ?? "nil")")
+            ToyakoPlaybackDiagnostics.shared.log("ITEM_ERROR_LOG current=\(self?.currentTrack?.title ?? "nil") uri=\(entry?.URI ?? "nil") status=\(entry?.errorStatusCode ?? 0) domain=\(entry?.errorDomain ?? "nil") comment=\(entry?.errorComment ?? "nil")")
         }
     }
 
