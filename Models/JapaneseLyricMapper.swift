@@ -14,82 +14,33 @@ enum JapaneseLyricMapper {
         startTime: TimeInterval,
         endTime: TimeInterval
     ) -> [LyricUnit] {
-        let duration = max(0, endTime - startTime)
         let pieces = tokenize(text)
-
         guard !pieces.isEmpty else {
             return [LyricUnit(text: text, startTime: startTime, endTime: endTime)]
         }
 
-        let romanized = text.toJapaneseRomaji()
-        let romanizationParts = allocateRomanization(romanized, to: pieces)
-        return makeUnits(pieces, romanizationParts: romanizationParts, startTime: startTime, endTime: endTime)
+        // Do not perform Foundation CFStringTokenizer Japanese
+        // romanization while constructing timed lyrics. That API was the
+        // source of an intermittent iOS crash for specific TTML lines.
+        // Keeping the original timed text and mora boundaries is safe; the
+        // UI can still highlight Japanese karaoke units without romaji.
+        let romanizationParts = Array<String?>(repeating: nil, count: pieces.count)
+        return makeUnits(
+            pieces,
+            romanizationParts: romanizationParts,
+            startTime: startTime,
+            endTime: endTime
+        )
     }
 
-    /// Rebuilds the timed words using paragraph-level Japanese romanization.
-    /// This fixes TTML where a single Japanese word is split across several
-    /// timed spans. Each span keeps its original begin/end interval.
+    /// Rebuilds timed words without invoking the unstable Japanese
+    /// CFStringTokenizer/LatinTranscription path during TTML playback.
+    /// Original TTML timing and text remain unchanged.
     static func contextualizedWords(
         _ words: [LyricWord],
         lineText: String
     ) -> [LyricWord] {
-        guard !words.isEmpty, containsJapaneseCharacters(lineText) else { return words }
-
-        let tokens = japaneseWordTokens(lineText)
-        guard !tokens.isEmpty else { return words }
-
-        var output = words
-        var wordIndex = 0
-
-        for token in tokens {
-            guard wordIndex < words.count else { break }
-
-            var group: [Int] = []
-            var combined = ""
-
-            while wordIndex < words.count {
-                let candidate = words[wordIndex].text
-                if candidate.isEmpty { wordIndex += 1; continue }
-
-                let next = combined + candidate
-                if token.source.hasPrefix(next) {
-                    combined = next
-                    group.append(wordIndex)
-                    wordIndex += 1
-                    if combined == token.source { break }
-                } else {
-                    break
-                }
-            }
-
-            guard combined == token.source, !group.isEmpty else { continue }
-
-            let romanizedParts = allocateTokenRomanization(
-                source: token.source,
-                romanized: token.romanized,
-                words: group.map { words[$0].text }
-            )
-
-            for (offset, index) in group.enumerated() {
-                let word = words[index]
-                let parts = romanizedParts[offset]
-                let rebuiltUnits = units(
-                    for: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    romanizationOverride: parts
-                )
-
-                output[index] = LyricWord(
-                    text: word.text,
-                    startTime: word.startTime,
-                    endTime: word.endTime,
-                    units: rebuiltUnits
-                )
-            }
-        }
-
-        return output
+        words
     }
 
     private struct Piece {
@@ -183,11 +134,7 @@ enum JapaneseLyricMapper {
 
         while !tokenType.isEmpty {
             let range = CFStringTokenizerGetCurrentTokenRange(tokenizer)
-            guard let created = CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) else {
-                tokenType = CFStringTokenizerAdvanceToNextToken(tokenizer)
-                continue
-            }
-            let source = (created as String)
+            let source = (CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) as String)
                 .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
             if !source.isEmpty,

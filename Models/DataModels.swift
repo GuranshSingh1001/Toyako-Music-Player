@@ -228,12 +228,10 @@ extension String {
                 }
             } else {
                 let range = CFStringTokenizerGetCurrentTokenRange(tokenizer)
-                if let created = CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) {
-                    let sub = (created as String)
-                        .trimmingCharacters(in: CharacterSet.whitespaces)
-                    if !sub.isEmpty {
-                        words.append(sub)
-                    }
+                let sub = (CFStringCreateWithSubstring(kCFAllocatorDefault, cfText, range) as String)
+                    .trimmingCharacters(in: CharacterSet.whitespaces)
+                if !sub.isEmpty {
+                    words.append(sub)
                 }
             }
             tokenType = CFStringTokenizerAdvanceToNextToken(tokenizer)

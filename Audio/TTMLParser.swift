@@ -2,8 +2,6 @@ import Foundation
 
 struct TTMLParser {
 
-    private static let diagnostics = ToyakoPlaybackDiagnostics.shared
-
     static func parse(content: String) -> [LyricLine] {
         guard let data = content.data(using: .utf8) else {
             return []
@@ -11,37 +9,18 @@ struct TTMLParser {
 
         let delegate = TTMLDelegate()
 
-        diagnostics.log("TTML_INTERNAL 01 XMLPARSER_CREATE bytes=\(data.count)")
         let parser = XMLParser(data: data)
         parser.delegate = delegate
         parser.shouldProcessNamespaces = false
         parser.shouldResolveExternalEntities = false
 
-        diagnostics.log("TTML_INTERNAL 02 XMLPARSER_PARSE_BEGIN")
         guard parser.parse() else {
-            let parseError = parser.parserError?.localizedDescription ?? "unknown"
-            diagnostics.log("TTML_INTERNAL 03 XMLPARSER_PARSE_FAILED error=\(parseError)")
             return []
         }
-        diagnostics.log("TTML_INTERNAL 04 XMLPARSER_PARSE_OK paragraphs=\(delegate.lines.count)")
 
-        var output: [LyricLine] = []
-        output.reserveCapacity(delegate.lines.count)
-
-        for (index, paragraph) in delegate.lines.enumerated() {
-            diagnostics.log("TTML_INTERNAL 05 LINE_BEGIN index=\(index) events=\(paragraph.events.count) spans=\(paragraph.spans.count) textChars=\(paragraph.plainText.count)")
-            let line = paragraph.makeLyricLine()
-            let produced = line != nil
-            let lineText = line?.text ?? ""
-            let wordCount = line?.words.count ?? 0
-            diagnostics.log("TTML_INTERNAL 06 LINE_END index=\(index) produced=\(produced) text=\(lineText) words=\(wordCount)")
-            if let line { output.append(line) }
-        }
-
-        diagnostics.log("TTML_INTERNAL 07 SORT_BEGIN lines=\(output.count)")
-        output.sort { $0.time < $1.time }
-        diagnostics.log("TTML_INTERNAL 08 SORT_END lines=\(output.count)")
-        return output
+        return delegate.lines
+            .compactMap { $0.makeLyricLine() }
+            .sorted { $0.time < $1.time }
     }
 
     private final class TTMLDelegate: NSObject, XMLParserDelegate {

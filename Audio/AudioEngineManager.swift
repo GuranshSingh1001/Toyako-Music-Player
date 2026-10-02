@@ -51,8 +51,6 @@ class AudioEngineManager: ObservableObject {
     private var endObserverToken:
         Any?
 
-    private var itemStatusObservation: NSKeyValueObservation?
-
     private var interruptionObserverToken: NSObjectProtocol?
     private var appBackgroundObserverToken: NSObjectProtocol?
     private var appForegroundObserverToken: NSObjectProtocol?
@@ -140,28 +138,11 @@ class AudioEngineManager: ObservableObject {
     // MARK: Initialization
 
     init() {
-        ToyakoPlaybackDiagnostics.shared.log("AudioEngineManager init")
         ToyakoPreferences.registerDefaults()
         loadRecentlyPlayed()
         setupRemoteControls()
         setupInterruptionHandling()
         setupApplicationLifecycleHandling()
-        setupPlaybackDiagnosticsNotifications()
-    }
-
-    private func setupPlaybackDiagnosticsNotifications() {
-        let center = NotificationCenter.default
-        center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { [weak self] notification in
-            ToyakoPlaybackDiagnostics.shared.log("NOTIFICATION AVPlayerItemFailedToPlayToEndTime")
-            let item = notification.object as? AVPlayerItem
-            ToyakoPlaybackDiagnostics.shared.log("ITEM_FAILED_TO_END error=\(item?.error?.localizedDescription ?? "unknown") current=\(self?.currentTrack?.title ?? "nil")")
-        }
-        center.addObserver(forName: .AVPlayerItemNewErrorLogEntry, object: nil, queue: .main) { [weak self] notification in
-            ToyakoPlaybackDiagnostics.shared.log("NOTIFICATION AVPlayerItemNewErrorLogEntry")
-            let item = notification.object as? AVPlayerItem
-            let entry = item?.errorLog()?.events.last
-            ToyakoPlaybackDiagnostics.shared.log("ITEM_ERROR_LOG current=\(self?.currentTrack?.title ?? "nil") entry=\(entry.map { String(describing: $0) } ?? "nil")")
-        }
     }
 
 
@@ -651,7 +632,7 @@ class AudioEngineManager: ObservableObject {
                     .main
 
             ) { [weak self] _ in
-                ToyakoPlaybackDiagnostics.shared.log("END_NOTIFICATION item=\(item) current=\(self?.currentTrack?.title ?? "nil") index=\(self?.queueIndex ?? -1)")
+
                 self?.handleTrackEnded()
             }
 
@@ -731,7 +712,6 @@ class AudioEngineManager: ObservableObject {
     func playNext(
         _ track: LocalTrack
     ) {
-        ToyakoPlaybackDiagnostics.shared.log("QUEUE_PLAY_NEXT_BEGIN title=\(track.title) id=\(track.id) count=\(queue.count) index=\(queueIndex)")
 
         guard
             !queue.isEmpty
@@ -781,7 +761,6 @@ class AudioEngineManager: ObservableObject {
     func removeFromQueue(
         at offsets: IndexSet
     ) {
-        ToyakoPlaybackDiagnostics.shared.log("QUEUE_REMOVE_BEGIN offsets=\(Array(offsets)) count=\(queue.count) index=\(queueIndex) current=\(currentTrack?.title ?? "nil")")
 
         let currentID =
             currentTrack?.id
@@ -875,7 +854,6 @@ class AudioEngineManager: ObservableObject {
         from source: IndexSet,
         to destination: Int
     ) {
-        ToyakoPlaybackDiagnostics.shared.log("QUEUE_MOVE_BEGIN source=\(Array(source)) destination=\(destination) count=\(queue.count) index=\(queueIndex)")
 
         guard
             !source.isEmpty
@@ -917,7 +895,6 @@ class AudioEngineManager: ObservableObject {
 
 
     func clearQueue() {
-        ToyakoPlaybackDiagnostics.shared.log("QUEUE_CLEAR_BEGIN count=\(queue.count) index=\(queueIndex) current=\(currentTrack?.title ?? "nil")")
 
         guard
             let current =
@@ -959,7 +936,6 @@ class AudioEngineManager: ObservableObject {
     func playQueuedTrack(
         at index: Int
     ) {
-        ToyakoPlaybackDiagnostics.shared.log("QUEUE_PLAY_AT requestedIndex=\(index) count=\(queue.count) currentIndex=\(queueIndex)")
 
         guard
             queue.indices.contains(index)
@@ -982,7 +958,6 @@ class AudioEngineManager: ObservableObject {
     /// The first standalone play remembers the queue track that was active.
     /// Next/Previous can then resume from that queue position.
     func playStandalonePreservingQueue(_ track: LocalTrack) {
-        ToyakoPlaybackDiagnostics.shared.log("STANDALONE_BEGIN title=\(track.title) id=\(track.id) queueIndex=\(queueIndex) count=\(queue.count) suspended=\(suspendedQueueTrackID?.uuidString ?? "nil")")
         guard !queue.isEmpty else {
             play(track: track)
             return
@@ -1034,7 +1009,6 @@ class AudioEngineManager: ObservableObject {
         tracks: [LocalTrack],
         startIndex: Int
     ) {
-        ToyakoPlaybackDiagnostics.shared.log("QUEUE_START requestedCount=\(tracks.count) startIndex=\(startIndex) shuffle=\(isShuffle) repeat=\(repeatMode.rawValue)")
 
         guard
             !tracks.isEmpty,
@@ -1093,94 +1067,48 @@ class AudioEngineManager: ObservableObject {
         track:
             LocalTrack
     ) {
-        let diagnostics = ToyakoPlaybackDiagnostics.shared
-        let queueDescription = queue.map { "\($0.id.uuidString.prefix(8)):\($0.title)" }.joined(separator: " | ")
-        let standardizedURL = track.url.standardizedFileURL
-        let fileManager = FileManager.default
-        let exists = fileManager.fileExists(atPath: standardizedURL.path)
-        let resourceValues = try? standardizedURL.resourceValues(forKeys: [
-            .fileSizeKey,
-            .isReadableKey,
-            .isRegularFileKey
-        ])
-
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_BEGIN title=\(track.title) id=\(track.id) url=\(standardizedURL.path) urlAbsolute=\(standardizedURL.absoluteString) queueIndex=\(queueIndex) queueCount=\(queue.count) current=\(currentTrack?.title ?? "nil")")
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_TARGET_FILE exists=\(exists) readable=\(resourceValues?.isReadable ?? false) regular=\(resourceValues?.isRegularFile ?? false) size=\(resourceValues?.fileSize.map(String.init) ?? "nil") pathExtension=\(standardizedURL.pathExtension)")
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_TARGET_METADATA title=\(track.title) artist=\(track.artist) album=\(track.album) duration=\(track.duration) id=\(track.id) url=\(standardizedURL.path)")
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STATE_BEFORE isPlaying=\(isPlaying) playerRate=\(player.rate) playerItem=\(player.currentItem.map { String(describing: $0) } ?? "nil") playerItemsCount=\(player.items().count) volume=\(volume)")
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_QUEUE queueIndex=\(queueIndex) queueCount=\(queue.count) queue=[\(queueDescription)]")
-
-        guard exists else {
-            ToyakoPlaybackDiagnostics.shared.log("PLAY_ABORT target file does not exist")
-            return
-        }
 
         // Keep the .playback session active when playback is started from a
         // queue, remote command, or after returning from the background.
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 01 BEFORE activateAudioSessionForPlayback")
-        guard activateAudioSessionForPlayback() else {
-            ToyakoPlaybackDiagnostics.shared.log("PLAY_ABORT step=01 audio session activation failed title=\(track.title)")
-            return
-        }
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 01 AFTER activateAudioSessionForPlayback")
+        guard activateAudioSessionForPlayback() else { return }
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 02 BEFORE currentTrack assignment")
-        currentTrack = track
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 02 AFTER currentTrack assignment current=\(currentTrack?.title ?? "nil")")
+        currentTrack =
+            track
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 03 BEFORE recordRecentlyPlayed")
         recordRecentlyPlayed(track)
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 03 AFTER recordRecentlyPlayed recentlyPlayedCount=\(recentlyPlayed.count)")
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 04 BEFORE reset pending seek state")
         pendingSeekTarget = nil
         pendingSeekTrackID = nil
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 04 AFTER reset pending seek state")
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 05 BEFORE reset currentTime")
-        currentTime = 0
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 05 AFTER reset currentTime currentTime=\(currentTime)")
+        currentTime =
+            0
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 06 BEFORE reset playbackProgress")
-        playbackProgress = 0
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 06 AFTER reset playbackProgress playbackProgress=\(playbackProgress)")
+        playbackProgress =
+            0
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 07 BEFORE loadLyrics url=\(standardizedURL.path)")
-        loadLyrics(for: track)
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 07 AFTER loadLyrics sources=\(lyricsSources.count) selected=\(selectedLyricsSourceID ?? "nil") lines=\(currentLyrics.count)")
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 08 BEFORE detachTimeObserver")
+        loadLyrics(
+            for:
+                track
+        )
+
         detachTimeObserver()
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 08 AFTER detachTimeObserver")
-
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 09 BEFORE detachEndObserver")
         detachEndObserver()
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 09 AFTER detachEndObserver")
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 10 BEFORE makePlayerItem")
-        let playerItem = makePlayerItem(url: standardizedURL)
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 10 AFTER makePlayerItem itemStatus=\(playerItem.status.rawValue) itemError=\(playerItem.error?.localizedDescription ?? "nil") asset=\(String(describing: playerItem.asset))")
 
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 11 BEFORE player.volume old=\(player.volume) new=\(volume)")
+
+        let playerItem =
+            makePlayerItem(
+                url:
+                    track.url
+            )
+
+
         player.volume = volume
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 11 AFTER player.volume actual=\(player.volume)")
-
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 12 BEFORE player.removeAllItems count=\(player.items().count)")
         player.removeAllItems()
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 12 AFTER player.removeAllItems count=\(player.items().count)")
-
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 13 BEFORE player.replaceCurrentItem itemStatus=\(playerItem.status.rawValue)")
         player.replaceCurrentItem(with: playerItem)
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 13 AFTER player.replaceCurrentItem currentItemMatches=\(player.currentItem === playerItem) currentItem=\(player.currentItem.map { String(describing: $0) } ?? "nil") count=\(player.items().count)")
-
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 14 BEFORE player.play")
         player.play()
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 14 AFTER player.play rate=\(player.rate) timeControlStatus=\(player.timeControlStatus.rawValue) reason=\(String(describing: player.reasonForWaitingToPlay))")
-
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 15 BEFORE finalizePlay")
         finalizePlay(track: track, playerItem: playerItem)
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_STEP 15 AFTER finalizePlay isPlaying=\(isPlaying) current=\(currentTrack?.title ?? "nil") playerRate=\(player.rate)")
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_COMPLETE title=\(track.title) id=\(track.id)")
     }
 
 
@@ -1193,18 +1121,6 @@ class AudioEngineManager: ObservableObject {
         playerItem:
             AVPlayerItem
     ) {
-        ToyakoPlaybackDiagnostics.shared.log("PLAY_COMMIT title=\(track.title) id=\(track.id) itemStatus=\(playerItem.status.rawValue) playerItems=\(player.items().count) queueIndex=\(queueIndex) queueCount=\(queue.count)")
-
-        itemStatusObservation?.invalidate()
-        itemStatusObservation = playerItem.observe(\AVPlayerItem.status, options: [.initial, .new]) { [weak self] item, _ in
-            guard let self else { return }
-            let status = item.status
-            if status == .failed {
-                ToyakoPlaybackDiagnostics.shared.log("ITEM_FAILED title=\(track.title) id=\(track.id) error=\(item.error?.localizedDescription ?? "unknown")")
-            } else {
-                ToyakoPlaybackDiagnostics.shared.log("ITEM_STATUS title=\(track.title) status=\(status.rawValue)")
-            }
-        }
 
         isPlaying =
             true
@@ -1246,7 +1162,7 @@ class AudioEngineManager: ObservableObject {
                     .main
 
             ) { [weak self] _ in
-                ToyakoPlaybackDiagnostics.shared.log("END_NOTIFICATION item=\(playerItem) current=\(self?.currentTrack?.title ?? "nil") index=\(self?.queueIndex ?? -1)")
+
                 self?.handleTrackEnded()
             }
     }
@@ -1255,17 +1171,9 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Track Ended
 
     private func handleTrackEnded() {
-        ToyakoPlaybackDiagnostics.shared.log("TRACK_ENDED title=\(currentTrack?.title ?? "nil") index=\(queueIndex) count=\(queue.count) repeat=\(repeatMode.rawValue)")
-
         switch repeatMode {
         case .one:
-            guard let track = queue.indices.contains(queueIndex)
-                    ? queue[queueIndex]
-                    : currentTrack ?? queue.first else {
-                ToyakoPlaybackDiagnostics.shared.log("TRACK_ENDED_REPEAT_ONE_ABORT empty queue")
-                return
-            }
-            play(track: track)
+            play(track: queue.indices.contains(queueIndex) ? queue[queueIndex] : currentTrack ?? queue.first!)
 
         case .all:
             forward()
@@ -1421,36 +1329,34 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Next
 
     func forward() {
-        let beforeIndex = queueIndex
-        let beforeTrack = currentTrack?.title ?? "nil"
-        let queueCount = queue.count
-        ToyakoPlaybackDiagnostics.shared.log("NEXT_BEGIN beforeIndex=\(beforeIndex) count=\(queueCount) current=\(beforeTrack) repeat=\(repeatMode.rawValue) shuffle=\(isShuffle) suspended=\(suspendedQueueTrackID?.uuidString ?? "nil")")
 
         if resumeQueueAfterStandalonePlay(direction: 1) {
-            ToyakoPlaybackDiagnostics.shared.log("NEXT_STANDALONE_RESUME handled=true newIndex=\(queueIndex) current=\(currentTrack?.title ?? "nil")")
             return
         }
 
-        let targetIndex: Int
-        if queueIndex + 1 < queue.count {
-            targetIndex = queueIndex + 1
-        } else if repeatMode == .all && !queue.isEmpty {
-            targetIndex = 0
-        } else {
-            ToyakoPlaybackDiagnostics.shared.log("NEXT_NO_TARGET index=\(queueIndex) count=\(queue.count)")
-            return
-        }
+        if queueIndex + 1 <
+            queue.count {
 
-        guard queue.indices.contains(targetIndex) else {
-            ToyakoPlaybackDiagnostics.shared.log("NEXT_INVALID_TARGET targetIndex=\(targetIndex) indexRange=\(queue.indices)")
-            return
-        }
+            queueIndex +=
+                1
 
-        queueIndex = targetIndex
-        let target = queue[targetIndex]
-        ToyakoPlaybackDiagnostics.shared.log("NEXT_TARGET targetIndex=\(targetIndex) title=\(target.title) id=\(target.id) url=\(target.url.path)")
-        play(track: target)
-        ToyakoPlaybackDiagnostics.shared.log("NEXT_END index=\(queueIndex) current=\(currentTrack?.title ?? "nil")")
+            play(
+                track:
+                    queue[queueIndex]
+            )
+
+        } else if repeatMode ==
+                    .all &&
+                    !queue.isEmpty {
+
+            queueIndex =
+                0
+
+            play(
+                track:
+                    queue[queueIndex]
+            )
+        }
     }
 
 
@@ -1574,94 +1480,68 @@ class AudioEngineManager: ObservableObject {
     private func loadLyrics(
         for track: LocalTrack
     ) {
-        // IMPORTANT: lyric loading runs synchronously on the playback path.
-        // Keep each operation independently logged so a runtime crash can be
-        // localized to the exact lyric file/parser operation.
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_BEGIN title=\(track.title) id=\(track.id) url=\(track.url.path)")
-
         let fileManager = FileManager.default
         let audioURL = track.url.standardizedFileURL
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 01 audioURL_STANDARDIZED path=\(audioURL.path)")
-
         let directoryURL = audioURL.deletingLastPathComponent()
         let audioName = audioURL.deletingPathExtension().lastPathComponent
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 02 DERIVED directory=\(directoryURL.path) audioName=\(audioName)")
 
         var sources: [LyricsSource] = []
 
         // ---------------------------------------------------------
         // TTML
+        //
+        // Exact sidecar first: Song.m4a -> Song.ttml
         // ---------------------------------------------------------
         let exactTTMLURL = directoryURL
             .appendingPathComponent(audioName)
             .appendingPathExtension("ttml")
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 03 TTML_EXACT path=\(exactTTMLURL.path)")
 
         var ttmlURL: URL?
 
         if fileManager.fileExists(atPath: exactTTMLURL.path) {
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 04 TTML_EXACT_EXISTS true")
             ttmlURL = exactTTMLURL
-        } else {
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 04 TTML_EXACT_EXISTS false")
-            if let files = try? fileManager.contentsOfDirectory(
-                at: directoryURL,
-                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-                options: [.skipsHiddenFiles]
-            ) {
-                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 05 TTML_DIRECTORY_READ count=\(files.count)")
-                ttmlURL = files.first { url in
-                    guard url.pathExtension.lowercased() == "ttml" else { return false }
-                    let lyricName = url.deletingPathExtension().lastPathComponent
-                    return lyricName.compare(
-                        audioName,
-                        options: [.caseInsensitive, .diacriticInsensitive]
-                    ) == .orderedSame
-                }
-                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 06 TTML_MATCH matched=\(ttmlURL?.path ?? "nil")")
-            } else {
-                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 05 TTML_DIRECTORY_READ failed")
+        } else if let files = try? fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) {
+            ttmlURL = files.first { url in
+                guard url.pathExtension.lowercased() == "ttml" else { return false }
+                let lyricName = url.deletingPathExtension().lastPathComponent
+                return lyricName.compare(
+                    audioName,
+                    options: [.caseInsensitive, .diacriticInsensitive]
+                ) == .orderedSame
             }
         }
 
-        if let ttmlURL {
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 07 TTML_READ_BEGIN path=\(ttmlURL.path)")
-            if let content = readLyricsFile(ttmlURL) {
-                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 08 TTML_READ_OK chars=\(content.count)")
-                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 09 TTML_PARSE_BEGIN")
-                let parsed = TTMLParser.parse(content: content)
-                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 10 TTML_PARSE_OK lines=\(parsed.count)")
-                if !parsed.isEmpty {
-                    ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 11 TTML_SOURCE_APPEND")
-                    sources.append(
-                        LyricsSource(
-                            id: "ttml",
-                            displayName: "Timed Lyrics",
-                            format: "TTML",
-                            lyrics: parsed
-                        )
+        if let ttmlURL,
+           let content = readLyricsFile(ttmlURL) {
+            let parsed = TTMLParser.parse(content: content)
+            if !parsed.isEmpty {
+                sources.append(
+                    LyricsSource(
+                        id: "ttml",
+                        displayName: "Timed Lyrics",
+                        format: "TTML",
+                        lyrics: parsed
                     )
-                }
-            } else {
-                ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 08 TTML_READ_FAILED")
+                )
             }
-        } else {
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 07 TTML_NOT_FOUND")
         }
 
         // ---------------------------------------------------------
-        // LRC
+        // LRC fallback/source.
+        //
+        // It is now retained even when valid TTML exists, so users can
+        // explicitly switch between the two available lyric versions.
         // ---------------------------------------------------------
         let lrcURL = directoryURL
             .appendingPathComponent(audioName)
             .appendingPathExtension("lrc")
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 12 LRC_READ_BEGIN path=\(lrcURL.path)")
 
         if let content = readLyricsFile(lrcURL) {
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 13 LRC_READ_OK chars=\(content.count)")
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 14 LRC_PARSE_BEGIN")
             let parsed = LRCParser.parse(content: content)
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 15 LRC_PARSE_OK lines=\(parsed.count)")
             if !parsed.isEmpty {
                 sources.append(
                     LyricsSource(
@@ -1672,14 +1552,13 @@ class AudioEngineManager: ObservableObject {
                     )
                 )
             }
-        } else {
-            ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 13 LRC_NOT_FOUND_OR_UNREADABLE")
         }
 
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 16 SOURCES_READY count=\(sources.count)")
         lyricsSources = sources
 
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 17 SELECT_BEGIN preferred=\(selectedLyricsSourceID ?? "nil")")
+        // TTML is the default lyric format whenever a valid matching
+        // TTML sidecar is available. LRC remains available as a manual
+        // fallback/source choice through the lyric source selector.
         if let ttml = sources.first(where: { $0.id == "ttml" }) {
             selectedLyricsSourceID = ttml.id
             currentLyrics = ttml.lyrics
@@ -1692,8 +1571,6 @@ class AudioEngineManager: ObservableObject {
             selectedLyricsSourceID = nil
             currentLyrics = []
         }
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_STEP 18 SELECT_DONE selected=\(selectedLyricsSourceID ?? "nil") lines=\(currentLyrics.count)")
-        ToyakoPlaybackDiagnostics.shared.log("LYRICS_COMPLETE title=\(track.title) sources=\(sources.count)")
     }
 
     /// Switches the active lyric source without reloading or interrupting
@@ -1787,9 +1664,6 @@ class AudioEngineManager: ObservableObject {
 
 
     private func detachEndObserver() {
-
-        itemStatusObservation?.invalidate()
-        itemStatusObservation = nil
 
         if let token =
             endObserverToken {
@@ -2015,8 +1889,6 @@ class AudioEngineManager: ObservableObject {
                 AVAudioSession.InterruptionReason(rawValue: $0)
             }
 
-            ToyakoPlaybackDiagnostics.shared.log("INTERRUPTION type=\(typeValue) reason=\(reason.map { String(describing: $0) } ?? "nil") playing=\(self.isPlaying) current=\(self.currentTrack?.title ?? "nil")")
-
             if type == .began {
 
                 // iPadOS can report an interruption while the app is being
@@ -2065,11 +1937,7 @@ class AudioEngineManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self, self.currentTrack != nil else {
-                ToyakoPlaybackDiagnostics.shared.log("APP_BACKGROUND noCurrentTrack")
-                return
-            }
-            ToyakoPlaybackDiagnostics.shared.log("APP_BACKGROUND playing=\(self.isPlaying) current=\(self.currentTrack?.title ?? "nil") index=\(self.queueIndex)")
+            guard let self, self.currentTrack != nil else { return }
             self.updatePlaybackState()
         }
 
@@ -2078,11 +1946,7 @@ class AudioEngineManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self, self.currentTrack != nil else {
-                ToyakoPlaybackDiagnostics.shared.log("APP_FOREGROUND noCurrentTrack")
-                return
-            }
-            ToyakoPlaybackDiagnostics.shared.log("APP_FOREGROUND playing=\(self.isPlaying) current=\(self.currentTrack?.title ?? "nil") index=\(self.queueIndex)")
+            guard let self, self.currentTrack != nil else { return }
             // Restore the session, but never implicitly resume a user-paused track.
             _ = self.activateAudioSessionForPlayback()
             self.updatePlaybackState()
@@ -2103,7 +1967,6 @@ class AudioEngineManager: ObservableObject {
             try session.setActive(true)
             return true
         } catch {
-            ToyakoPlaybackDiagnostics.shared.log("AUDIO_SESSION_ERROR \(error.localizedDescription)")
             return false
         }
     }
