@@ -70,7 +70,7 @@ enum JapaneseLyricMapper {
             if wordSource == tokenSource {
                 output[wordIndex] = rebuiltWord(
                     words[wordIndex],
-                    romanization: [tokens[tokenIndex].romanized]
+                    romanization: tokens[tokenIndex].romanized
                 )
                 assigned[wordIndex] = true
                 wordIndex += 1
@@ -107,7 +107,7 @@ enum JapaneseLyricMapper {
                     let joined = combinedRomanization.joined(separator: " ")
                     output[wordIndex] = rebuiltWord(
                         words[wordIndex],
-                        romanization: [joined]
+                        romanization: joined
                     )
                     assigned[wordIndex] = true
                     wordIndex += 1
@@ -184,7 +184,7 @@ enum JapaneseLyricMapper {
             if let fallback = fallbackParts[index], !fallback.isEmpty {
                 output[index] = rebuiltWord(
                     words[index],
-                    romanization: [fallback]
+                    romanization: fallback
                 )
                 assigned[index] = true
             }
@@ -195,9 +195,9 @@ enum JapaneseLyricMapper {
 
     private static func rebuiltWord(
         _ word: LyricWord,
-        romanization: [String?]
+        romanization: String?
     ) -> LyricWord {
-        let override = romanization.first ?? nil
+        let override = romanization
         let rebuiltUnits = units(
             for: word.text,
             startTime: word.startTime,
