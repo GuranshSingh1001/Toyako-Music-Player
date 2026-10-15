@@ -50,9 +50,9 @@ struct ToyakoCommands: Commands {
             Button("Next Track", systemImage: "forward.end.fill") {
                 NotificationCenter.default.post(name: .toyakoCommandNextTrack, object: nil)
             }
+            .keyboardShortcut(.rightArrow, modifiers: [.command])
 
             Divider()
-            .keyboardShortcut(.rightArrow, modifiers: [.command])
 
             Button("Increase Volume", systemImage: "speaker.plus") {
                 NotificationCenter.default.post(name: .toyakoCommandRaiseVolume, object: nil)
