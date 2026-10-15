@@ -547,7 +547,7 @@ struct NowPlayingView: View {
             playPausePressed = true
             audioManager.togglePlayPause()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 playPausePressed = false
             }
         } label: {
@@ -558,9 +558,9 @@ struct NowPlayingView: View {
             .foregroundStyle(.primary)
             .frame(width: 50, height: 50)
             .contentTransition(.symbolEffect(.replace))
-            .scaleEffect(playPausePressed ? 0.80 : 1.0)
+            .scaleEffect(playPausePressed ? 0.90 : 1.0)
             .animation(
-                .spring(response: 0.24, dampingFraction: 0.64),
+                .spring(response: 0.13, dampingFraction: 0.72),
                 value: playPausePressed
             )
         }

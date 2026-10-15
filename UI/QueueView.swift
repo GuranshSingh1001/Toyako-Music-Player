@@ -53,8 +53,8 @@ struct QueueView: View {
                             .padding(.top, 22)
                             .padding(.bottom, 8)
 
-                        ForEach(Array(audioManager.queue[start...].enumerated()), id: \.element.id) { offset, track in
-                            let index = start + offset
+                        ForEach(start..<audioManager.queue.count, id: \.self) { index in
+                            let track = audioManager.queue[index]
                             QueueRow(
                                 track: track,
                                 current: false,

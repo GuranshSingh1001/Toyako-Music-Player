@@ -24,6 +24,8 @@ struct ColorfulArtworkBleedBackground: View {
     @State private var targetPalette = ArtworkBleedPalette.fallback
     @State private var transitionProgress: CGFloat = 1.0
     @State private var transitionID = 0
+    // Decode artwork once per track instead of constructing UIImage inside the 24 FPS timeline.
+    @State private var artworkTexture: UIImage?
 
     var body: some View {
         GeometryReader { geometry in
@@ -57,8 +59,7 @@ struct ColorfulArtworkBleedBackground: View {
 
                     // Very faint artwork texture. The cloudy palette remains
                     // the main visual effect.
-                    if let artworkData,
-                       let image = UIImage(data: artworkData) {
+                    if let image = artworkTexture {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
@@ -99,11 +100,13 @@ struct ColorfulArtworkBleedBackground: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .task(id: artworkData?.hashValue) {
-            let newPalette = await Task.detached(priority: .userInitiated) {
-                ArtworkBleedPalette.extract(from: artworkData)
+            let data = artworkData
+            let result = await Task.detached(priority: .userInitiated) {
+                (ArtworkBleedPalette.extract(from: data), data.flatMap(UIImage.init(data:)))
             }.value
-
-            updatePalette(to: newPalette)
+            guard !Task.isCancelled else { return }
+            artworkTexture = result.1
+            updatePalette(to: result.0)
         }
     }
 
