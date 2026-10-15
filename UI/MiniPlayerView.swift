@@ -48,6 +48,8 @@ struct MiniPlayerView: View {
                 } label: {
                     Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 18, weight: .semibold))
+                        .contentTransition(.symbolEffect(.replace))
+                        .animation(.snappy(duration: 0.14), value: audioManager.isPlaying)
                         .frame(width: 38, height: 44)
                         .contentShape(Rectangle())
                 }

@@ -116,6 +116,10 @@ struct NowPlayingView: View {
                     .presentationBackground(.clear)
                     .presentationCornerRadius(30)
             }
+            .scaleEffect(
+                1 - min(max(dragOffset / max(geometry.size.height, 1), 0), 1) * 0.045,
+                anchor: .center
+            )
             .offset(y: dragOffset)
         }
         .ignoresSafeArea()
@@ -425,7 +429,7 @@ struct NowPlayingView: View {
                     // of the layout does not jump when play/pause changes.
                     .scaleEffect(audioManager.isPlaying ? 1.0 : 0.70, anchor: .center)
                     .animation(
-                        .spring(response: 0.48, dampingFraction: 0.82),
+                        .spring(response: 0.28, dampingFraction: 0.88),
                         value: audioManager.isPlaying
                     )
             } else {
@@ -551,8 +555,9 @@ struct NowPlayingView: View {
             Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
                 .font(.system(size: 38, weight: .medium))
                 .foregroundStyle(.primary)
+                .contentTransition(.symbolEffect(.replace))
+                .animation(.snappy(duration: 0.14), value: audioManager.isPlaying)
                 .frame(width: 50, height: 50)
-                .contentTransition(.identity)
         }
         .buttonStyle(.plain)
     }

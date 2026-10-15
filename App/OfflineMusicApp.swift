@@ -61,5 +61,8 @@ struct OfflineMusicApp: App {
                     }
                 }
         }
+        .commands {
+            ToyakoCommands()
+        }
     }
 }
