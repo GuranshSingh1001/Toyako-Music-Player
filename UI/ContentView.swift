@@ -54,6 +54,10 @@ struct ContentView: View {
         showQueue = false
 
     var body: some View {
+        commandHandlingContent
+    }
+
+    private var presentedContent: some View {
         mainTabView
 
         // MARK: - Now Playing
@@ -199,6 +203,10 @@ struct ContentView: View {
                     nil
             }
         }
+    }
+
+    private var commandHandlingContent: some View {
+        presentedContent
         .onAppear {
             // Now Playing is a presentation state, not a preference to restore across launches.
             showNowPlaying = false
