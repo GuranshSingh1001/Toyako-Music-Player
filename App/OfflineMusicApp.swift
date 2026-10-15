@@ -2,12 +2,15 @@ import SwiftUI
 import AVFoundation
 import UIKit
 
-@MainActor
-final class ToyakoAppDelegate: NSObject, UIApplicationDelegate {
-    /// Remove generic desktop-style menus that do not provide useful actions
-    /// in this dedicated music player. The app's own SwiftUI CommandMenus remain.
-    func buildMenu(with builder: UIMenuBuilder) {
+/// Owns the UIKit main-menu customization point. `buildMenu(with:)` is a
+/// UIResponder override, not an UIApplicationDelegate callback, so putting it
+/// on the delegate does not reliably remove the system-created top-level menus.
+final class ToyakoApplication: UIApplication {
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
         guard builder.system == .main else { return }
+
+        // Remove the entire top-level menus, not just their default command groups.
         builder.remove(menu: .file)
         builder.remove(menu: .edit)
         builder.remove(menu: .view)
@@ -16,7 +19,6 @@ final class ToyakoAppDelegate: NSObject, UIApplicationDelegate {
 
 @main
 struct OfflineMusicApp: App {
-    @UIApplicationDelegateAdaptor(ToyakoAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var audioManager = AudioEngineManager()
     @StateObject private var remoteServer = RemoteServer()
