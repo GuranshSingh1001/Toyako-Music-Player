@@ -12,14 +12,9 @@ struct ToyakoCommands: Commands {
     @AppStorage("Toyako.NowPlayingPresented") private var isNowPlayingPresented = false
 
     var body: some Commands {
-        standardCommandGroups
-        fileMenu
-        playbackMenu
-        libraryMenu
-        settingsMenu
-    }
-
-    private var standardCommandGroups: some Commands {
+        // Remove standard actions that are not useful for a dedicated music player.
+        // ToyakoAppDelegate also removes the complete File/Edit/View menus from
+        // the main menu builder on platforms that expose UIKit menu customization.
         CommandGroup(replacing: .newItem) { }
         CommandGroup(replacing: .undoRedo) { }
         CommandGroup(replacing: .pasteboard) { }
@@ -27,9 +22,6 @@ struct ToyakoCommands: Commands {
         CommandGroup(replacing: .textFormatting) { }
         CommandGroup(replacing: .toolbar) { }
         CommandGroup(replacing: .sidebar) { }
-    }
-
-    private var fileMenu: some Commands {
         CommandMenu("File") {
             Button("Import Songs…", systemImage: "square.and.arrow.down") {
                 NotificationCenter.default.post(name: .toyakoCommandImportSongs, object: nil)
@@ -43,9 +35,7 @@ struct ToyakoCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: [.command, .option])
         }
-    }
 
-    private var playbackMenu: some Commands {
         CommandMenu("Playback") {
             Button("Play / Pause", systemImage: "playpause.fill") {
                 NotificationCenter.default.post(name: .toyakoCommandTogglePlayback, object: nil)
@@ -87,38 +77,25 @@ struct ToyakoCommands: Commands {
             }
             .keyboardShortcut("q", modifiers: [.command, .shift])
         }
-    }
 
-    private var libraryMenu: some Commands {
         CommandMenu("Library") {
             Button("Home", systemImage: "house") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "home")
-            }
-            .keyboardShortcut("1", modifiers: [.command])
-
+            }.keyboardShortcut("1", modifiers: [.command])
             Button("Tracks", systemImage: "music.note.list") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "tracks")
-            }
-            .keyboardShortcut("2", modifiers: [.command])
-
+            }.keyboardShortcut("2", modifiers: [.command])
             Button("Albums", systemImage: "square.stack") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "albums")
-            }
-            .keyboardShortcut("3", modifiers: [.command])
-
+            }.keyboardShortcut("3", modifiers: [.command])
             Button("Artists", systemImage: "music.mic") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "artists")
-            }
-            .keyboardShortcut("4", modifiers: [.command])
-
+            }.keyboardShortcut("4", modifiers: [.command])
             Button("Playlists", systemImage: "music.note.list") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "playlists")
-            }
-            .keyboardShortcut("5", modifiers: [.command])
+            }.keyboardShortcut("5", modifiers: [.command])
         }
-    }
 
-    private var settingsMenu: some Commands {
         CommandMenu("Settings") {
             Toggle("Translate Japanese Lyrics", isOn: $showTranslation)
             Toggle("Romanization", isOn: $showRomanization)
@@ -130,7 +107,6 @@ struct ToyakoCommands: Commands {
             }
         }
     }
-
 }
 
 extension Notification.Name {
