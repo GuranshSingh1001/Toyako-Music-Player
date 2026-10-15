@@ -315,7 +315,7 @@ struct ContentView: View {
             QueueView()
                 .environmentObject(audioManager)
         }
-        .fullScreenCover(isPresented: $showSettings) {
+        .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(audioManager)
         }

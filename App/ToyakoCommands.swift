@@ -7,12 +7,18 @@ import Foundation
 struct ToyakoCommands: Commands {
     @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
-    @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
-    @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
-    @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
-    @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
 
     var body: some Commands {
+        // Remove standard actions that are not useful for a dedicated music player.
+        // ToyakoAppDelegate also removes the complete File/Edit/View menus from
+        // the main menu builder on platforms that expose UIKit menu customization.
+        CommandGroup(replacing: .newItem) { }
+        CommandGroup(replacing: .undoRedo) { }
+        CommandGroup(replacing: .pasteboard) { }
+        CommandGroup(replacing: .textEditing) { }
+        CommandGroup(replacing: .textFormatting) { }
+        CommandGroup(replacing: .toolbar) { }
+        CommandGroup(replacing: .sidebar) { }
         CommandMenu("Playback") {
             Button("Play / Pause", systemImage: "playpause.fill") {
                 NotificationCenter.default.post(name: .toyakoCommandTogglePlayback, object: nil)
@@ -61,11 +67,6 @@ struct ToyakoCommands: Commands {
         CommandMenu("Settings") {
             Toggle("Translate Japanese Lyrics", isOn: $showTranslation)
             Toggle("Romanization", isOn: $showRomanization)
-            Toggle("Karaoke Glow", isOn: $karaokeGlow)
-            Divider()
-            Toggle("Artwork Background Effect", isOn: $bleedingEffect)
-            Toggle("Liquid Glass", isOn: $liquidGlassEnabled)
-            Toggle("Audio Information", isOn: $showAudioInfo)
             Divider()
             Button("Open Settings…", systemImage: "gearshape") {
                 NotificationCenter.default.post(name: .toyakoCommandOpenSettings, object: nil)
