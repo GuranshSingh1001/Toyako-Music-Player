@@ -7,6 +7,8 @@ import Foundation
 struct ToyakoCommands: Commands {
     @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
+    @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
+    @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
 
     var body: some Commands {
         // Remove standard actions that are not useful for a dedicated music player.
@@ -40,33 +42,37 @@ struct ToyakoCommands: Commands {
             Button("Show Now Playing", systemImage: "music.note") {
                 NotificationCenter.default.post(name: .toyakoCommandShowNowPlaying, object: nil)
             }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button("Show Queue", systemImage: "list.bullet") {
                 NotificationCenter.default.post(name: .toyakoCommandShowQueue, object: nil)
             }
+            .keyboardShortcut("q", modifiers: [.command, .shift])
         }
 
         CommandMenu("Library") {
             Button("Home", systemImage: "house") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "home")
-            }
+            }.keyboardShortcut("1", modifiers: [.command])
             Button("Tracks", systemImage: "music.note.list") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "tracks")
-            }
+            }.keyboardShortcut("2", modifiers: [.command])
             Button("Albums", systemImage: "square.stack") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "albums")
-            }
+            }.keyboardShortcut("3", modifiers: [.command])
             Button("Artists", systemImage: "music.mic") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "artists")
-            }
+            }.keyboardShortcut("4", modifiers: [.command])
             Button("Playlists", systemImage: "music.note.list") {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "playlists")
-            }
+            }.keyboardShortcut("5", modifiers: [.command])
         }
 
         CommandMenu("Settings") {
             Toggle("Translate Japanese Lyrics", isOn: $showTranslation)
             Toggle("Romanization", isOn: $showRomanization)
+            Toggle("Karaoke Glow", isOn: $karaokeGlow)
+            Toggle("Show Audio Information", isOn: $showAudioInfo)
             Divider()
             Button("Open Settings…", systemImage: "gearshape") {
                 NotificationCenter.default.post(name: .toyakoCommandOpenSettings, object: nil)
