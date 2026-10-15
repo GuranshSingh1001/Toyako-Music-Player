@@ -2,15 +2,14 @@ import SwiftUI
 import AVFoundation
 import UIKit
 
-/// Owns the UIKit main-menu customization point. `buildMenu(with:)` is a
-/// UIResponder override, not an UIApplicationDelegate callback, so putting it
-/// on the delegate does not reliably remove the system-created top-level menus.
-final class ToyakoApplication: UIApplication {
+/// Removes generic desktop-style menus from the main menu bar.
+/// UIKit calls this override while building the app's main menu.
+@MainActor
+final class ToyakoAppDelegate: UIResponder, UIApplicationDelegate {
     override func buildMenu(with builder: UIMenuBuilder) {
         super.buildMenu(with: builder)
         guard builder.system == .main else { return }
 
-        // Remove the entire top-level menus, not just their default command groups.
         builder.remove(menu: .file)
         builder.remove(menu: .edit)
         builder.remove(menu: .view)
@@ -19,6 +18,7 @@ final class ToyakoApplication: UIApplication {
 
 @main
 struct OfflineMusicApp: App {
+    @UIApplicationDelegateAdaptor(ToyakoAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var audioManager = AudioEngineManager()
     @StateObject private var remoteServer = RemoteServer()

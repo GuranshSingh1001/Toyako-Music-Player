@@ -14,8 +14,6 @@
     <string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
-    <key>UIApplicationClassName</key>
-    <string>$(PRODUCT_MODULE_NAME).ToyakoApplication</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>CFBundleShortVersionString</key>
