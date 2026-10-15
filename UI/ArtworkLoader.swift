@@ -172,7 +172,6 @@ struct LazyArtwork: View {
         // Placeholder-to-image is a content swap, not a resize, so this
         // only smooths the crossfade when artwork finishes loading — it
         // does not reflow layout or affect scroll position.
-        .animation(.easeOut(duration: 0.18), value: data == nil)
         .task(id: url) {
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)
@@ -203,7 +202,6 @@ struct LazyAlbumArtwork: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .animation(.easeOut(duration: 0.18), value: data == nil)
         .task(id: url) {
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)

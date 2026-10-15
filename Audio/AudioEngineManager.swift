@@ -115,6 +115,10 @@ class AudioEngineManager: ObservableObject {
     @Published var originalQueue:
         [LocalTrack] = []
 
+    /// True only after the current item reached its end naturally. A paused
+    /// track near time zero must resume in place, not be treated as completed.
+    private var didFinishCurrentTrack = false
+
     @Published var queueIndex:
         Int = 0
 
@@ -1074,6 +1078,7 @@ class AudioEngineManager: ObservableObject {
 
         currentTrack =
             track
+        didFinishCurrentTrack = false
 
         recordRecentlyPlayed(track)
 
@@ -1184,6 +1189,7 @@ class AudioEngineManager: ObservableObject {
             } else {
                 player.pause()
                 isPlaying = false
+                didFinishCurrentTrack = true
                 currentTime = 0
                 playbackProgress = 0
                 updatePlaybackState()
@@ -1278,16 +1284,20 @@ class AudioEngineManager: ObservableObject {
     // MARK: - Play / Pause
 
     func togglePlayPause() {
-        // Manual Play at the end of a completed queue restarts from
-        // the first queue item. This is intentionally manual; the queue never
-        // auto-restarts when the final track finishes.
-        if !isPlaying && !queue.isEmpty && queueIndex >= queue.count - 1 {
-            queueIndex = 0
-            play(track: queue[queueIndex])
+        // Restart only after the final item has actually ended. Do not infer
+        // completion from currentTime: pausing near the start is still a pause.
+        if !isPlaying, didFinishCurrentTrack {
+            if !queue.isEmpty {
+                if queueIndex >= queue.count - 1 {
+                    queueIndex = 0
+                }
+                play(track: queue[queueIndex])
+            } else if let currentTrack {
+                play(track: currentTrack)
+            }
             savePlaybackState(force: true)
             return
         }
-
 
         guard currentTrack != nil else {
             return

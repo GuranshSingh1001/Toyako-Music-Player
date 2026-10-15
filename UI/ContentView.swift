@@ -51,6 +51,9 @@ struct ContentView: View {
     @State private var
         showSettings = false
 
+    @State private var
+        showQueue = false
+
     var body: some View {
         TabView(
             selection:
@@ -278,6 +281,39 @@ struct ContentView: View {
                 playlistToRename =
                     nil
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandTogglePlayback)) { _ in
+            audioManager.togglePlayPause()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandPreviousTrack)) { _ in
+            audioManager.backward()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandNextTrack)) { _ in
+            audioManager.forward()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandShowNowPlaying)) { _ in
+            showNowPlaying = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandShowQueue)) { _ in
+            showQueue = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandOpenSettings)) { _ in
+            showSettings = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandNavigate)) { notification in
+            guard let destination = notification.object as? String else { return }
+            switch destination {
+            case "home": selectedCategory = .home
+            case "tracks": selectedCategory = .tracks
+            case "albums": selectedCategory = .albums
+            case "artists": selectedCategory = .artists
+            case "playlists": selectedCategory = .allPlaylists
+            default: break
+            }
+        }
+        .sheet(isPresented: $showQueue) {
+            QueueView()
+                .environmentObject(audioManager)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()

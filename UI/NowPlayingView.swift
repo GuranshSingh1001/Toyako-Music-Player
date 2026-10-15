@@ -11,7 +11,6 @@ struct NowPlayingView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var dragOffset: CGFloat = 0
-    @State private var playPausePressed = false
     @State private var previousPressed = false
     @State private var nextPressed = false
     @State private var showQueue = false
@@ -117,6 +116,10 @@ struct NowPlayingView: View {
                     .presentationBackground(.clear)
                     .presentationCornerRadius(30)
             }
+            .scaleEffect(
+                1 - min(max(dragOffset / max(geometry.size.height, 1), 0), 1) * 0.045,
+                anchor: .center
+            )
             .offset(y: dragOffset)
         }
         .ignoresSafeArea()
@@ -426,7 +429,7 @@ struct NowPlayingView: View {
                     // of the layout does not jump when play/pause changes.
                     .scaleEffect(audioManager.isPlaying ? 1.0 : 0.70, anchor: .center)
                     .animation(
-                        .spring(response: 0.48, dampingFraction: 0.82),
+                        .spring(response: 0.28, dampingFraction: 0.88),
                         value: audioManager.isPlaying
                     )
             } else {
@@ -544,25 +547,17 @@ struct NowPlayingView: View {
 
     private var playPauseButton: some View {
         Button {
-            playPausePressed = true
+            // Keep the action synchronous and the icon transition lightweight.
+            // The previous delayed press-state + spring + symbol replacement
+            // stacked multiple animations and made rapid taps feel flickery.
             audioManager.togglePlayPause()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                playPausePressed = false
-            }
         } label: {
-            Image(
-                systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
-            )
-            .font(.system(size: 38, weight: .medium))
-            .foregroundStyle(.primary)
-            .frame(width: 50, height: 50)
-            .contentTransition(.symbolEffect(.replace))
-            .scaleEffect(playPausePressed ? 0.80 : 1.0)
-            .animation(
-                .spring(response: 0.24, dampingFraction: 0.64),
-                value: playPausePressed
-            )
+            Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 38, weight: .medium))
+                .foregroundStyle(.primary)
+                .contentTransition(.symbolEffect(.replace))
+                .animation(.snappy(duration: 0.14), value: audioManager.isPlaying)
+                .frame(width: 50, height: 50)
         }
         .buttonStyle(.plain)
     }

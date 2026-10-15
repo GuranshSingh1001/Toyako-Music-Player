@@ -2,8 +2,21 @@ import SwiftUI
 import AVFoundation
 import UIKit
 
+@MainActor
+final class ToyakoAppDelegate: NSObject, UIApplicationDelegate {
+    /// Remove generic desktop-style menus that do not provide useful actions
+    /// in this dedicated music player. The app's own SwiftUI CommandMenus remain.
+    func buildMenu(with builder: UIMenuBuilder) {
+        guard builder.system == .main else { return }
+        builder.remove(menu: .file)
+        builder.remove(menu: .edit)
+        builder.remove(menu: .view)
+    }
+}
+
 @main
 struct OfflineMusicApp: App {
+    @UIApplicationDelegateAdaptor(ToyakoAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var audioManager = AudioEngineManager()
     @StateObject private var remoteServer = RemoteServer()
@@ -60,6 +73,9 @@ struct OfflineMusicApp: App {
                         try? session.setActive(true)
                     }
                 }
+        }
+        .commands {
+            ToyakoCommands()
         }
     }
 }
