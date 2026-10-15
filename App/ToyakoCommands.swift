@@ -9,6 +9,7 @@ struct ToyakoCommands: Commands {
     @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
     @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
     @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
+    @AppStorage("Toyako.NowPlayingPresented") private var isNowPlayingPresented = false
 
     var body: some Commands {
         // Remove standard actions that are not useful for a dedicated music player.
@@ -21,6 +22,20 @@ struct ToyakoCommands: Commands {
         CommandGroup(replacing: .textFormatting) { }
         CommandGroup(replacing: .toolbar) { }
         CommandGroup(replacing: .sidebar) { }
+        CommandMenu("File") {
+            Button("Import Songs…", systemImage: "square.and.arrow.down") {
+                NotificationCenter.default.post(name: .toyakoCommandImportSongs, object: nil)
+            }
+            .keyboardShortcut("i", modifiers: [.command])
+
+            Divider()
+
+            Button("New Playlist…", systemImage: "plus") {
+                NotificationCenter.default.post(name: .toyakoCommandNewPlaylist, object: nil)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .option])
+        }
+
         CommandMenu("Playback") {
             Button("Play / Pause", systemImage: "playpause.fill") {
                 NotificationCenter.default.post(name: .toyakoCommandTogglePlayback, object: nil)
@@ -35,12 +50,25 @@ struct ToyakoCommands: Commands {
             Button("Next Track", systemImage: "forward.end.fill") {
                 NotificationCenter.default.post(name: .toyakoCommandNextTrack, object: nil)
             }
+
+            Divider()
             .keyboardShortcut(.rightArrow, modifiers: [.command])
+
+            Button("Increase Volume", systemImage: "speaker.plus") {
+                NotificationCenter.default.post(name: .toyakoCommandRaiseVolume, object: nil)
+            }
+            .keyboardShortcut(.upArrow, modifiers: [.command])
+
+            Button("Decrease Volume", systemImage: "speaker.minus") {
+                NotificationCenter.default.post(name: .toyakoCommandLowerVolume, object: nil)
+            }
+            .keyboardShortcut(.downArrow, modifiers: [.command])
 
             Divider()
 
-            Button("Show Now Playing", systemImage: "music.note") {
-                NotificationCenter.default.post(name: .toyakoCommandShowNowPlaying, object: nil)
+            Button(isNowPlayingPresented ? "Hide Now Playing" : "Show Now Playing",
+                   systemImage: "music.note") {
+                NotificationCenter.default.post(name: .toyakoCommandToggleNowPlaying, object: nil)
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
 
@@ -86,6 +114,11 @@ extension Notification.Name {
     static let toyakoCommandPreviousTrack = Notification.Name("Toyako.Command.PreviousTrack")
     static let toyakoCommandNextTrack = Notification.Name("Toyako.Command.NextTrack")
     static let toyakoCommandShowNowPlaying = Notification.Name("Toyako.Command.ShowNowPlaying")
+    static let toyakoCommandToggleNowPlaying = Notification.Name("Toyako.Command.ToggleNowPlaying")
+    static let toyakoCommandImportSongs = Notification.Name("Toyako.Command.ImportSongs")
+    static let toyakoCommandNewPlaylist = Notification.Name("Toyako.Command.NewPlaylist")
+    static let toyakoCommandRaiseVolume = Notification.Name("Toyako.Command.RaiseVolume")
+    static let toyakoCommandLowerVolume = Notification.Name("Toyako.Command.LowerVolume")
     static let toyakoCommandShowQueue = Notification.Name("Toyako.Command.ShowQueue")
     static let toyakoCommandOpenSettings = Notification.Name("Toyako.Command.OpenSettings")
     static let toyakoCommandNavigate = Notification.Name("Toyako.Command.Navigate")

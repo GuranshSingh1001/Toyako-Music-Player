@@ -25,8 +25,7 @@ struct ContentView: View {
     @State private var
         showFilePicker = false
 
-    @State private var
-        showNowPlaying = false
+    @AppStorage("Toyako.NowPlayingPresented") private var showNowPlaying = false
 
     @State private var
         showNewPlaylistAlert = false
@@ -281,6 +280,27 @@ struct ContentView: View {
                 playlistToRename =
                     nil
             }
+        }
+        .onAppear {
+            // Now Playing is a presentation state, not a preference to restore across launches.
+            showNowPlaying = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandImportSongs)) { _ in
+            showFilePicker = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandNewPlaylist)) { _ in
+            newPlaylistName = ""
+            showNewPlaylistAlert = true
+        }        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandToggleNowPlaying)) { _ in
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                showNowPlaying.toggle()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandRaiseVolume)) { _ in
+            NotificationCenter.default.post(name: .toyakoCommandAdjustSystemVolume, object: nil, userInfo: ["delta": Float(0.05)])
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandLowerVolume)) { _ in
+            NotificationCenter.default.post(name: .toyakoCommandAdjustSystemVolume, object: nil, userInfo: ["delta": Float(-0.05)])
         }
         .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandTogglePlayback)) { _ in
             audioManager.togglePlayPause()

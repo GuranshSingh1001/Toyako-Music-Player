@@ -39,6 +39,7 @@ struct AppSystemVolumeBridge: UIViewRepresentable {
         weak var slider: UISlider?
         private var volumeObservation: NSKeyValueObservation?
         private var remoteVolumeObserver: NSObjectProtocol?
+        private var commandVolumeObserver: NSObjectProtocol?
 
         init(value: Binding<Float>) {
             self.value = value
@@ -68,6 +69,17 @@ struct AppSystemVolumeBridge: UIViewRepresentable {
                 guard let self, let number = notification.userInfo?["value"] as? Float else { return }
                 self.setSystemVolume(number)
             }
+
+            commandVolumeObserver = NotificationCenter.default.addObserver(
+                forName: .toyakoCommandAdjustSystemVolume,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let delta = notification.userInfo?["delta"] as? Float else { return }
+                let current = AVAudioSession.sharedInstance().outputVolume
+                self.setSystemVolume(current + delta)
+            }
         }
 
         func setSystemVolume(_ volume: Float) {
@@ -85,6 +97,14 @@ struct AppSystemVolumeBridge: UIViewRepresentable {
                 NotificationCenter.default.removeObserver(remoteVolumeObserver)
                 self.remoteVolumeObserver = nil
             }
+            if let commandVolumeObserver {
+                NotificationCenter.default.removeObserver(commandVolumeObserver)
+                self.commandVolumeObserver = nil
+            }
         }
     }
+}
+
+extension Notification.Name {
+    static let toyakoCommandAdjustSystemVolume = Notification.Name("Toyako.Command.AdjustSystemVolume")
 }
