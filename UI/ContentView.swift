@@ -279,7 +279,7 @@ struct ContentView: View {
                     nil
             }
         }
-        .sheet(isPresented: $showSettings) {
+        .fullScreenCover(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(audioManager)
         }

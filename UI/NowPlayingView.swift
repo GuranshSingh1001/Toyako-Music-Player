@@ -11,7 +11,6 @@ struct NowPlayingView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var dragOffset: CGFloat = 0
-    @State private var playPausePressed = false
     @State private var previousPressed = false
     @State private var nextPressed = false
     @State private var showQueue = false
@@ -544,25 +543,16 @@ struct NowPlayingView: View {
 
     private var playPauseButton: some View {
         Button {
-            playPausePressed = true
+            // Keep the action synchronous and the icon transition lightweight.
+            // The previous delayed press-state + spring + symbol replacement
+            // stacked multiple animations and made rapid taps feel flickery.
             audioManager.togglePlayPause()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                playPausePressed = false
-            }
         } label: {
-            Image(
-                systemName: audioManager.isPlaying ? "pause.fill" : "play.fill"
-            )
-            .font(.system(size: 38, weight: .medium))
-            .foregroundStyle(.primary)
-            .frame(width: 50, height: 50)
-            .contentTransition(.symbolEffect(.replace))
-            .scaleEffect(playPausePressed ? 0.90 : 1.0)
-            .animation(
-                .spring(response: 0.13, dampingFraction: 0.72),
-                value: playPausePressed
-            )
+            Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 38, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 50, height: 50)
+                .contentTransition(.identity)
         }
         .buttonStyle(.plain)
     }

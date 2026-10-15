@@ -143,7 +143,7 @@ struct LazyArtwork: View {
     let size: CGFloat
     let cornerRadius: CGFloat
 
-    @State private var image: UIImage?
+    @State private var data: Data?
 
     init(url: URL?, size: CGFloat, cornerRadius: CGFloat = 12) {
         self.url = url
@@ -153,7 +153,7 @@ struct LazyArtwork: View {
 
     var body: some View {
         Group {
-            if let image {
+            if let data, let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -172,16 +172,11 @@ struct LazyArtwork: View {
         // Placeholder-to-image is a content swap, not a resize, so this
         // only smooths the crossfade when artwork finishes loading — it
         // does not reflow layout or affect scroll position.
-        .animation(.easeOut(duration: 0.12), value: image == nil)
         .task(id: url) {
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)
-            guard !Task.isCancelled, let loaded else { return }
-            let decoded = await Task.detached(priority: .userInitiated) {
-                UIImage(data: loaded)
-            }.value
             guard !Task.isCancelled else { return }
-            image = decoded
+            data = loaded
         }
     }
 }
@@ -189,7 +184,7 @@ struct LazyArtwork: View {
 struct LazyAlbumArtwork: View {
     let url: URL?
     let cornerRadius: CGFloat
-    @State private var image: UIImage?
+    @State private var data: Data?
 
     init(url: URL?, cornerRadius: CGFloat = 12) {
         self.url = url
@@ -198,7 +193,7 @@ struct LazyAlbumArtwork: View {
 
     var body: some View {
         Group {
-            if let image {
+            if let data, let image = UIImage(data: data) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -207,16 +202,11 @@ struct LazyAlbumArtwork: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .animation(.easeOut(duration: 0.12), value: image == nil)
         .task(id: url) {
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)
-            guard !Task.isCancelled, let loaded else { return }
-            let decoded = await Task.detached(priority: .userInitiated) {
-                UIImage(data: loaded)
-            }.value
             guard !Task.isCancelled else { return }
-            image = decoded
+            data = loaded
         }
     }
 }

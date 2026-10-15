@@ -1281,7 +1281,13 @@ class AudioEngineManager: ObservableObject {
         // Manual Play at the end of a completed queue restarts from
         // the first queue item. This is intentionally manual; the queue never
         // auto-restarts when the final track finishes.
-        if !isPlaying && !queue.isEmpty && queueIndex >= queue.count - 1 {
+        // Restart the queue only after the final track has actually ended.
+        // A paused final track still has a meaningful playback position and
+        // must resume in place instead of being restarted from zero.
+        if !isPlaying,
+           !queue.isEmpty,
+           queueIndex >= queue.count - 1,
+           currentTime <= 0.5 {
             queueIndex = 0
             play(track: queue[queueIndex])
             savePlaybackState(force: true)
