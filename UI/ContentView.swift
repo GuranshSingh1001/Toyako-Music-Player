@@ -265,44 +265,28 @@ struct ContentView: View {
 
     private var mainTabView: some View {
         TabView(selection: $selectedCategory) {
-            homeTab
-            tracksTab
-            albumsTab
-            artistsTab
-            playlistsTab
+            Tab("Home", systemImage: "house", value: LibraryCategory.home) {
+                tabDestination { homeContent }
+            }
+
+            Tab("Tracks", systemImage: "music.note", value: LibraryCategory.tracks) {
+                tabDestination { tabContent(for: .tracks) }
+            }
+
+            Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
+                tabDestination { tabContent(for: .albums) }
+            }
+
+            Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
+                tabDestination { tabContent(for: .artists) }
+            }
+
+            Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
+                tabDestination { tabContent(for: .allPlaylists) }
+            }
         }
         .tabViewStyle(.sidebarAdaptable)
         .tint(ToyakoDesign.Color.accent)
-    }
-
-    private var homeTab: some View {
-        Tab("Home", systemImage: "house", value: LibraryCategory.home) {
-            tabDestination { homeContent }
-        }
-    }
-
-    private var tracksTab: some View {
-        Tab("Tracks", systemImage: "music.note", value: LibraryCategory.tracks) {
-            tabDestination { tabContent(for: .tracks) }
-        }
-    }
-
-    private var albumsTab: some View {
-        Tab("Albums", systemImage: "square.stack", value: LibraryCategory.albums) {
-            tabDestination { tabContent(for: .albums) }
-        }
-    }
-
-    private var artistsTab: some View {
-        Tab("Artists", systemImage: "music.mic", value: LibraryCategory.artists) {
-            tabDestination { tabContent(for: .artists) }
-        }
-    }
-
-    private var playlistsTab: some View {
-        Tab("Playlists", systemImage: "square.grid.2x2", value: LibraryCategory.allPlaylists) {
-            tabDestination { tabContent(for: .allPlaylists) }
-        }
     }
 
     @ViewBuilder
