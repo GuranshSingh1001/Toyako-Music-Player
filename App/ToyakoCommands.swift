@@ -12,7 +12,7 @@ struct ToyakoCommands: Commands {
 
     var body: some Commands {
         // Remove standard actions that are not useful for a dedicated music player.
-        // ToyakoAppDelegate also removes the complete File/Edit/View menus from
+        // ToyakoApplication also removes the complete File/Edit/View menus from
         // the main menu builder on platforms that expose UIKit menu customization.
         CommandGroup(replacing: .newItem) { }
         CommandGroup(replacing: .undoRedo) { }

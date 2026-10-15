@@ -76,7 +76,10 @@ struct OfflineMusicApp: App {
                     }
                 }
         }
-        .commands {
+        // Replace SwiftUI's default command set instead of appending to it.
+        // This prevents SwiftUI from adding the standard File/Edit/View menus
+        // before Toyako's custom Playback, Library, and Settings menus.
+        .commandsReplaced {
             ToyakoCommands()
         }
     }
