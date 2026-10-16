@@ -80,7 +80,9 @@ struct OfflineMusicApp: App {
         // This prevents SwiftUI from adding the standard File/Edit/View menus
         // before Toyako's custom Playback, Library, and Settings menus.
         .commandsReplaced {
+            ToyakoStandardCommandReplacements()
             ToyakoCommands()
+            ToyakoSettingsCommands()
         }
     }
 }
