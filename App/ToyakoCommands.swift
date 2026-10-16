@@ -5,23 +5,9 @@ import Foundation
 /// On iPad, the system reveals this menu bar when the user swipes down from
 /// the top edge while using Windowed Apps or Stage Manager.
 struct ToyakoCommands: Commands {
-    @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
-    @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
-    @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
-    @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
     @AppStorage("Toyako.NowPlayingPresented") private var isNowPlayingPresented = false
 
     var body: some Commands {
-        // Remove standard actions that are not useful for a dedicated music player.
-        // ToyakoAppDelegate also removes the complete File/Edit/View menus from
-        // the main menu builder on platforms that expose UIKit menu customization.
-        CommandGroup(replacing: .newItem) { }
-        CommandGroup(replacing: .undoRedo) { }
-        CommandGroup(replacing: .pasteboard) { }
-        CommandGroup(replacing: .textEditing) { }
-        CommandGroup(replacing: .textFormatting) { }
-        CommandGroup(replacing: .toolbar) { }
-        CommandGroup(replacing: .sidebar) { }
         CommandMenu("File") {
             Button("Import Songs…", systemImage: "square.and.arrow.down") {
                 NotificationCenter.default.post(name: .toyakoCommandImportSongs, object: nil)
@@ -95,7 +81,33 @@ struct ToyakoCommands: Commands {
                 NotificationCenter.default.post(name: .toyakoCommandNavigate, object: "playlists")
             }.keyboardShortcut("5", modifiers: [.command])
         }
+    }
+}
 
+
+/// Keeps standard editing/window command groups disabled without increasing
+/// the number of children in the main custom-menu builder.
+struct ToyakoStandardCommandReplacements: Commands {
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) { }
+        CommandGroup(replacing: .undoRedo) { }
+        CommandGroup(replacing: .pasteboard) { }
+        CommandGroup(replacing: .textEditing) { }
+        CommandGroup(replacing: .textFormatting) { }
+        CommandGroup(replacing: .toolbar) { }
+        CommandGroup(replacing: .sidebar) { }
+    }
+}
+
+/// Settings commands are separate so the primary command builder stays well
+/// below SwiftUI's command-builder arity limit.
+struct ToyakoSettingsCommands: Commands {
+    @AppStorage(ToyakoPreferences.translationKey) private var showTranslation = false
+    @AppStorage(ToyakoPreferences.showRomanizationKey) private var showRomanization = true
+    @AppStorage(ToyakoPreferences.karaokeGlowKey) private var karaokeGlow = true
+    @AppStorage(ToyakoPreferences.showAudioInfoKey) private var showAudioInfo = true
+
+    var body: some Commands {
         CommandMenu("Settings") {
             Toggle("Translate Japanese Lyrics", isOn: $showTranslation)
             Toggle("Romanization", isOn: $showRomanization)
