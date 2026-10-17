@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.Toyako" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#7C5CFC</item>
+        <item name="android:navigationBarColor">#111114</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:statusBarColor">#111114</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
