@@ -1,6 +1,6 @@
 # Toyako
 <p align="center">
-  <img src="docs/assets/screenshots/toyako-icon.png" alt="App Icon" width="128" height="128">
+  <img src="docs/assets/toyako-icon.png" alt="App Icon" width="128" height="128">
   # Toyako
 </p>
 
