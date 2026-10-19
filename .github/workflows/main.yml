@@ -6,8 +6,6 @@ on:
       - main
   workflow_dispatch:
 
-# No repository write access is needed because this workflow only
-# builds the app and uploads the IPA to the Actions artifact store.
 permissions:
   contents: read
 
