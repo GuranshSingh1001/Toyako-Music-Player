@@ -7,10 +7,6 @@ Built with SwiftUI and AVFoundation, Toyako is designed around a simple idea: yo
 > Your music. Your device. No internet required.
 
 ## Features
-
-### Toyako Remote
-
-Toyako includes an optional local-network web remote. When enabled, another device on the same Wi-Fi network can open the Toyako Remote web interface to control playback and mirror the current Now Playing experience. The remote can show album artwork, playback state, queue, timed lyrics, and Japanese romaji, and can send play/pause, next, previous, seek, volume, shuffle, repeat, and lyric-display setting changes back to the iPad. Music files remain on the iPad.
 - Fully offline music playback
 - Local music library stored and managed on-device
 - Import music through the iPad Files app
@@ -47,14 +43,13 @@ Supported audio formats depend on the formats provided by Apple's AVFoundation f
 
 ### Lyrics
 
-Toyako supports timed **LRC** and **TTML** lyrics. Japanese TTML spans can be rendered as fine-grained karaoke units with synchronized romaji, while Latin words and numbers remain atomic. The active lyric presentation can be customized from Settings.
+Toyako supports timed **LRC** and **TTML** lyrics. TTML spans can be rendered as fine-grained karaoke units. The active lyric presentation can be customized from Settings.
 
 ## Offline by Design
 
 Toyako is designed to keep the core music experience on the device. Playback and local-library functionality do not depend on an internet connection.
 
 Toyako does not require:
-
 - User accounts
 - Cloud music storage
 - A streaming subscription
@@ -82,7 +77,7 @@ The interface is built specifically for iPad and supports portrait and landscape
 
 Toyako can optionally download artist artwork from the internet and cache it locally. This feature is **off by default** because artist names are sent to online metadata services when artwork is requested. When enabled, Toyako tries **Deezer**, then **iTunes**, then **Wikidata / Wikimedia Commons** as fallbacks. Artist names are normalized to improve matching, and common multi-artist metadata such as `Aki Toyosaki, Yoko Hikasa, Satomi Sato` is split into individual artist entries.
 
-You can enable or disable automatic downloads in **Settings → Artist Artwork**. The same section includes **Remove All Downloaded Artist Artwork**. Artwork is stored in the app sandbox at `Library/Caches/ArtistArtwork`, so it does not appear in the Files app. iOS treats the Caches directory as app-managed, discardable data rather than user documents.
+You can enable or disable it in **Settings → Artist Artwork**. The same section also includes **Remove All Downloaded Artist Artwork**.
 
 ## Toyako Design System
 The design system centralizes:
