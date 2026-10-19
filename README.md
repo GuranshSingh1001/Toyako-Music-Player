@@ -9,22 +9,14 @@ Built with SwiftUI and AVFoundation, Toyako is designed around a simple idea: yo
 ## Features
 - Fully offline music playback
 - Local music library stored and managed on-device
-- Import music through the iPad Files app
-- Album browsing and album detail views
-- Artist browsing
-- Playlist creation and playlist management
+- Import music through the iPad Files app or Though the Toyako App
 - Queue management
-- Mini-player for persistent playback controls
-- Full Now Playing screen
-- Album artwork and artwork loading
-- LRC lyric parsing and lyric display support
-- Fine-grained Japanese TTML karaoke lyrics with synchronized romaji
+- LRC and TTML lyrics support
 - Configurable lyric size, animation, and karaoke glow
 - Romanization toggle for Japanese lyrics
 - Recently played history
 - Adaptive artwork-driven Now Playing ambience
 - Audio quality information for the current track
-- Queue drag-and-drop reordering
 - Persistent smooth track transition settings
 - Background audio playback
 - Shuffle and repeat controls
