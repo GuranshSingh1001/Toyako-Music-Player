@@ -85,9 +85,6 @@ Toyako can optionally download artist artwork from the internet and cache it loc
 You can enable or disable automatic downloads in **Settings → Artist Artwork**. The same section includes **Remove All Downloaded Artist Artwork**. Artwork is stored in the app sandbox at `Library/Caches/ArtistArtwork`, so it does not appear in the Files app. iOS treats the Caches directory as app-managed, discardable data rather than user documents.
 
 ## Toyako Design System
-
-The UI now uses a shared SwiftUI design system under `UI/DesignSystem/ToyakoDesignSystem.swift`.
-
 The design system centralizes:
 
 - Toyako accent color and semantic surfaces
