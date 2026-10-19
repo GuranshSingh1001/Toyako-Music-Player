@@ -24,7 +24,7 @@ final class RemoteServer: ObservableObject {
     private weak var audioManager: AudioEngineManager?
     private let queue = DispatchQueue(label: "com.toyako.remote-server")
     // Keep the remote on one stable port so toggling it off/on does not change the URL.
-    private let fixedPort: UInt16 = 8787
+    private let fixedPort: UInt16 = 6767
     private let enabledKey = "Toyako.RemoteServerEnabled"
 
     func attach(to manager: AudioEngineManager) {
