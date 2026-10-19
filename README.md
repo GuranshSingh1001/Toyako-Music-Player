@@ -1,7 +1,6 @@
 # Toyako
-<p align="center">
+<p align="left">
   <img src="docs/assets/toyako-icon.png" alt="App Icon" width="128" height="128">
-  # Toyako
 </p>
 
 **Toyako is a native, offline-first music player for iPadOS.**
