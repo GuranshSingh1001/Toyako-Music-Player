@@ -68,6 +68,8 @@ struct SettingsView: View {
                     }
                 }
 
+                AlternateAppIconSettingsSection()
+
                 Section("Lyrics") {
                     Toggle("Show Romanization", isOn: $showRomanization)
                         .tint(.green)

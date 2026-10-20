@@ -26,6 +26,8 @@ Built with SwiftUI and AVFoundation, Toyako is designed around a simple idea: yo
 - Playback progress and seeking
 - iPad-optimized layouts
 - Native SwiftUI interface
+- Native alternate app icons (Original, Ocean, and Violet)
+- Custom icon artwork picker in Settings, with on-device saving and export for Shortcuts
 - No user account required
 - No music streaming service required
 - No third-party cloud music library required
