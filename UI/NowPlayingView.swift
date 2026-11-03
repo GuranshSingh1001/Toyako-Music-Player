@@ -252,8 +252,15 @@ struct NowPlayingView: View {
     private var compactBottomActions: some View {
         HStack(spacing: 20) {
             Button {
-                withAnimation(.easeInOut(duration: 0.22)) {
-                    showLyrics.toggle()
+                withAnimation(.easeInOut(duration: 0.28)) {
+                    if showQueue {
+                        showQueue = false
+                        showLyrics = true
+                    } else if showLyrics {
+                        showLyrics = false
+                    } else {
+                        showQueue = true
+                    }
                 }
             } label: {
                 Image(systemName: showQueue ? "quote.bubble" : (showLyrics ? "photo" : "list.bullet"))
@@ -265,21 +272,9 @@ struct NowPlayingView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(showQueue ? "Show lyrics" : (showLyrics ? "Show artwork" : "Show queue"))
 
-            if audioManager.lyricsSources.count > 1 {
+            if audioManager.lyricsSources.count > 1 && showLyrics {
                 lyricsSourceButton(size: 48, opensAbove: true)
             }
-
-            Button {
-                showQueue = true
-            } label: {
-                Image(systemName: "list.bullet")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.primary.opacity(0.88))
-                    .frame(width: 48, height: 48)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Queue")
         }
     }
 
