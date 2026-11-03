@@ -493,13 +493,10 @@ struct ArtistDetailView: View {
     }
 
     private var artistTitleBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(artist.name)
-                .font(.system(size: 42, weight: .bold, design: .rounded))
-                .lineLimit(2)
-                .minimumScaleFactor(0.72)
-
-        }
+        Text(artist.name)
+            .font(.system(size: 42, weight: .bold, design: .rounded))
+            .lineLimit(2)
+            .minimumScaleFactor(0.72)
     }
 
     private func heroActions(compact: Bool) -> some View {
