@@ -22,6 +22,8 @@ struct ContentView: View {
         selectedCategory:
             LibraryCategory? = .home
 
+    @State private var pressedCategory: LibraryCategory?
+
     @State private var
         showFilePicker = false
 
@@ -293,8 +295,104 @@ struct ContentView: View {
                 tabDestination { tabContent(for: .allPlaylists) }
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
+        // The native sidebarAdaptable tab bar clips its Liquid Glass
+        // long-press expansion to the system tab-bar bounds. Use a page-style
+        // host and our own generously padded glass capsule so the press scale
+        // has room to grow above and below without being cropped.
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .safeAreaInset(edge: .top, spacing: 0) {
+            customNavigationPill
+        }
         .tint(ToyakoDesign.Color.accent)
+    }
+
+    private var customNavigationPill: some View {
+        HStack(spacing: 5) {
+            Menu {
+                navigationMenuItem("Home", category: .home, icon: "house")
+                navigationMenuItem("Tracks", category: .tracks, icon: "music.note")
+                navigationMenuItem("Albums", category: .albums, icon: "square.stack")
+                navigationMenuItem("Artists", category: .artists, icon: "music.mic")
+                navigationMenuItem("Playlists", category: .allPlaylists, icon: "square.grid.2x2")
+            } label: {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.primary.opacity(0.9))
+                    .frame(width: 48, height: 44)
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel("Navigation menu")
+
+            navigationTabButton("Home", category: .home)
+            navigationTabButton("Tracks", category: .tracks)
+            navigationTabButton("Albums", category: .albums)
+            navigationTabButton("Artists", category: .artists)
+            navigationTabButton("Playlists", category: .allPlaylists)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 9)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay {
+            Capsule().stroke(.primary.opacity(0.13), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.10), radius: 12, y: 5)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity)
+        // This vertical clearance is intentional: the selected tab grows on
+        // press, and the parent must not crop the top or bottom of that motion.
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+    }
+
+    private func navigationTabButton(
+        _ title: String,
+        category: LibraryCategory
+    ) -> some View {
+        let isSelected = selectedCategory == category
+        let isPressed = pressedCategory == category
+
+        return Button {
+            selectedCategory = category
+        } label: {
+            Text(title)
+                .font(.system(size: 16, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.92))
+                .padding(.horizontal, 18)
+                .frame(height: 44)
+                .background {
+                    if isSelected {
+                        Capsule().fill(ToyakoDesign.Color.accent)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isPressed ? 1.075 : 1)
+        .zIndex(isPressed ? 2 : (isSelected ? 1 : 0))
+        .onLongPressGesture(
+            minimumDuration: 0.12,
+            pressing: { pressing in
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.68)) {
+                    pressedCategory = pressing ? category : nil
+                }
+            },
+            perform: {}
+        )
+        .animation(.spring(response: 0.28, dampingFraction: 0.76), value: isSelected)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func navigationMenuItem(
+        _ title: String,
+        category: LibraryCategory,
+        icon: String
+    ) -> some View {
+        Button {
+            selectedCategory = category
+        } label: {
+            Label(title, systemImage: icon)
+        }
     }
 
     @ViewBuilder
