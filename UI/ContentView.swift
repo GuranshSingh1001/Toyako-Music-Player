@@ -362,6 +362,22 @@ struct ContentView: View {
                         .frame(width: playerWidth)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                         .padding(.bottom, bottomInset)
+                        .background {
+                            if usesBottomTabBar {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .fill(.ultraThinMaterial)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                            .fill(Color.blue.opacity(0.13))
+                                    }
+                                    // Expand the glass behind the player without
+                                    // changing its measured size or vertical position.
+                                    .padding(.horizontal, -12)
+                                    .padding(.vertical, -8)
+                                    .contentShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                                    .onTapGesture { }
+                            }
+                        }
 
                         // Block taps in the small strip below the player without
                         // adding layout height or moving the player upward.
