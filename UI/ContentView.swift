@@ -333,17 +333,26 @@ struct ContentView: View {
                     // already aligned to the bottom of the destination.
                     let bottomInset: CGFloat = usesBottomTabBar ? 6 : 7
 
-                    MiniPlayerView(
-                        isNowPlayingPresented: showNowPlaying,
-                        onOpenNowPlaying: {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                                showNowPlaying = true
+                    VStack(spacing: 0) {
+                        // A deliberate dead zone above the mini-player. It absorbs
+                        // stray taps so they cannot activate the content underneath.
+                        Color.clear
+                            .frame(height: 24)
+                            .contentShape(Rectangle())
+                            .onTapGesture { }
+
+                        MiniPlayerView(
+                            isNowPlayingPresented: showNowPlaying,
+                            onOpenNowPlaying: {
+                                withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                    showNowPlaying = true
+                                }
                             }
-                        }
-                    )
-                    .toyakoAdaptiveGlass(in: Capsule())
-                    .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
-                    .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                        )
+                        .toyakoAdaptiveGlass(in: Capsule())
+                        .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
+                        .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                    }
                     .frame(width: playerWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .padding(.bottom, bottomInset)
