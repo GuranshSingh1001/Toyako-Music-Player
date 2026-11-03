@@ -6,6 +6,7 @@ import UIKit
 /// The queue remains fully visible, and tapping an upcoming track still plays it.
 struct QueueView: View {
     var embedded: Bool = false
+    var preloadedArtwork: [URL: Data] = [:]
     @EnvironmentObject private var audioManager: AudioEngineManager
 
     var body: some View {
@@ -35,7 +36,8 @@ struct QueueView: View {
                         QueueRow(
                             track: current,
                             current: true,
-                            isPlaying: audioManager.isPlaying
+                            isPlaying: audioManager.isPlaying,
+                            artworkData: preloadedArtwork[current.url.standardizedFileURL]
                         )
                     }
 
@@ -53,6 +55,7 @@ struct QueueView: View {
                                 track: track,
                                 current: false,
                                 isPlaying: false,
+                                artworkData: preloadedArtwork[track.url.standardizedFileURL],
                                 onSelect: {
                                     audioManager.playQueuedTrack(at: index)
                                 }
@@ -95,11 +98,12 @@ private struct QueueRow: View {
     let track: LocalTrack
     let current: Bool
     let isPlaying: Bool
+    var artworkData: Data? = nil
     var onSelect: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
-            LazyArtwork(url: track.url, size: ToyakoArtworkSize.row, cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
+            LazyArtwork(url: track.url, size: ToyakoArtworkSize.row, cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius, initialData: artworkData)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)
