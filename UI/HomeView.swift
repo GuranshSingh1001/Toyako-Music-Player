@@ -244,6 +244,8 @@ struct HomeView: View {
             }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        // Allow the card's native press/scale highlight to extend beyond the scroll viewport.
+        .scrollClipDisabled()
     }
 
     private func horizontalAlbums(_ items: [AlbumGroup]) -> some View {
@@ -276,6 +278,8 @@ struct HomeView: View {
             }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        // Allow the card's native press/scale highlight to extend beyond the scroll viewport.
+        .scrollClipDisabled()
     }
 
     private func horizontalArtists(_ items: [ArtistGroup]) -> some View {
@@ -304,6 +308,8 @@ struct HomeView: View {
             }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        // Allow the card's native press/scale highlight to extend beyond the scroll viewport.
+        .scrollClipDisabled()
     }
 
     private func horizontalPlaylists(_ items: [Playlist]) -> some View {
@@ -361,6 +367,8 @@ struct HomeView: View {
             }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        // Allow the card's native press/scale highlight to extend beyond the scroll viewport.
+        .scrollClipDisabled()
     }
 
     private var libraryOverview: some View {
