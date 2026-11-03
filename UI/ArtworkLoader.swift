@@ -145,10 +145,11 @@ struct LazyArtwork: View {
 
     @State private var data: Data?
 
-    init(url: URL?, size: CGFloat, cornerRadius: CGFloat = 12) {
+    init(url: URL?, size: CGFloat, cornerRadius: CGFloat = 12, initialData: Data? = nil) {
         self.url = url
         self.size = size
         self.cornerRadius = cornerRadius
+        _data = State(initialValue: initialData)
     }
 
     var body: some View {
