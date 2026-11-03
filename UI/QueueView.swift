@@ -5,27 +5,21 @@ import UIKit
 /// manual reordering/removal was causing inconsistent queueIndex state.
 /// The queue remains fully visible, and tapping an upcoming track still plays it.
 struct QueueView: View {
+    var embedded: Bool = false
     @EnvironmentObject private var audioManager: AudioEngineManager
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button("Done") { dismiss() }
-                    .buttonStyle(ToyakoSmallActionButtonStyle())
-
-                Spacer()
-
-                Text("Queue")
-                    .font(ToyakoDesign.Typography.item)
-
-                Spacer()
-
-                Color.clear.frame(width: 64, height: 1)
+            if !embedded {
+                HStack {
+                    Spacer()
+                    Text("Queue").font(ToyakoDesign.Typography.item)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
 
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -61,7 +55,6 @@ struct QueueView: View {
                                 isPlaying: false,
                                 onSelect: {
                                     audioManager.playQueuedTrack(at: index)
-                                    dismiss()
                                 }
                             )
                         }
@@ -81,10 +74,21 @@ struct QueueView: View {
             .scrollBounceBehavior(.basedOnSize)
         }
         .clipShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
-        .toyakoAdaptiveGlass(
-            in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
-        )
-        .padding(8)
+        .background {
+            if embedded {
+                RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
+                            .stroke(.primary.opacity(0.12), lineWidth: 1)
+                    }
+            } else {
+                RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
+                    .fill(.clear)
+            }
+        }
+        .toyakoAdaptiveGlass(in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
+        .padding(embedded ? 0 : 8)
         .background(Color.clear)
     }
 }
