@@ -167,8 +167,24 @@ struct HomeView: View {
                         .frame(width: 44, height: 44)
                         .background(.thinMaterial, in: Circle())
                 }
-                .padding(14)
-                .toyakoCard()
+                .padding(16)
+                .background {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(.primary.opacity(0.14), lineWidth: 1)
+                        }
+                }
+                .overlay(alignment: .trailing) {
+                    LinearGradient(
+                        colors: [.white.opacity(0.10), .clear, .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .allowsHitTesting(false)
+                }
             }
             .buttonStyle(.plain)
         }
