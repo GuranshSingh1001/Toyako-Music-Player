@@ -102,7 +102,7 @@ struct AllPlaylistsGridView: View {
             }
         } message: {
             if let playlist = playlistPendingDeletion {
-                Text("“\\(playlist.name)” and its playlist entry will be deleted. Your music files will not be removed.")
+                Text("“\(playlist.name)” and its playlist entry will be deleted. Your music files will not be removed.")
             }
         }
     }
