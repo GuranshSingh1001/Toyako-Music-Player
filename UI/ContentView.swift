@@ -337,16 +337,7 @@ struct ContentView: View {
                         // A deliberate dead zone above the mini-player. It absorbs
                         // stray taps so they cannot activate the content underneath.
                         // TEMPORARY DEBUG DISPLAY: visible 24pt dead zone.
-                        Rectangle()
-                            .fill(Color.orange.opacity(0.55))
-                            .overlay {
-                                Text("24 pt TAP BUFFER")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.black)
-                            }
-                            .frame(height: 24)
-                            .contentShape(Rectangle())
-                            .onTapGesture { }
+                        miniPlayerTapBuffer
 
                         MiniPlayerView(
                             isNowPlayingPresented: showNowPlaying,
@@ -359,6 +350,8 @@ struct ContentView: View {
                         .toyakoAdaptiveGlass(in: Capsule())
                         .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
                         .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+
+                        miniPlayerTapBuffer
                     }
                     .frame(width: playerWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -366,6 +359,19 @@ struct ContentView: View {
                 }
                 .zIndex(10)
             }
+    }
+
+    private var miniPlayerTapBuffer: some View {
+        Rectangle()
+            .fill(Color.orange.opacity(0.55))
+            .overlay {
+                Text("24 pt TAP BUFFER")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.black)
+            }
+            .frame(height: 24)
+            .contentShape(Rectangle())
+            .onTapGesture { }
     }
 
     // MARK: - Tab
