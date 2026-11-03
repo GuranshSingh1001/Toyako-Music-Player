@@ -1185,6 +1185,13 @@ class LocalLibrary:
         savePlaylists()
     }
 
+    func deletePlaylist(
+        id: UUID
+    ) {
+        playlists.removeAll { $0.id == id }
+        savePlaylists()
+    }
+
     func renamePlaylist(
         id:
             UUID,
