@@ -336,7 +336,14 @@ struct ContentView: View {
                     VStack(spacing: 0) {
                         // A deliberate dead zone above the mini-player. It absorbs
                         // stray taps so they cannot activate the content underneath.
-                        Color.clear
+                        // TEMPORARY DEBUG DISPLAY: visible 24pt dead zone.
+                        Rectangle()
+                            .fill(Color.orange.opacity(0.55))
+                            .overlay {
+                                Text("24 pt TAP BUFFER")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.black)
+                            }
                             .frame(height: 24)
                             .contentShape(Rectangle())
                             .onTapGesture { }
