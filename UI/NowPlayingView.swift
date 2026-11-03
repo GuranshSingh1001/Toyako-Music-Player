@@ -16,6 +16,8 @@ struct NowPlayingView: View {
     @State private var showQueue = false
     @State private var showLyrics = false
     @State private var showLyricsSourcePicker = false
+    @State private var isPreparingQueue = false
+    @State private var queueArtworkCache: [URL: Data] = [:]
 
     // The panel itself slides up via ContentView's `.move(edge: .bottom)`
     // transition. That transition is driven by a parent `withAnimation`,
@@ -63,7 +65,7 @@ struct NowPlayingView: View {
 
                         Group {
                             if showQueue {
-                                QueueView(embedded: true)
+                                QueueView(embedded: true, preloadedArtwork: queueArtworkCache)
                             } else {
                                 lyricsPane(compact: false)
                             }
@@ -99,7 +101,11 @@ struct NowPlayingView: View {
                         }
 
                         Button {
-                            showQueue.toggle()
+                            if showQueue {
+                                showQueue = false
+                            } else {
+                                presentQueueAfterPreloadingArtwork()
+                            }
                         } label: {
                             Image(systemName: showQueue ? "quote.bubble" : "list.bullet")
                                 .font(.system(size: 19, weight: .semibold))
@@ -185,7 +191,7 @@ struct NowPlayingView: View {
         return VStack(spacing: 0) {
             Group {
                 if showQueue {
-                    QueueView(embedded: true)
+                    QueueView(embedded: true, preloadedArtwork: queueArtworkCache)
                 } else if showLyrics {
                     lyricsPane(compact: true)
                 } else {
@@ -266,8 +272,7 @@ struct NowPlayingView: View {
 
             if !showQueue {
                 Button {
-                    showQueue = true
-                    showLyrics = false
+                    presentQueueAfterPreloadingArtwork()
                 } label: {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 21, weight: .semibold))
@@ -297,6 +302,37 @@ struct NowPlayingView: View {
             if audioManager.lyricsSources.count > 1 {
                 lyricsSourceButton(size: 48, opensAbove: true)
             }
+        }
+    }
+
+    private func presentQueueAfterPreloadingArtwork() {
+        guard !isPreparingQueue, !showQueue else { return }
+        isPreparingQueue = true
+
+        Task { @MainActor in
+            let start = min(audioManager.queueIndex + 1, audioManager.queue.count)
+            let upcoming = Array(audioManager.queue.dropFirst(start).prefix(12))
+            let tracksToLoad = ([audioManager.currentTrack].compactMap { $0 } + upcoming)
+            let urls = Array(Set(tracksToLoad.map { $0.url.standardizedFileURL }))
+
+            var loaded: [URL: Data] = [:]
+            await withTaskGroup(of: (URL, Data?).self) { group in
+                for url in urls {
+                    group.addTask {
+                        (url, await ArtworkStore.shared.data(for: url))
+                    }
+                }
+                for await (url, data) in group {
+                    if let data { loaded[url] = data }
+                }
+            }
+
+            // Cache is ready before QueueView enters the hierarchy, so its
+            // visible rows receive image bytes on their first render.
+            queueArtworkCache = loaded
+            showLyrics = false
+            showQueue = true
+            isPreparingQueue = false
         }
     }
 
