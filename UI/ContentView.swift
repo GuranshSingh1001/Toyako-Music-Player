@@ -333,29 +333,45 @@ struct ContentView: View {
                     // already aligned to the bottom of the destination.
                     let bottomInset: CGFloat = usesBottomTabBar ? 6 : 7
 
-                    VStack(spacing: 0) {
-                        // A deliberate dead zone above the mini-player. It absorbs
-                        // stray taps so they cannot activate the content underneath.
-                        // TEMPORARY DEBUG DISPLAY: visible 24pt dead zone.
-                        miniPlayerTapBuffer
+                    ZStack(alignment: .bottom) {
+                        VStack(spacing: 0) {
+                            // Keep the existing visible 24pt tap buffer above the player.
+                            miniPlayerTapBuffer
 
-                        MiniPlayerView(
-                            isNowPlayingPresented: showNowPlaying,
-                            onOpenNowPlaying: {
-                                withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                                    showNowPlaying = true
+                            MiniPlayerView(
+                                isNowPlayingPresented: showNowPlaying,
+                                onOpenNowPlaying: {
+                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                        showNowPlaying = true
+                                    }
                                 }
+                            )
+                            .toyakoAdaptiveGlass(in: Capsule())
+                            .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
+                            .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                            // A 2pt invisible hit area on either side; the
+                            // background stays behind the actual player controls.
+                            .background {
+                                Rectangle()
+                                    .fill(Color.clear)
+                                    .contentShape(Rectangle())
+                                    .padding(.horizontal, 2)
+                                    .onTapGesture { }
                             }
-                        )
-                        .toyakoAdaptiveGlass(in: Capsule())
-                        .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
-                        .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                        }
+                        .frame(width: playerWidth)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, bottomInset)
 
-                        miniPlayerTapBuffer
+                        // Block taps in the small strip below the player without
+                        // adding layout height or moving the player upward.
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(height: bottomInset)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture { }
                     }
-                    .frame(width: playerWidth)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, bottomInset)
                 }
                 .zIndex(10)
             }
