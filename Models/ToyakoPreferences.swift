@@ -9,7 +9,9 @@ struct ToyakoPreferences {
     static let showAudioInfoKey = "Toyako.NowPlaying.ShowAudioInfo"
     static let translationKey = "Toyako.Lyrics.Translation"
     static let automaticArtistArtworkKey = "Toyako.ArtistArtwork.AutomaticDownloads"
-    static let bleedingEffectKey = "Toyako.Appearance.BleedingEffect"
+    // Bump the preference key so the artwork bleed is restored as enabled
+    // for installs that previously saved the effect as disabled.
+    static let bleedingEffectKey = "Toyako.Appearance.BleedingEffect.Restored"
     static let libraryArtworkSizeKey = "Toyako.Appearance.LibraryArtworkSize"
     static let appearanceKey = "Toyako.Appearance.ColorScheme"
     static let liquidGlassKey = "Toyako.Appearance.LiquidGlass"
