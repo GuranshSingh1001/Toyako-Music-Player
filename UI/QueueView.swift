@@ -71,6 +71,8 @@ struct QueueView: View {
                     }
                 }
                 .padding(.horizontal, 18)
+                // Give the embedded queue a little breathing room below the Now Playing header.
+                .padding(.top, embedded ? 20 : 0)
                 .padding(.bottom, 22)
             }
             .scrollIndicators(.hidden)
