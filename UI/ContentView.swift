@@ -333,77 +333,23 @@ struct ContentView: View {
                     // already aligned to the bottom of the destination.
                     let bottomInset: CGFloat = usesBottomTabBar ? 6 : 7
 
-                    ZStack(alignment: .bottom) {
-                        VStack(spacing: 0) {
-                            // Keep the existing visible 24pt tap buffer above the player.
-                            miniPlayerTapBuffer
-
-                            MiniPlayerView(
-                                isNowPlayingPresented: showNowPlaying,
-                                onOpenNowPlaying: {
-                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                                        showNowPlaying = true
-                                    }
-                                }
-                            )
-                            .toyakoAdaptiveGlass(in: Capsule())
-                            .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
-                            .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
-                            // A 2pt invisible hit area on either side; the
-                            // background stays behind the actual player controls.
-                            .background {
-                                Rectangle()
-                                    .fill(Color.clear)
-                                    .contentShape(Rectangle())
-                                    .padding(.horizontal, 2)
-                                    .onTapGesture { }
+                    MiniPlayerView(
+                        isNowPlayingPresented: showNowPlaying,
+                        onOpenNowPlaying: {
+                            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                showNowPlaying = true
                             }
                         }
-                        .frame(width: playerWidth)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, bottomInset)
-                        .background {
-                            if usesBottomTabBar {
-                                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                                    .fill(.ultraThinMaterial)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 32, style: .continuous)
-                                            .fill(Color.blue.opacity(0.13))
-                                    }
-                                    // Expand the glass behind the player without
-                                    // changing its measured size or vertical position.
-                                    .padding(.horizontal, -12)
-                                    .padding(.vertical, -8)
-                                    .contentShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-                                    .onTapGesture { }
-                            }
-                        }
-
-                        // Block taps in the small strip below the player without
-                        // adding layout height or moving the player upward.
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(height: bottomInset)
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                            .onTapGesture { }
-                    }
+                    )
+                    .toyakoAdaptiveGlass(in: Capsule())
+                    .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
+                    .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
+                    .frame(width: playerWidth)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, bottomInset)
                 }
                 .zIndex(10)
             }
-    }
-
-    private var miniPlayerTapBuffer: some View {
-        Rectangle()
-            .fill(Color.orange.opacity(0.55))
-            .overlay {
-                Text("24 pt TAP BUFFER")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.black)
-            }
-            .frame(height: 24)
-            .contentShape(Rectangle())
-            .onTapGesture { }
     }
 
     // MARK: - Tab
