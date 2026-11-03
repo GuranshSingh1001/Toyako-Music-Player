@@ -306,15 +306,7 @@ struct NowPlayingView: View {
     }
 
     private func presentQueueAfterPreloadingArtwork() {
-        guard !showQueue else { return }
-
-        // Present the queue immediately. Artwork is optional decoration and
-        // must never delay the primary interaction; LazyArtwork can render its
-        // own placeholder while this background prefetch warms the cache.
-        showLyrics = false
-        showQueue = true
-
-        guard !isPreparingQueue else { return }
+        guard !isPreparingQueue, !showQueue else { return }
         isPreparingQueue = true
 
         Task { @MainActor in
@@ -322,7 +314,6 @@ struct NowPlayingView: View {
             let upcoming = Array(audioManager.queue.dropFirst(start).prefix(12))
             let tracksToLoad = ([audioManager.currentTrack].compactMap { $0 } + upcoming)
             let urls = Array(Set(tracksToLoad.map { $0.url.standardizedFileURL }))
-                .filter { queueArtworkCache[$0] == nil }
 
             var loaded: [URL: Data] = [:]
             await withTaskGroup(of: (URL, Data?).self) { group in
@@ -336,8 +327,11 @@ struct NowPlayingView: View {
                 }
             }
 
-            // Merge only newly loaded artwork without replacing cached entries.
-            queueArtworkCache.merge(loaded) { current, _ in current }
+            // Cache is ready before QueueView enters the hierarchy, so its
+            // visible rows receive image bytes on their first render.
+            queueArtworkCache = loaded
+            showLyrics = false
+            showQueue = true
             isPreparingQueue = false
         }
     }
@@ -780,8 +774,8 @@ private struct SmoothLyricsView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: CGFloat(lyricsLineSpacing)) {
-                    ForEach(Array(lyrics.enumerated()), id: \.element.id) { index, line in
+                LazyVStack(alignment: .leading, spacing: CGFloat(lyricsLineSpacing)) {
+                    ForEach(lyrics, id: \.id) { line in
                         lyricLine(
                             line: line,
                             state: lineState(line),
@@ -793,7 +787,6 @@ private struct SmoothLyricsView: View {
                         .onTapGesture {
                             onSeek(line.time)
                         }
-
                     }
                 }
                 .padding(.horizontal, 12)
