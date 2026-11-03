@@ -237,8 +237,7 @@ struct HomeView: View {
                         }
                         .padding(12)
                         .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
-                        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
-                        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
+.toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                         
                     }
                     .buttonStyle(.plain)
