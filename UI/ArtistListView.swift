@@ -9,6 +9,8 @@ struct ArtistListView: View {
     @State private var selectedArtistID: String?
     @State private var artistSearch = ""
     @State private var selectedArtistArtwork: UIImage?
+    @State private var artistBeingEdited: ArtistGroup?
+    @State private var artworkRefreshID = 0
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
 
 
@@ -39,6 +41,20 @@ struct ArtistListView: View {
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: audioManager.currentTrack != nil ? 82 : 0)
+        }
+        .sheet(item: $artistBeingEdited) { artist in
+            ArtistArtworkPickerSheet(artistName: artist.name) {
+                artworkRefreshID += 1
+                Task {
+                    let data = await ArtistArtworkService.shared.imageData(
+                        for: artist.name,
+                        allowNetwork: false
+                    )
+                    if selectedArtistID == artist.id {
+                        selectedArtistArtwork = data.flatMap(UIImage.init(data:))
+                    }
+                }
+            }
         }
         .onAppear {
             selectFirstArtistIfNeeded()
@@ -73,7 +89,7 @@ struct ArtistListView: View {
                         library: library,
                         usesSharedBackground: true
                     )
-                    .id(artist.id)
+                    .id("\(artist.id)|\(artworkRefreshID)")
                     .transition(.opacity)
                     .zIndex(1)
                 } else {
@@ -181,6 +197,7 @@ struct ArtistListView: View {
                     artistName: artist.name,
                     size: 48
                 )
+                .id("\(artist.name)|\(artworkRefreshID)")
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(artist.name)
@@ -195,9 +212,22 @@ struct ArtistListView: View {
 
                 Spacer(minLength: 4)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                if isSelected {
+                    Button {
+                        artistBeingEdited = artist
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                            .font(.caption.weight(.semibold))
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Edit artwork for \(artist.name)")
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -257,6 +287,12 @@ struct ArtistListView: View {
                         .padding(.vertical, 4)
                     }
                     .contextMenu {
+                        Button {
+                            artistBeingEdited = artist
+                        } label: {
+                            Label("Edit Artwork", systemImage: "pencil")
+                        }
+
                         Button {
                             playArtist(artist)
                         } label: {
@@ -722,5 +758,146 @@ private struct ArtistAlbum: Identifiable {
         self.name = name
         self.tracks = tracks
         self.artworkURL = artworkURL
+    }
+}
+
+
+// MARK: - Manual Artist Artwork Picker
+
+private struct ArtistArtworkPickerSheet: View {
+    let artistName: String
+    let onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String
+    @State private var results: [ArtistArtworkSearchResult] = []
+    @State private var isSearching = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(artistName: String, onSaved: @escaping () -> Void) {
+        self.artistName = artistName
+        self.onSaved = onSaved
+        _searchText = State(initialValue: artistName)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search Deezer artists", text: $searchText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                }
+                .padding(12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .padding(.horizontal)
+
+                if isSearching {
+                    ProgressView("Searching Deezer…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let errorMessage {
+                    ContentUnavailableView(
+                        "Couldn't load artists",
+                        systemImage: "wifi.exclamationmark",
+                        description: Text(errorMessage)
+                    )
+                } else if results.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    List(results) { result in
+                        Button {
+                            save(result)
+                        } label: {
+                            HStack(spacing: 12) {
+                                AsyncImage(url: URL(string: result.imageURL)) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().scaledToFill()
+                                    } else {
+                                        Circle().fill(.quaternary)
+                                            .overlay { Image(systemName: "person.fill").foregroundStyle(.secondary) }
+                                    }
+                                }
+                                .frame(width: 54, height: 54)
+                                .clipShape(Circle())
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(result.name)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text("Deezer artist")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                if isSaving {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "arrow.down.circle")
+                                        .foregroundStyle(ToyakoDesign.Color.accent)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isSaving)
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .padding(.top, 12)
+            .navigationTitle("Edit Artist Artwork")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .task(id: searchText) {
+                let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !query.isEmpty else {
+                    results = []
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                guard !Task.isCancelled else { return }
+                isSearching = true
+                errorMessage = nil
+                let matches = await ArtistArtworkService.shared.searchDeezerArtists(query: query)
+                guard !Task.isCancelled else { return }
+                results = matches
+                isSearching = false
+                if matches.isEmpty {
+                    errorMessage = "No Deezer artists matched “\(query)”. Try another spelling."
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func save(_ result: ArtistArtworkSearchResult) {
+        guard !isSaving else { return }
+        isSaving = true
+        errorMessage = nil
+
+        Task {
+            let success = await ArtistArtworkService.shared.setManualArtistArtwork(
+                localArtistName: artistName,
+                selection: result
+            )
+            isSaving = false
+            if success {
+                onSaved()
+                dismiss()
+            } else {
+                errorMessage = "The selected artist photo couldn't be downloaded. Please try another result."
+            }
+        }
     }
 }
