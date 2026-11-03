@@ -6,6 +6,12 @@ import UIKit
 // Uses public metadata services instead of Apple Music / MusicKit.
 // Source order: Deezer -> iTunes Search -> Wikidata/Wikimedia Commons. Results are cached on disk.
 
+struct ArtistArtworkSearchResult: Identifiable, Sendable {
+    let id: String
+    let name: String
+    let imageURL: String
+}
+
 enum ArtistArtworkSource: String {
     case deezer = "Deezer"
     case iTunes = "iTunes"
@@ -21,6 +27,56 @@ actor ArtistArtworkService {
     private let fileManager = FileManager.default
     private var memoryCache: [String: Data] = [:]
     private var inFlight: [String: Task<Data?, Never>] = [:]
+    private static let manualMappingsKey = "Toyako.ArtistArtwork.ManualMappings"
+
+    func searchDeezerArtists(query: String) async -> [ArtistArtworkSearchResult] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty,
+              var components = URLComponents(string: "https://api.deezer.com/search/artist") else {
+            return []
+        }
+        components.queryItems = [
+            URLQueryItem(name: "q", value: term),
+            URLQueryItem(name: "limit", value: "25")
+        ]
+        guard let url = components.url else { return [] }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  200..<300 ~= http.statusCode else { return [] }
+            let decoded = try JSONDecoder().decode(DeezerSearchResponse.self, from: data)
+            return decoded.data.compactMap { artist in
+                guard let image = artist.picture_xl ?? artist.picture_big ?? artist.picture_medium,
+                      URL(string: image) != nil else { return nil }
+                return ArtistArtworkSearchResult(
+                    id: String(artist.id),
+                    name: artist.name,
+                    imageURL: image
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+
+    func setManualArtistArtwork(
+        localArtistName: String,
+        selection: ArtistArtworkSearchResult
+    ) async -> Bool {
+        let localName = localArtistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !localName.isEmpty, let imageURL = URL(string: selection.imageURL),
+              let data = await downloadImage(url: imageURL) else { return false }
+
+        var mappings = UserDefaults.standard.dictionary(forKey: Self.manualMappingsKey) as? [String: String] ?? [:]
+        mappings[cacheKey(for: localName)] = selection.name
+        UserDefaults.standard.set(mappings, forKey: Self.manualMappingsKey)
+
+        let key = cacheKey(for: localName)
+        memoryCache[key] = data
+        writeDiskCache(data, for: key)
+        return true
+    }
 
     private init() {
         let configuration = URLSessionConfiguration.default
@@ -59,6 +115,18 @@ actor ArtistArtworkService {
         if let cached = readDiskCache(for: key) {
             memoryCache[key] = cached
             return FetchResult(data: cached)
+        }
+
+        // A manually selected Deezer match takes priority over automatic matching.
+        // Manual selections remain available even when automatic downloads are off.
+        let mappings = UserDefaults.standard.dictionary(forKey: Self.manualMappingsKey) as? [String: String] ?? [:]
+        if let selectedDeezerName = mappings[key] {
+            if let result = await fetchFromDeezerDetailed(artistName: selectedDeezerName),
+               let data = result.data {
+                memoryCache[key] = data
+                writeDiskCache(data, for: key)
+                return FetchResult(data: data)
+            }
         }
 
         // Automatic network downloads are opt-in. Existing cached artwork is
@@ -400,6 +468,7 @@ actor ArtistArtworkService {
         let data: [DeezerArtist]
     }
     private struct DeezerArtist: Decodable {
+        let id: Int
         let name: String
         let picture_medium: String?
         let picture_big: String?
