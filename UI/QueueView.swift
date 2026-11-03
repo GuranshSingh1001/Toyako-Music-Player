@@ -72,7 +72,7 @@ struct QueueView: View {
                 }
                 .padding(.horizontal, 18)
                 // Give the embedded queue a little breathing room below the Now Playing header.
-                .padding(.top, embedded ? 20 : 0)
+                .padding(.top, embedded ? 86 : 0)
                 .padding(.bottom, 22)
             }
             .scrollIndicators(.hidden)
@@ -130,7 +130,7 @@ private struct QueueRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .frame(minHeight: 88)
+        .frame(minHeight: 64)
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect?()
