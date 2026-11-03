@@ -99,9 +99,7 @@ struct NowPlayingView: View {
                         }
 
                         Button {
-                            withAnimation(.easeInOut(duration: 0.28)) {
-                                showQueue.toggle()
-                            }
+                            showQueue.toggle()
                         } label: {
                             Image(systemName: showQueue ? "quote.bubble" : "list.bullet")
                                 .font(.system(size: 19, weight: .semibold))
@@ -185,22 +183,22 @@ struct NowPlayingView: View {
         )
 
         return VStack(spacing: 0) {
-            ZStack {
-                artwork(maxHeight: artworkSize)
-                    .frame(width: artworkSize, height: artworkSize)
-                    .opacity(showLyrics || showQueue ? 0 : 1)
-                    .allowsHitTesting(!showLyrics && !showQueue)
-
-                lyricsPane(compact: true)
-                    .frame(maxWidth: .infinity, minHeight: artworkSize, maxHeight: artworkSize)
-                    .opacity(showLyrics && !showQueue ? 1 : 0)
-                    .allowsHitTesting(showLyrics && !showQueue)
-
+            Group {
                 if showQueue {
                     QueueView(embedded: true)
-                        .frame(maxWidth: .infinity, minHeight: artworkSize, maxHeight: artworkSize)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else if showLyrics {
+                    lyricsPane(compact: true)
+                } else {
+                    artwork(maxHeight: artworkSize)
+                        .frame(width: artworkSize, height: artworkSize)
                 }
+            }
+            // Only the selected surface exists in the hierarchy. Keeping hidden
+            // lyrics and queue trees alive under opacity caused both to layout,
+            // update, and render during every playback-clock tick.
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
             }
             .frame(
                 maxWidth: .infinity,
@@ -243,18 +241,18 @@ struct NowPlayingView: View {
         .padding(.horizontal, horizontalInset)
         .padding(.top, topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.easeInOut(duration: 0.28), value: showLyrics)
-        .animation(.easeInOut(duration: 0.28), value: showQueue)
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 
     private var compactBottomActions: some View {
         HStack(spacing: 24) {
             if showQueue || showLyrics {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.28)) {
-                        showQueue = false
-                        showLyrics = false
-                    }
+                    showQueue = false
+                    showLyrics = false
                 } label: {
                     Image(systemName: "photo")
                         .font(.system(size: 21, weight: .semibold))
@@ -268,10 +266,8 @@ struct NowPlayingView: View {
 
             if !showQueue {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.28)) {
-                        showQueue = true
-                        showLyrics = false
-                    }
+                    showQueue = true
+                    showLyrics = false
                 } label: {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 21, weight: .semibold))
@@ -285,10 +281,8 @@ struct NowPlayingView: View {
 
             if !showLyrics {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.28)) {
-                        showLyrics = true
-                        showQueue = false
-                    }
+                    showLyrics = true
+                    showQueue = false
                 } label: {
                     Image(systemName: "quote.bubble")
                         .font(.system(size: 21, weight: .semibold))
