@@ -61,8 +61,14 @@ struct NowPlayingView: View {
                             .contentShape(Rectangle())
                             .gesture(dismissGesture(height: geometry.size.height))
 
-                        lyricsPane(compact: false)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Group {
+                            if showQueue {
+                                QueueView(embedded: true)
+                            } else {
+                                lyricsPane(compact: false)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .padding(.horizontal, 48)
                     .padding(.vertical, 24)
@@ -88,33 +94,30 @@ struct NowPlayingView: View {
             .overlay(alignment: .topTrailing) {
                 if !isCompact {
                     HStack(spacing: 2) {
-                        if audioManager.lyricsSources.count > 1 {
+                        if audioManager.lyricsSources.count > 1 && !showQueue {
                             lyricsSourceButton(size: 52, opensAbove: false)
                         }
 
                         Button {
-                            showQueue = true
+                            withAnimation(.easeInOut(duration: 0.28)) {
+                                showQueue.toggle()
+                            }
                         } label: {
-                            Image(systemName: "list.bullet")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.primary.opacity(0.9))
-                                .frame(width: 52, height: 52)
-                                .contentShape(Circle())
+                            Label(showQueue ? "Lyrics" : "Queue",
+                                  systemImage: showQueue ? "quote.bubble" : "list.bullet")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.primary.opacity(0.92))
+                                .padding(.horizontal, 16)
+                                .frame(height: 44)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .overlay(Capsule().stroke(.primary.opacity(0.12), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Queue")
+                        .accessibilityLabel(showQueue ? "Show lyrics" : "Show queue")
                     }
                     .padding(.trailing, 10)
                     .padding(.top, 8)
                 }
-            }
-            .sheet(isPresented: $showQueue) {
-                QueueView()
-                    .environmentObject(audioManager)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground(.clear)
-                    .presentationCornerRadius(30)
             }
             .scaleEffect(
                 1 - min(max(dragOffset / max(geometry.size.height, 1), 0), 1) * 0.045,
@@ -188,17 +191,19 @@ struct NowPlayingView: View {
             ZStack {
                 artwork(maxHeight: artworkSize)
                     .frame(width: artworkSize, height: artworkSize)
-                    .opacity(showLyrics ? 0 : 1)
-                    .allowsHitTesting(!showLyrics)
+                    .opacity(showLyrics || showQueue ? 0 : 1)
+                    .allowsHitTesting(!showLyrics && !showQueue)
 
                 lyricsPane(compact: true)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: artworkSize,
-                        maxHeight: artworkSize
-                    )
-                    .opacity(showLyrics ? 1 : 0)
-                    .allowsHitTesting(showLyrics)
+                    .frame(maxWidth: .infinity, minHeight: artworkSize, maxHeight: artworkSize)
+                    .opacity(showLyrics && !showQueue ? 1 : 0)
+                    .allowsHitTesting(showLyrics && !showQueue)
+
+                if showQueue {
+                    QueueView(embedded: true)
+                        .frame(maxWidth: .infinity, minHeight: artworkSize, maxHeight: artworkSize)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
             }
             .frame(
                 maxWidth: .infinity,
@@ -251,14 +256,14 @@ struct NowPlayingView: View {
                     showLyrics.toggle()
                 }
             } label: {
-                Image(systemName: showLyrics ? "photo" : "quote.bubble")
+                Image(systemName: showQueue ? "quote.bubble" : (showLyrics ? "photo" : "list.bullet"))
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.primary.opacity(0.88))
                     .frame(width: 48, height: 48)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(showLyrics ? "Show artwork" : "Show lyrics")
+            .accessibilityLabel(showQueue ? "Show lyrics" : (showLyrics ? "Show artwork" : "Show queue"))
 
             if audioManager.lyricsSources.count > 1 {
                 lyricsSourceButton(size: 48, opensAbove: true)
