@@ -93,8 +93,8 @@ struct NowPlayingView: View {
             }
             .overlay(alignment: .topTrailing) {
                 if !isCompact {
-                    HStack(spacing: 2) {
-                        if audioManager.lyricsSources.count > 1 && !showQueue {
+                    HStack(spacing: 8) {
+                        if audioManager.lyricsSources.count > 1 {
                             lyricsSourceButton(size: 52, opensAbove: false)
                         }
 
@@ -103,14 +103,11 @@ struct NowPlayingView: View {
                                 showQueue.toggle()
                             }
                         } label: {
-                            Label(showQueue ? "Lyrics" : "Queue",
-                                  systemImage: showQueue ? "quote.bubble" : "list.bullet")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.primary.opacity(0.92))
-                                .padding(.horizontal, 16)
-                                .frame(height: 44)
-                                .background(.ultraThinMaterial, in: Capsule())
-                                .overlay(Capsule().stroke(.primary.opacity(0.12), lineWidth: 1))
+                            Image(systemName: showQueue ? "quote.bubble" : "list.bullet")
+                                .font(.system(size: 19, weight: .semibold))
+                                .foregroundStyle(.primary.opacity(0.9))
+                                .frame(width: 52, height: 52)
+                                .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(showQueue ? "Show lyrics" : "Show queue")
@@ -247,32 +244,63 @@ struct NowPlayingView: View {
         .padding(.top, topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeInOut(duration: 0.28), value: showLyrics)
+        .animation(.easeInOut(duration: 0.28), value: showQueue)
     }
 
     private var compactBottomActions: some View {
-        HStack(spacing: 20) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    if showQueue {
+        HStack(spacing: 24) {
+            if showQueue || showLyrics {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.28)) {
                         showQueue = false
-                        showLyrics = true
-                    } else if showLyrics {
                         showLyrics = false
-                    } else {
-                        showQueue = true
                     }
+                } label: {
+                    Image(systemName: "photo")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(.primary.opacity(0.9))
+                        .frame(width: 48, height: 48)
+                        .contentShape(Circle())
                 }
-            } label: {
-                Image(systemName: showQueue ? "quote.bubble" : (showLyrics ? "photo" : "list.bullet"))
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.primary.opacity(0.88))
-                    .frame(width: 48, height: 48)
-                    .contentShape(Circle())
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show artwork")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(showQueue ? "Show lyrics" : (showLyrics ? "Show artwork" : "Show queue"))
 
-            if audioManager.lyricsSources.count > 1 && showLyrics {
+            if !showQueue {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.28)) {
+                        showQueue = true
+                        showLyrics = false
+                    }
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(.primary.opacity(0.9))
+                        .frame(width: 48, height: 48)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show queue")
+            }
+
+            if !showLyrics {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.28)) {
+                        showLyrics = true
+                        showQueue = false
+                    }
+                } label: {
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(.primary.opacity(0.9))
+                        .frame(width: 48, height: 48)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show lyrics")
+            }
+
+            if audioManager.lyricsSources.count > 1 {
                 lyricsSourceButton(size: 48, opensAbove: true)
             }
         }
