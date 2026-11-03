@@ -237,11 +237,7 @@ struct HomeView: View {
                         }
                         .padding(12)
                         .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
-                        .toyakoAdaptiveGlass(in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
-                                .stroke(.primary.opacity(0.12), lineWidth: 1)
-                        }
+                        
                     }
                     .buttonStyle(.plain)
                 }
@@ -273,11 +269,7 @@ struct HomeView: View {
                         }
                         .padding(12)
                         .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
-                        .toyakoAdaptiveGlass(in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
-                                .stroke(.primary.opacity(0.12), lineWidth: 1)
-                        }
+                        
                     }
                     .buttonStyle(.plain)
                 }
@@ -362,11 +354,7 @@ struct HomeView: View {
                         }
                         .padding(12)
                         .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
-                        .toyakoAdaptiveGlass(in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
-                                .stroke(.primary.opacity(0.12), lineWidth: 1)
-                        }
+                        
                     }
                     .buttonStyle(.plain)
                 }
