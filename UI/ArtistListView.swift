@@ -187,60 +187,71 @@ struct ArtistListView: View {
     private func artistRow(_ artist: ArtistGroup) -> some View {
         let isSelected = selectedArtist?.id == artist.id
 
-        return Button {
-            withAnimation(.easeOut(duration: 0.18)) {
-                selectedArtistID = artist.id
-            }
-        } label: {
-            HStack(spacing: 12) {
-                ArtistArtworkView(
-                    artistName: artist.name,
-                    size: 48
-                )
-                .id("\(artist.name)|\(artworkRefreshID)")
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(artist.name)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    Text(trackCountText(for: artist))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        return HStack(spacing: 5) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    selectedArtistID = artist.id
                 }
+            } label: {
+                HStack(spacing: 12) {
+                    ArtistArtworkView(
+                        artistName: artist.name,
+                        size: 48
+                    )
+                    .id("\(artist.name)|\(artworkRefreshID)")
 
-                Spacer(minLength: 4)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(artist.name)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
 
-                if isSelected {
-                    Button {
-                        artistBeingEdited = artist
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
-                            .font(.caption.weight(.semibold))
-                            .labelStyle(.titleAndIcon)
+                        Text(trackCountText(for: artist))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Edit artwork for \(artist.name)")
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+
+                    Spacer(minLength: 4)
+
+                    if !isSelected {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous)
-                        .fill(ToyakoDesign.Color.selectedFill)
+            .buttonStyle(.plain)
+
+            if isSelected {
+                Button {
+                    artistBeingEdited = artist
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                        .font(.caption.weight(.semibold))
+                        .labelStyle(.titleAndIcon)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Edit artwork for \(artist.name)")
             }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous)
+                    .fill(ToyakoDesign.Color.selectedFill)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
         .contextMenu {
+            Button {
+                artistBeingEdited = artist
+            } label: {
+                Label("Edit Artwork", systemImage: "pencil")
+            }
+
             Button {
                 playArtist(artist)
             } label: {
