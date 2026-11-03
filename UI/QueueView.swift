@@ -75,19 +75,17 @@ struct QueueView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
         .background {
-            if embedded {
+            if !embedded {
                 RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
                     .fill(.ultraThinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
-                            .stroke(.primary.opacity(0.12), lineWidth: 1)
-                    }
-            } else {
-                RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
-                    .fill(.clear)
             }
         }
-        .toyakoAdaptiveGlass(in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
+        .overlay {
+            if !embedded {
+                RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous)
+                    .stroke(.primary.opacity(0.12), lineWidth: 1)
+            }
+        }
         .padding(embedded ? 0 : 8)
         .background(Color.clear)
     }
