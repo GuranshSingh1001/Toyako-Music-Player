@@ -9,6 +9,7 @@ struct AllPlaylistsGridView: View {
 
     @EnvironmentObject private var audioManager: AudioEngineManager
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
+    @State private var playlistPendingDeletion: Playlist?
 
     private let columns = [
         GridItem(.adaptive(minimum: 180), spacing: 18)
@@ -68,6 +69,12 @@ struct AllPlaylistsGridView: View {
                         } label: {
                             Label("Edit Name", systemImage: "pencil")
                         }
+
+                        Button(role: .destructive) {
+                            playlistPendingDeletion = playlist
+                        } label: {
+                            Label("Delete Playlist", systemImage: "trash")
+                        }
                     }
                 }
                 .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
@@ -75,6 +82,27 @@ struct AllPlaylistsGridView: View {
                 .padding(.bottom, ToyakoDesign.Metrics.screenBottom + 24)
             }
                 .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            }
+        }
+        .confirmationDialog(
+            "Delete Playlist?",
+            isPresented: Binding(
+                get: { playlistPendingDeletion != nil },
+                set: { if !$0 { playlistPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Playlist", role: .destructive) {
+                guard let playlist = playlistPendingDeletion else { return }
+                library.deletePlaylist(id: playlist.id)
+                playlistPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                playlistPendingDeletion = nil
+            }
+        } message: {
+            if let playlist = playlistPendingDeletion {
+                Text("“\\(playlist.name)” and its playlist entry will be deleted. Your music files will not be removed.")
             }
         }
     }
