@@ -38,6 +38,33 @@ struct AlbumGridView: View {
                         AlbumCard(album: album, artworkSize: CGFloat(libraryArtworkSize))
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            let tracks = album.tracks.sorted {
+                                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+                            }
+                            guard !tracks.isEmpty else { return }
+                            audioManager.startQueue(tracks: tracks, startIndex: 0)
+                        } label: {
+                            Label("Play", systemImage: "play.fill")
+                        }
+
+                        Button {
+                            let tracks = album.tracks.sorted {
+                                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+                            }
+                            guard !tracks.isEmpty else { return }
+                            if !audioManager.isShuffle {
+                                audioManager.toggleShuffle()
+                            }
+                            audioManager.startQueue(
+                                tracks: tracks,
+                                startIndex: Int.random(in: 0..<tracks.count)
+                            )
+                        } label: {
+                            Label("Shuffle", systemImage: "shuffle")
+                        }
+                    }
                 }
                 .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
                 .padding(.top, ToyakoDesign.Metrics.screenTop)
