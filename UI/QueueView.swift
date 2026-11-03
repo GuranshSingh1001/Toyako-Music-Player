@@ -130,7 +130,7 @@ private struct QueueRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .frame(minHeight: 64)
+        .frame(minHeight: 88)
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect?()
