@@ -236,7 +236,7 @@ struct HomeView: View {
                                 .lineLimit(1)
                         }
                         .padding(12)
-                        .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
+                        .frame(width: CGFloat(libraryArtworkSize) + 24, alignment: .topLeading)
                         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                         
                     }
@@ -271,7 +271,7 @@ struct HomeView: View {
                                 .lineLimit(1)
                         }
                         .padding(12)
-                        .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
+                        .frame(width: CGFloat(libraryArtworkSize) + 24, alignment: .topLeading)
                         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                         
                     }
@@ -363,7 +363,7 @@ struct HomeView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding(12)
-                        .frame(width: CGFloat(libraryArtworkSize) + 24, height: 270, alignment: .topLeading)
+                        .frame(width: CGFloat(libraryArtworkSize) + 24, alignment: .topLeading)
                         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
                         
                     }
