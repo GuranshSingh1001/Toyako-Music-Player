@@ -139,7 +139,6 @@ struct ToyakoNextHomeView: View {
                     .background(ink, in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .disabled(!tracks.isEmpty && tracks.isEmpty)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(24)
