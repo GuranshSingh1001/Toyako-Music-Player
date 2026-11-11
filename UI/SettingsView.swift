@@ -16,13 +16,27 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
     @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
-    @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
+    @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true\n    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "classic"
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Experience") {
+                    Picker("Interface", selection: $interfaceMode) {
+                        Text("Classic").tag("classic")
+                        Text("Toyako Next").tag("next")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(interfaceMode == "next"
+                         ? "Toyako Next is playful, expressive and experimental. Your library and playback stay shared."
+                         : "Classic keeps the original Toyako interface unchanged.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Appearance") {
                     Picker("Theme", selection: $appearance) {
                         ForEach(AppAppearance.allCases) { option in
