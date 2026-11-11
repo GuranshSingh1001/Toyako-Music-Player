@@ -51,7 +51,7 @@ struct OfflineMusicApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
                 .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)
                 .background(
