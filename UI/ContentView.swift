@@ -337,16 +337,29 @@ struct ContentView: View {
                     // already aligned to the bottom of the destination.
                     let bottomInset: CGFloat = usesBottomTabBar ? 6 : 7
 
-                    MiniPlayerView(
-                        isNowPlayingPresented: showNowPlaying,
-                        onOpenNowPlaying: {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                                showNowPlaying = true
-                            }
+                    Group {
+                        if interfaceMode == "next" {
+                            ToyakoNextMiniPlayer(
+                                isNowPlayingPresented: showNowPlaying,
+                                onOpenNowPlaying: {
+                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                        showNowPlaying = true
+                                    }
+                                }
+                            )
+                        } else {
+                            MiniPlayerView(
+                                isNowPlayingPresented: showNowPlaying,
+                                onOpenNowPlaying: {
+                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                        showNowPlaying = true
+                                    }
+                                }
+                            )
+                            .toyakoAdaptiveGlass(in: Capsule())
+                            .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
                         }
-                    )
-                    .toyakoAdaptiveGlass(in: Capsule())
-                    .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
+                    }
                     .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
                     .frame(width: playerWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
