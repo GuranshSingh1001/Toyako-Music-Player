@@ -309,7 +309,7 @@ private struct AlbumDetailHero: View {
 
     private var compactHero: some View {
         let contentWidth = max(0, availableWidth - (ToyakoDesign.Metrics.screenHorizontal * 2))
-        let artworkSize = ToyakoArtworkSize.libraryArtwork
+        let artworkSize = CGFloat(libraryArtworkSize)
 
         let heroWidth = min(520, contentWidth)
         let buttonWidth = min(430, contentWidth)
