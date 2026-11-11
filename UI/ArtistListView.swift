@@ -335,35 +335,49 @@ struct ArtistDetailView: View {
         let wideHero = availableWidth >= 700
         let artworkSize = CGFloat(libraryArtworkSize)
 
-        if wideHero {
-            HStack(alignment: .center, spacing: 36) {
-                artistArtwork(size: artworkSize)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    artistTitleBlock
-                    heroActions(compact: false)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.vertical, 4)
-        } else {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 18) {
+        Group {
+            if wideHero {
+                HStack(alignment: .center, spacing: 30) {
                     artistArtwork(size: artworkSize)
-                    artistTitleBlock
-                }
 
-                heroActions(compact: true)
+                    VStack(alignment: .leading, spacing: 20) {
+                        artistTitleBlock(compact: false)
+                        heroActions(compact: false)
+                    }
+                    .frame(maxWidth: 560, alignment: .leading)
+
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: 980, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            } else {
+                VStack(spacing: 20) {
+                    artistArtwork(size: artworkSize)
+                    artistTitleBlock(compact: true)
+                        .frame(width: min(520, max(0, availableWidth - ToyakoDesign.Metrics.screenHorizontal * 2)))
+                    heroActions(compact: true)
+                        .frame(width: min(430, max(0, availableWidth - ToyakoDesign.Metrics.screenHorizontal * 2)))
+                }
+                .frame(maxWidth: .infinity)
             }
-            .padding(.vertical, 4)
         }
+        .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+        .padding(.top, 22)
+        .padding(.bottom, 28)
     }
 
-    private var artistTitleBlock: some View {
-        Text(artist.name)
-            .font(.system(size: 34, weight: .bold, design: .rounded))
-            .lineLimit(2)
-            .minimumScaleFactor(0.72)
+    private func artistTitleBlock(compact: Bool) -> some View {
+        VStack(alignment: compact ? .center : .leading, spacing: 8) {
+            Text(artist.name)
+                .font(.system(size: compact ? 30 : 34, weight: .bold, design: .rounded))
+                .multilineTextAlignment(compact ? .center : .leading)
+                .lineLimit(3)
+
+            Text("\(artist.tracks.count) \(artist.tracks.count == 1 ? "Track" : "Tracks")  •  \(formatArtistDetailDuration(artist.tracks))")
+                .font(ToyakoDesign.Typography.metadata)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(compact ? .center : .leading)
+        }
     }
 
     private func heroActions(compact: Bool) -> some View {
@@ -567,6 +581,13 @@ struct ArtistDetailView: View {
         guard duration.isFinite, duration >= 0 else { return "0:00" }
         return String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60)
     }
+}
+
+private func formatArtistDetailDuration(_ tracks: [LocalTrack]) -> String {
+    let seconds = max(0, Int(tracks.reduce(0) { $0 + $1.duration }.rounded()))
+    let hours = seconds / 3600
+    let minutes = (seconds % 3600) / 60
+    return hours > 0 ? "\(hours) hr \(minutes) min" : "\(minutes) min"
 }
 
 private struct ArtistAlbum: Identifiable {
