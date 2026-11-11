@@ -664,47 +664,69 @@ struct ArtistDetailView: View {
     }
 
     private var albumSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ToyakoDesign.Metrics.sectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Albums")
                     .font(ToyakoDesign.Typography.section)
                 Spacer(minLength: 0)
                 Text("\(albums.count)")
-                    .font(.subheadline.weight(.semibold))
+                    .font(ToyakoDesign.Typography.metadata)
                     .foregroundStyle(.secondary)
             }
 
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 18) {
-                    ForEach(albums) { album in
-                        Button {
-                            guard !album.tracks.isEmpty else { return }
-                            audioManager.startQueue(tracks: album.tracks, startIndex: 0)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                LazyArtwork(
-                                    url: album.artworkURL,
-                                    size: 150,
-                                    cornerRadius: ToyakoDesign.Metrics.artworkRadius
-                                )
+            GeometryReader { proxy in
+                let availableWidth = proxy.size.width
+                let cardWidth = ToyakoArtworkSize.libraryCardWidth
+                let columnSpacing: CGFloat = 18
+                let columns = max(1, Int((availableWidth + columnSpacing) / (cardWidth + columnSpacing)))
 
-                                Text(album.name)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .frame(width: 150, alignment: .leading)
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    ForEach(Array(albums.chunked(into: columns).enumerated()), id: \.offset) { _, row in
+                        HStack(alignment: .top, spacing: columnSpacing) {
+                            ForEach(row) { album in
+                                Button {
+                                    guard !album.tracks.isEmpty else { return }
+                                    audioManager.startQueue(tracks: album.tracks, startIndex: 0)
+                                } label: {
+                                    ArtistAlbumCard(album: album)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button {
+                                        audioManager.startQueue(tracks: album.tracks, startIndex: 0)
+                                    } label: {
+                                        Label("Play", systemImage: "play.fill")
+                                    }
 
-                                Text(album.tracks.count == 1 ? "1 Track" : "\(album.tracks.count) Tracks")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    Button {
+                                        guard !album.tracks.isEmpty else { return }
+                                        if !audioManager.isShuffle {
+                                            audioManager.toggleShuffle()
+                                        }
+                                        audioManager.startQueue(
+                                            tracks: album.tracks,
+                                            startIndex: Int.random(in: album.tracks.indices)
+                                        )
+                                    } label: {
+                                        Label("Shuffle", systemImage: "shuffle")
+                                    }
+                                }
                             }
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .scrollIndicators(.hidden)
+            .frame(height: albumGridHeight(availableWidth: 0))
+            .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func albumGridHeight(availableWidth: CGFloat) -> CGFloat {
+        // The GeometryReader is allowed to grow with its content; this value is
+        // intentionally zero so the parent ScrollView measures the grid naturally.
+        0
     }
 
     private func playArtist() {
@@ -878,6 +900,64 @@ private struct ArtistArtworkPickerSheet: View {
             } else {
                 errorMessage = "The selected artist photo couldn't be downloaded. Please try another result."
             }
+        }
+    }
+}
+
+
+// MARK: - Artist Album Card
+
+private struct ArtistAlbumCard: View {
+    let album: ArtistAlbum
+
+    private var totalDuration: String {
+        let seconds = max(0, Int(album.tracks.reduce(0) { $0 + $1.duration }.rounded()))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            LazyArtwork(
+                url: album.artworkURL,
+                size: ToyakoArtworkSize.libraryArtwork,
+                cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius
+            )
+            .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
+            .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
+
+            Text(album.name)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Text(album.tracks.first?.artist ?? "")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            HStack(spacing: 6) {
+                Text(album.tracks.count == 1 ? "1 Track" : "\(album.tracks.count) Tracks")
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(totalDuration)
+                    .monospacedDigit()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .frame(width: ToyakoArtworkSize.libraryCardWidth, alignment: .leading)
+        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
+        .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
         }
     }
 }
