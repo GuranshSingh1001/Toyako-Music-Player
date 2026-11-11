@@ -77,18 +77,23 @@ struct ToyakoNextWorkspace: View {
                 .navigationSplitViewColumnWidth(min: 210, ideal: 238, max: 280)
         } detail: {
             NavigationStack {
-                HStack(spacing: 0) {
-                    mainWorkspace
-                    if isQueueVisible {
-                        Rectangle()
-                            .fill(ToyakoDesign.Color.divider)
-                            .frame(width: 1)
-                        ToyakoNextQueuePanel()
-                            .frame(minWidth: 250, idealWidth: 292, maxWidth: 360)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                GeometryReader { detailGeometry in
+                    HStack(spacing: 0) {
+                        mainWorkspace
+                        // Keep the queue beside the workspace on wide iPad
+                        // layouts; let it become a summoned panel in portrait
+                        // and compact Stage Manager windows.
+                        if isQueueVisible && detailGeometry.size.width >= 880 {
+                            Rectangle()
+                                .fill(ToyakoDesign.Color.divider)
+                                .frame(width: 1)
+                            ToyakoNextQueuePanel()
+                                .frame(minWidth: 250, idealWidth: 292, maxWidth: 360)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
                     }
+                    .background(ToyakoDesign.Color.canvas)
                 }
-                .background(ToyakoDesign.Color.canvas)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
@@ -682,7 +687,10 @@ struct ToyakoNextNowPlayingView: View {
     }
 
     private var track: LocalTrack? { audioManager.currentTrack }
-    private var artworkURL: URL? { track.map { library.artworkURL(for: $0) } }
+    private var artworkURL: URL? {
+        guard let track else { return nil }
+        return library.artworkURL(for: track)
+    }
 
     var body: some View {
         GeometryReader { geometry in
