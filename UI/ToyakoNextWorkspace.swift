@@ -137,6 +137,17 @@ struct ToyakoNextWorkspace: View {
                 selection = .tracks
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .toyakoCommandNavigate)) { notification in
+            guard let destination = notification.object as? String else { return }
+            switch destination {
+            case "home": selection = .home
+            case "tracks": selection = .tracks
+            case "albums": selection = .albums
+            case "artists": selection = .artists
+            case "playlists": selection = .playlists
+            default: break
+            }
+        }
     }
 
     private var sidebar: some View {
