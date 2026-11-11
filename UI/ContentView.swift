@@ -26,6 +26,7 @@ struct ContentView: View {
         showFilePicker = false
 
     @AppStorage("Toyako.NowPlayingPresented") private var showNowPlaying = false
+    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "classic"
 
     @State private var
         showNewPlaylistAlert = false
@@ -64,17 +65,20 @@ struct ContentView: View {
 
         .overlay {
             if showNowPlaying {
-                NowPlayingView(
-                    isPresented:
-                        $showNowPlaying,
-                )
-                .ignoresSafeArea(.all)
-                // NowPlayingView owns its dismissal animation by moving its
-                // own surface off-screen. Do not apply a second parent removal
-                // transition here: on Home, that extra transition forces the
-                // large nested ScrollView/LazyVStack hierarchy to be reconciled
-                // while the full-screen player is already animating away.
-                .zIndex(100)
+                if interfaceMode == "next" {
+                    ToyakoNextNowPlayingView(isPresented: $showNowPlaying)
+                        .environmentObject(audioManager)
+                        .environmentObject(audioManager.clock)
+                        .zIndex(100)
+                } else {
+                    NowPlayingView(
+                        isPresented:
+                            $showNowPlaying,
+                    )
+                    .ignoresSafeArea(.all)
+                    // Keep the Classic presentation and its dismissal behavior unchanged.
+                    .zIndex(100)
+                }
             }
         }
 
@@ -333,16 +337,29 @@ struct ContentView: View {
                     // already aligned to the bottom of the destination.
                     let bottomInset: CGFloat = usesBottomTabBar ? 6 : 7
 
-                    MiniPlayerView(
-                        isNowPlayingPresented: showNowPlaying,
-                        onOpenNowPlaying: {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                                showNowPlaying = true
-                            }
+                    Group {
+                        if interfaceMode == "next" {
+                            ToyakoNextMiniPlayer(
+                                isNowPlayingPresented: showNowPlaying,
+                                onOpenNowPlaying: {
+                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                        showNowPlaying = true
+                                    }
+                                }
+                            )
+                        } else {
+                            MiniPlayerView(
+                                isNowPlayingPresented: showNowPlaying,
+                                onOpenNowPlaying: {
+                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                                        showNowPlaying = true
+                                    }
+                                }
+                            )
+                            .toyakoAdaptiveGlass(in: Capsule())
+                            .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
                         }
-                    )
-                    .toyakoAdaptiveGlass(in: Capsule())
-                    .overlay { Capsule().stroke(ToyakoDesign.Color.divider, lineWidth: 1) }
+                    }
                     .shadow(color: .black.opacity(0.10), radius: 15, y: 8)
                     .frame(width: playerWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -453,11 +470,17 @@ struct ContentView: View {
                 artists: library.artists,
                 playlists: library.playlists,
                 library: library,
+                isNextMode: interfaceMode == "next",
                 onImport: {
                     showFilePicker = true
                 },
                 onNewPlaylist: {
                     showNewPlaylistAlert = true
+                },
+                onOpenPlayer: {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                        showNowPlaying = true
+                    }
                 }
             )
             .toolbar {
@@ -637,13 +660,38 @@ private struct HomeAudioContainer: View {
     let artists: [ArtistGroup]
     let playlists: [Playlist]
     let library: LocalLibrary
+    let isNextMode: Bool
     let onImport: () -> Void
     let onNewPlaylist: () -> Void
+    let onOpenPlayer: () -> Void
 
     @EnvironmentObject private var audioManager: AudioEngineManager
 
+    @ViewBuilder
     var body: some View {
-        HomeView(
+        if isNextMode {
+            ToyakoNextHomeView(
+                tracks: tracks,
+                recentlyPlayed: audioManager.recentlyPlayed,
+                library: library,
+                currentTrack: audioManager.currentTrack,
+                isPlaying: audioManager.isPlaying,
+                onImport: onImport,
+                onNewPlaylist: onNewPlaylist,
+                onPlayTrack: { index in
+                    guard tracks.indices.contains(index) else { return }
+                    audioManager.playStandalonePreservingQueue(tracks[index])
+                },
+                onShuffleAll: {
+                    guard !tracks.isEmpty else { return }
+                    let index = Int.random(in: tracks.indices)
+                    if !audioManager.isShuffle { audioManager.toggleShuffle() }
+                    audioManager.startQueue(tracks: tracks, startIndex: index)
+                },
+                onOpenPlayer: onOpenPlayer
+            )
+        } else {
+            HomeView(
             tracks: tracks,
             albums: albums,
             artists: artists,
@@ -676,7 +724,8 @@ private struct HomeAudioContainer: View {
                 }
                 audioManager.startQueue(tracks: tracks, startIndex: index)
             }
-        )
+            )
+        }
     }
 }
 
