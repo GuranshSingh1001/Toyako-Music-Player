@@ -25,7 +25,8 @@ struct ContentView: View {
     @State private var
         showFilePicker = false
 
-    @AppStorage("Toyako.NowPlayingPresented") private var showNowPlaying = false\n    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "classic"
+    @AppStorage("Toyako.NowPlayingPresented") private var showNowPlaying = false
+    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "classic"
 
     @State private var
         showNewPlaylistAlert = false
