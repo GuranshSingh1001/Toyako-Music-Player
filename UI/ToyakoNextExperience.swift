@@ -370,7 +370,14 @@ struct ToyakoNextNowPlayingView: View {
     private let lime = Color(red: 0.77, green: 0.96, blue: 0.36)
     private let coral = Color(red: 1.00, green: 0.43, blue: 0.34)
 
-    private func timeLabel(_ time: TimeInterval) -> String {\n        let seconds = max(0, Int(time))\n        return String(format: "%d:%02d", seconds / 60, seconds % 60)\n    }\n\n    var body: some View {\n        GeometryReader { proxy in\n            ZStack {
+    private func timeLabel(_ time: TimeInterval) -> String {
+        let seconds = max(0, Int(time))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
                 paper.ignoresSafeArea()
 
                 Circle()
