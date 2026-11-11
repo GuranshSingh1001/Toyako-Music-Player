@@ -89,7 +89,7 @@ struct ToyakoNextWorkspace: View {
                             Rectangle()
                                 .fill(ToyakoDesign.Color.divider)
                                 .frame(width: 1)
-                            ToyakoNextQueuePanel()
+                            ToyakoNextQueuePanel(library: library)
                                 .frame(minWidth: 250, idealWidth: 292, maxWidth: 360)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
@@ -149,7 +149,7 @@ struct ToyakoNextWorkspace: View {
         .animation(.easeInOut(duration: 0.22), value: isQueueVisible)
         .sheet(isPresented: $showCompactQueue) {
             NavigationStack {
-                ToyakoNextQueuePanel()
+                ToyakoNextQueuePanel(library: library)
                     .navigationTitle("Queue")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -527,6 +527,7 @@ private struct NextTrackRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .draggable(track.url.absoluteString)
     }
 }
 
@@ -604,6 +605,7 @@ private struct ToyakoNextMiniPlayer: View {
 }
 
 private struct ToyakoNextQueuePanel: View {
+    let library: LocalLibrary
     @EnvironmentObject private var audioManager: AudioEngineManager
 
     var body: some View {
@@ -695,6 +697,17 @@ private struct ToyakoNextQueuePanel: View {
             }
         }
         .background(ToyakoDesign.Color.canvas)
+        .dropDestination(for: String.self) { droppedItems, _ in
+            let droppedTracks = droppedItems.compactMap { value -> LocalTrack? in
+                guard let url = URL(string: value) else { return nil }
+                return library.tracks.first {
+                    $0.url.standardizedFileURL == url.standardizedFileURL
+                }
+            }
+            guard !droppedTracks.isEmpty else { return false }
+            audioManager.enqueue(droppedTracks)
+            return true
+        }
     }
 }
 
