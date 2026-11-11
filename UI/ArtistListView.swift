@@ -4,39 +4,108 @@ import UIKit
 struct ArtistListView: View {
     let artists: [ArtistGroup]
     let library: LocalLibrary
-    @EnvironmentObject var audioManager: AudioEngineManager
 
-    @State private var selectedArtistID: String?
+    @EnvironmentObject private var audioManager: AudioEngineManager
     @State private var artistSearch = ""
-    @State private var selectedArtistArtwork: UIImage?
     @State private var artistBeingEdited: ArtistGroup?
     @State private var artworkRefreshID = 0
-    @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
-
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
 
     private var visibleArtists: [ArtistGroup] {
         guard !artistSearch.isEmpty else { return artists }
-        return artists.filter {
-            $0.name.localizedCaseInsensitiveContains(artistSearch)
-        }
-    }
-
-    private var selectedArtist: ArtistGroup? {
-        if let selectedArtistID,
-           let artist = artists.first(where: { $0.id == selectedArtistID }) {
-            return artist
-        }
-        return visibleArtists.first
+        return artists.filter { $0.name.localizedCaseInsensitiveContains(artistSearch) }
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            Group {
-                if proxy.size.width >= 700 {
-                    iPadArtistLayout(availableWidth: proxy.size.width)
-                } else {
-                    compactArtistLayout
+        ZStack {
+            ArtworkBleedPageBackground(
+                artworkURL: audioManager.currentTrack.flatMap { library.artworkURL(for: $0) }
+                    ?? artists.first?.tracks.first.map { library.artworkURL(for: $0) }
+            )
+
+            GeometryReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Artists")
+                                .font(ToyakoDesign.Typography.screenTitle)
+                            Spacer()
+                            Text("\(visibleArtists.count) Artists")
+                                .font(ToyakoDesign.Typography.metadata)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack(spacing: 9) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.secondary)
+                            TextField("Search artists…", text: $artistSearch)
+                                .textFieldStyle(.plain)
+                                .submitLabel(.search)
+                            if !artistSearch.isEmpty {
+                                Button {
+                                    artistSearch = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(height: ToyakoDesign.Metrics.standardControlHeight)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
+
+                        if visibleArtists.isEmpty {
+                            ContentUnavailableView.search(text: artistSearch)
+                                .frame(maxWidth: .infinity, minHeight: 220)
+                        } else {
+                            CenteredLibraryGrid(
+                                items: visibleArtists,
+                                availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
+                                minimumItemWidth: CGFloat(libraryArtworkSize) + 24,
+                                rowSpacing: 24,
+                                columnSpacing: 18
+                            ) { artist in
+                                NavigationLink {
+                                    ArtistDetailView(artist: artist, library: library)
+                                        .navigationTitle(artist.name)
+                                        .navigationBarTitleDisplayMode(.inline)
+                                } label: {
+                                    ArtistGridCard(
+                                        artist: artist,
+                                        artworkSize: CGFloat(libraryArtworkSize),
+                                        refreshID: artworkRefreshID
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button {
+                                        playArtist(artist)
+                                    } label: {
+                                        Label("Play", systemImage: "play.fill")
+                                    }
+
+                                    Button {
+                                        shuffleArtist(artist)
+                                    } label: {
+                                        Label("Shuffle", systemImage: "shuffle")
+                                    }
+
+                                    Button {
+                                        artistBeingEdited = artist
+                                    } label: {
+                                        Label("Edit Artwork", systemImage: "pencil")
+                                    }
+                                }
+                                .menuOrder(.fixed)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
+                    .padding(.top, ToyakoDesign.Metrics.screenTop)
+                    .padding(.bottom, ToyakoDesign.Metrics.screenBottom + 24)
                 }
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -45,269 +114,9 @@ struct ArtistListView: View {
         .sheet(item: $artistBeingEdited) { artist in
             ArtistArtworkPickerSheet(artistName: artist.name) {
                 artworkRefreshID += 1
-                selectedArtistArtwork = nil
             }
-        }
-        .onAppear {
-            selectFirstArtistIfNeeded()
-        }
-        .onChange(of: artists) { _, _ in
-            selectFirstArtistIfNeeded()
-        }
-        .onChange(of: artistSearch) { _, _ in
-            if let selectedArtistID,
-               visibleArtists.contains(where: { $0.id == selectedArtistID }) {
-                return
-            }
-            self.selectedArtistID = visibleArtists.first?.id
         }
     }
-
-    // MARK: - iPad
-
-    private func iPadArtistLayout(availableWidth: CGFloat) -> some View {
-        ZStack {
-            ArtistReflectionBackground(artwork: selectedArtistArtwork)
-                .zIndex(0)
-
-            HStack(spacing: 0) {
-                artistSidebar
-                    .frame(width: artistSidebarWidth(for: availableWidth))
-                    .zIndex(2)
-
-                if let artist = selectedArtist {
-                    ArtistDetailView(
-                        artist: artist,
-                        library: library,
-                        usesSharedBackground: true
-                    )
-                    .transition(.opacity)
-                    .zIndex(1)
-                } else {
-                    ContentUnavailableView(
-                        "No Artists",
-                        systemImage: "music.mic",
-                        description: Text("Import music to start building your artist library.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .zIndex(1)
-                }
-            }
-        }
-        .background(Color.clear)
-        .task(id: "\(selectedArtist?.id ?? "")|\(automaticArtistArtwork)") {
-            guard let artist = selectedArtist else {
-                selectedArtistArtwork = nil
-                return
-            }
-
-            let data = await ArtistArtworkService.shared.imageData(
-                for: artist.name,
-                allowNetwork: automaticArtistArtwork
-            )
-            guard !Task.isCancelled else { return }
-            selectedArtistArtwork = data.flatMap(UIImage.init(data:))
-        }
-    }
-
-    private func artistSidebarWidth(for totalWidth: CGFloat) -> CGFloat {
-        // Keep the sidebar responsive while preserving enough room for the detail pane.
-        // The width scales with the available window instead of becoming fixed at a
-        // single value, which keeps Stage Manager and split-view resizing smooth.
-        let minimum: CGFloat = 240
-        let preferred = totalWidth * 0.28
-        let maximum = max(minimum, totalWidth - 420)
-        return min(max(preferred, minimum), maximum)
-    }
-
-    private var artistSidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("\(artists.count) Artists")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-
-            HStack(spacing: 9) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-
-                TextField("Search artists…", text: $artistSearch)
-                    .textFieldStyle(.plain)
-                    .submitLabel(.search)
-
-                if !artistSearch.isEmpty {
-                    Button {
-                        artistSearch = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
-
-            ScrollView {
-                LazyVStack(spacing: 3) {
-                    ForEach(visibleArtists) { artist in
-                        artistRow(artist)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 12)
-            }
-            .scrollIndicators(.hidden)
-        }
-        // Keep the sidebar on the same reflected/material layer as the detail
-        // pane. A second opaque/tonal surface here creates the horizontal seam
-        // visible directly beneath the Artists header.
-        .background(.ultraThinMaterial)
-        .overlay {
-            Rectangle()
-                .fill(Color.clear)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private func artistRow(_ artist: ArtistGroup) -> some View {
-        let isSelected = selectedArtist?.id == artist.id
-
-        return HStack(spacing: 5) {
-            Button {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    selectedArtistID = artist.id
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    ArtistArtworkView(
-                        artistName: artist.name,
-                        size: 48
-                    )
-                    .id("\(artist.name)|\(artworkRefreshID)")
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(artist.name)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        Text(trackCountText(for: artist))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 4)
-
-                    if !isSelected {
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous)
-                    .fill(ToyakoDesign.Color.selectedFill)
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
-        .contextMenu {
-
-            Button {
-                playArtist(artist)
-            } label: {
-                Label("Play", systemImage: "play.fill")
-            }
-
-            Button {
-                shuffleArtist(artist)
-            } label: {
-                Label("Shuffle", systemImage: "shuffle")
-            }
-
-            Button {
-                artistBeingEdited = artist
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-        }
-        .menuOrder(.fixed)
-    }
-
-    // MARK: - Compact / iPhone
-
-    private var compactArtistLayout: some View {
-        List {
-            Section {
-                ForEach(artists) { artist in
-                    NavigationLink {
-                        ArtistDetailView(
-                            artist: artist,
-                            library: library
-                        )
-                        .navigationTitle(artist.name)
-                        .navigationBarTitleDisplayMode(.inline)
-                    } label: {
-                        HStack(spacing: 14) {
-                            ArtistArtworkView(artistName: artist.name, size: 54)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(artist.name)
-                                    .font(.headline)
-                                    .lineLimit(1)
-
-                                Text(trackCountText(for: artist))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer(minLength: 8)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .contextMenu {
-
-                        Button {
-                            playArtist(artist)
-                        } label: {
-                            Label("Play", systemImage: "play.fill")
-                        }
-
-                        Button {
-                            shuffleArtist(artist)
-                        } label: {
-                            Label("Shuffle", systemImage: "shuffle")
-                        }
-
-                        Button {
-                            artistBeingEdited = artist
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                    }
-                    .menuOrder(.fixed)
-                }
-            } header: {
-                Text("\(artists.count) Artists")
-            }
-        }
-        .listStyle(.insetGrouped)
-    }
-
-    // MARK: - Playback
 
     private func playArtist(_ artist: ArtistGroup) {
         guard !artist.tracks.isEmpty else { return }
@@ -316,24 +125,90 @@ struct ArtistListView: View {
 
     private func shuffleArtist(_ artist: ArtistGroup) {
         guard !artist.tracks.isEmpty else { return }
+        if !audioManager.isShuffle { audioManager.toggleShuffle() }
+        audioManager.startQueue(
+            tracks: artist.tracks,
+            startIndex: Int.random(in: artist.tracks.indices)
+        )
+    }
+}
 
-        let index = Int.random(in: artist.tracks.indices)
-        if !audioManager.isShuffle {
-            audioManager.toggleShuffle()
+// MARK: - Artist Grid Card
+
+private struct ArtistGridCard: View {
+    let artist: ArtistGroup
+    let artworkSize: CGFloat
+    let refreshID: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ArtistSquareArtworkView(artistName: artist.name, size: artworkSize)
+                .id("\(artist.name)|\(refreshID)")
+                .frame(width: artworkSize, height: artworkSize)
+                .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
+
+            Text(artist.name)
+                .font(.headline)
+                .lineLimit(1)
+
+            Text(artist.tracks.count == 1 ? "1 Track" : "\(artist.tracks.count) Tracks")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            HStack(spacing: 6) {
+                Text(artist.tracks.count == 1 ? "1 Song" : "\(artist.tracks.count) Songs")
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(formatArtistDuration(artist.tracks))
+                    .monospacedDigit()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        audioManager.startQueue(tracks: artist.tracks, startIndex: index)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .frame(width: artworkSize + 24, alignment: .leading)
+        .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
     }
+}
 
-    private func selectFirstArtistIfNeeded() {
-        guard selectedArtistID == nil || !artists.contains(where: { $0.id == selectedArtistID }) else {
-            return
+private struct ArtistSquareArtworkView: View {
+    let artistName: String
+    let size: CGFloat
+    @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticDownloads = false
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.gray.opacity(0.18))
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: size * 0.30))
+                    .foregroundStyle(.secondary)
+            }
         }
-        selectedArtistID = artists.first?.id
+        .frame(width: size, height: size)
+        .clipped()
+        .task(id: "\(artistName)|\(automaticDownloads)") {
+            let data = await ArtistArtworkService.shared.imageData(
+                for: artistName,
+                allowNetwork: automaticDownloads
+            )
+            guard !Task.isCancelled else { return }
+            image = data.flatMap(UIImage.init(data:))
+        }
     }
+}
 
-    private func trackCountText(for artist: ArtistGroup) -> String {
-        artist.tracks.count == 1 ? "1 Track" : "\(artist.tracks.count) Tracks"
-    }
+private func formatArtistDuration(_ tracks: [LocalTrack]) -> String {
+    let seconds = max(0, Int(tracks.reduce(0) { $0 + $1.duration }.rounded()))
+    return String(format: "%d:%02d", seconds / 60, seconds % 60)
 }
 
 // MARK: - Artist Detail
