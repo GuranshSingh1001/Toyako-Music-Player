@@ -292,21 +292,14 @@ struct ArtistDetailView: View {
         GeometryReader { proxy in
             VStack(alignment: .leading, spacing: 0) {
                 hero(availableWidth: proxy.size.width)
-                    .padding(.horizontal, heroHorizontalPadding(for: proxy.size.width))
-                    .padding(.top, 10)
-                    .padding(.bottom, 18)
-
-                Divider()
-                    .opacity(0.45)
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: ToyakoDesign.Metrics.sectionSpacing) {
                         popularTracks
-                        albumSection(availableWidth: max(0, proxy.size.width - (heroHorizontalPadding(for: proxy.size.width) * 2)))
+                        albumSection(availableWidth: max(0, proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2)))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, heroHorizontalPadding(for: proxy.size.width))
-                    .padding(.top, 20)
+                    .padding(.horizontal, ToyakoDesign.Metrics.screenHorizontal)
                     .padding(.bottom, ToyakoDesign.Metrics.screenBottom)
                 }
                 .scrollIndicators(.hidden)
