@@ -307,9 +307,7 @@ struct ToyakoNextNowPlayingView: View {
     private let lime = Color(red: 0.77, green: 0.96, blue: 0.36)
     private let coral = Color(red: 1.00, green: 0.43, blue: 0.34)
 
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack {
+    private func timeLabel(_ time: TimeInterval) -> String {\n        let seconds = max(0, Int(time))\n        return String(format: "%d:%02d", seconds / 60, seconds % 60)\n    }\n\n    var body: some View {\n        GeometryReader { proxy in\n            ZStack {
                 paper.ignoresSafeArea()
 
                 Circle()
@@ -392,9 +390,9 @@ struct ToyakoNextNowPlayingView: View {
                         .padding(.horizontal, 30)
 
                         HStack(spacing: 0) {
-                            Text(clock.formattedCurrentTime)
+                            Text(timeLabel(clock.currentTime))
                             Spacer()
-                            Text(clock.formattedDuration)
+                            Text(timeLabel(track.duration))
                         }
                         .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(ink.opacity(0.48))
