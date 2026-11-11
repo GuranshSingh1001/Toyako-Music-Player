@@ -832,7 +832,7 @@ struct ToyakoNextNowPlayingView: View {
                     .padding(18)
 
                     if sidePanel == .queue {
-                        ToyakoNextQueuePanel()
+                        ToyakoNextQueuePanel(library: library)
                     } else {
                         lyricsPanel
                     }
