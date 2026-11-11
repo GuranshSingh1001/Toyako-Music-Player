@@ -232,7 +232,7 @@ struct ToyakoNextWorkspace: View {
     private var workspaceHeader: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(selection.title)
+                Text(activeDestination.title)
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .tracking(-0.7)
                 Text(headerSubtitle)
@@ -283,7 +283,7 @@ struct ToyakoNextWorkspace: View {
     private var activeDestination: ToyakoNextDestination { selection ?? .home }
 
     private var headerSubtitle: String {
-        switch selection {
+        switch activeDestination {
         case .home: "\(library.tracks.count.formatted()) tracks in your collection"
         case .tracks: "Your complete local collection"
         case .albums: "\(library.albums.count.formatted()) albums"
