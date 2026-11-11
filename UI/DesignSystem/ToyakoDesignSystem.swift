@@ -224,7 +224,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
     let minimumItemWidth: CGFloat
     let rowSpacing: CGFloat
     let columnSpacing: CGFloat
-    let rowAlignment: HorizontalAlignment
+    let rowAlignment: Alignment
     @ViewBuilder let content: (Item) -> Content
 
     init(
@@ -233,7 +233,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
         minimumItemWidth: CGFloat = 180,
         rowSpacing: CGFloat = 24,
         columnSpacing: CGFloat = 18,
-        rowAlignment: HorizontalAlignment = .center,
+        rowAlignment: Alignment = .center,
         @ViewBuilder content: @escaping (Item) -> Content
     ) {
         self.items = items
