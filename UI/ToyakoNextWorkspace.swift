@@ -127,7 +127,7 @@ struct ToyakoNextWorkspace: View {
                         } label: {
                             Image(systemName: "sidebar.right")
                         }
-                        .accessibilityLabel(isQueueVisible ? "Show queue" : "Show queue")
+                        .accessibilityLabel(isCompactLayout ? "Open queue" : (isQueueVisible ? "Hide queue" : "Show queue"))
                         Button(action: onSettings) {
                             Image(systemName: "slider.horizontal.3")
                         }
@@ -239,31 +239,33 @@ struct ToyakoNextWorkspace: View {
     private var mainWorkspace: some View {
         VStack(alignment: .leading, spacing: 0) {
             workspaceHeader
-            ScrollView {
-                Group {
-                    switch activeDestination {
-                    case .home:
-                        overview
-                    case .tracks:
-                        TrackGridView(tracks: filteredTracks, library: library)
-                    case .albums:
-                        AlbumGridView(albums: filteredAlbums, library: library)
-                    case .artists:
-                        ArtistListView(artists: filteredArtists, library: library)
-                    case .playlists:
-                        AllPlaylistsGridView(
-                            playlists: library.playlists,
-                            library: library,
-                            onAddSongs: onEditPlaylist,
-                            onRename: onRenamePlaylist
-                        )
-                    case .statistics:
-                        statistics
+            Group {
+                switch activeDestination {
+                case .home:
+                    ScrollView {
+                        overview.padding(.bottom, 28)
                     }
+                    .scrollIndicators(.hidden)
+                case .tracks:
+                    TrackGridView(tracks: filteredTracks, library: library)
+                case .albums:
+                    AlbumGridView(albums: filteredAlbums, library: library)
+                case .artists:
+                    ArtistListView(artists: filteredArtists, library: library)
+                case .playlists:
+                    AllPlaylistsGridView(
+                        playlists: library.playlists,
+                        library: library,
+                        onAddSongs: onEditPlaylist,
+                        onRename: onRenamePlaylist
+                    )
+                case .statistics:
+                    ScrollView {
+                        statistics.padding(.bottom, 28)
+                    }
+                    .scrollIndicators(.hidden)
                 }
-                .padding(.bottom, 28)
             }
-            .scrollIndicators(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
