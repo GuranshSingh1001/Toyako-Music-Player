@@ -249,6 +249,7 @@ struct ArtistDetailView: View {
     @State private var artwork: UIImage?
     @State private var showAllTracks = false
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
+    @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
 
     init(
         artist: ArtistGroup,
@@ -331,8 +332,8 @@ struct ArtistDetailView: View {
 
     @ViewBuilder
     private func hero(availableWidth: CGFloat) -> some View {
-        let wideHero = availableWidth >= 900
-        let artworkSize = wideHero ? min(210.0, max(180.0, availableWidth * 0.20)) : min(180.0, max(150.0, availableWidth * 0.30))
+        let wideHero = availableWidth >= 700
+        let artworkSize = CGFloat(libraryArtworkSize)
 
         if wideHero {
             HStack(alignment: .center, spacing: 36) {
@@ -360,7 +361,7 @@ struct ArtistDetailView: View {
 
     private var artistTitleBlock: some View {
         Text(artist.name)
-            .font(.system(size: 42, weight: .bold, design: .rounded))
+            .font(.system(size: 34, weight: .bold, design: .rounded))
             .lineLimit(2)
             .minimumScaleFactor(0.72)
     }
@@ -379,19 +380,9 @@ struct ArtistDetailView: View {
             }
             .buttonStyle(ToyakoSecondaryButtonStyle())
 
-            Menu {
-                Button {
-                    audioManager.enqueue(artist.tracks)
-                } label: {
-                    Label("Add to Queue", systemImage: "text.badge.plus")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            .buttonStyle(ToyakoIconButtonStyle(size: ToyakoDesign.Metrics.largeControlHeight))
-            .accessibilityLabel("More artist actions")
+
         }
-        .frame(maxWidth: compact ? .infinity : 600)
+        .frame(maxWidth: 430)
     }
 
     private func artistArtwork(size: CGFloat) -> some View {
@@ -521,15 +512,16 @@ struct ArtistDetailView: View {
             CenteredLibraryGrid(
                 items: albums,
                 availableWidth: availableWidth,
-                minimumItemWidth: ToyakoArtworkSize.libraryCardWidth,
+                minimumItemWidth: CGFloat(libraryArtworkSize) + 24,
                 rowSpacing: 24,
-                columnSpacing: 18
+                columnSpacing: 18,
+                rowAlignment: .leading
             ) { album in
                 Button {
                     guard !album.tracks.isEmpty else { return }
                     audioManager.startQueue(tracks: album.tracks, startIndex: 0)
                 } label: {
-                    ArtistAlbumCard(album: album)
+                    ArtistAlbumCard(album: album, artworkSize: CGFloat(libraryArtworkSize))
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -737,6 +729,7 @@ private struct ArtistArtworkPickerSheet: View {
 
 private struct ArtistAlbumCard: View {
     let album: ArtistAlbum
+    let artworkSize: CGFloat
 
     private var totalDuration: String {
         let seconds = max(0, Int(album.tracks.reduce(0) { $0 + $1.duration }.rounded()))
@@ -747,10 +740,10 @@ private struct ArtistAlbumCard: View {
         VStack(alignment: .leading, spacing: 9) {
             LazyArtwork(
                 url: album.artworkURL,
-                size: ToyakoArtworkSize.libraryArtwork,
+                size: artworkSize,
                 cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius
             )
-            .frame(width: ToyakoArtworkSize.libraryArtwork, height: ToyakoArtworkSize.libraryArtwork)
+            .frame(width: artworkSize, height: artworkSize)
             .toyakoArtwork(cornerRadius: ToyakoDesign.Metrics.artworkSmallRadius)
 
             Text(album.name)
@@ -775,7 +768,7 @@ private struct ArtistAlbumCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .frame(width: ToyakoArtworkSize.libraryCardWidth, alignment: .leading)
+        .frame(width: artworkSize + 24, alignment: .leading)
         .toyakoCard(cornerRadius: ToyakoDesign.Metrics.cardRadius)
         .contentShape(RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.cardRadius, style: .continuous))
     }
