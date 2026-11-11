@@ -362,13 +362,13 @@ struct ContentView: View {
 
         NavigationStack {
             Group {
-                if category == .artists || category == .allPlaylists {
+                if category == .allPlaylists {
                     detailContent(for: category)
                 } else {
                     detailContent(for: category)
                         .searchable(
                             text: $searchText,
-                            prompt: "Search library"
+                            prompt: category == .artists ? "Search artists" : "Search library"
                         )
                 }
             }
