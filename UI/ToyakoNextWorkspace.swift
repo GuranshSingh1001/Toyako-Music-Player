@@ -46,7 +46,7 @@ struct ToyakoNextWorkspace: View {
     let onRefresh: () -> Void
 
     @EnvironmentObject private var audioManager: AudioEngineManager
-    @State private var selection: ToyakoNextDestination = .home
+    @State private var selection: ToyakoNextDestination? = .home
     @State private var searchText = ""
     @State private var isQueueVisible = true
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -202,7 +202,7 @@ struct ToyakoNextWorkspace: View {
             workspaceHeader
             ScrollView {
                 Group {
-                    switch selection {
+                    switch activeDestination {
                     case .home:
                         overview
                     case .tracks:
@@ -279,6 +279,8 @@ struct ToyakoNextWorkspace: View {
         .padding(.top, 22)
         .padding(.bottom, 18)
     }
+
+    private var activeDestination: ToyakoNextDestination { selection ?? .home }
 
     private var headerSubtitle: String {
         switch selection {
@@ -789,6 +791,10 @@ struct ToyakoNextNowPlayingView: View {
         .zIndex(100)
     }
 
+    private var activeLyricID: UUID? {
+        audioManager.currentLyrics.last(where: { $0.time <= clock.currentTime })?.id
+    }
+
     private var lyricsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Synchronised lyrics")
@@ -817,11 +823,10 @@ struct ToyakoNextNowPlayingView: View {
                         }
                         .padding(20)
                     }
-                    .onChange(of: clock.currentTime) { _, time in
-                        if let active = audioManager.currentLyrics.last(where: { $0.time <= time }) {
-                            withAnimation(.easeInOut(duration: 0.35)) {
-                                proxy.scrollTo(active.id, anchor: .center)
-                            }
+                    .onChange(of: activeLyricID) { _, activeID in
+                        guard let activeID else { return }
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            proxy.scrollTo(activeID, anchor: .center)
                         }
                     }
                 }
