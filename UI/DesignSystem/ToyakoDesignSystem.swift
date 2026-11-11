@@ -224,6 +224,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
     let minimumItemWidth: CGFloat
     let rowSpacing: CGFloat
     let columnSpacing: CGFloat
+    let rowAlignment: HorizontalAlignment
     @ViewBuilder let content: (Item) -> Content
 
     init(
@@ -232,6 +233,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
         minimumItemWidth: CGFloat = 180,
         rowSpacing: CGFloat = 24,
         columnSpacing: CGFloat = 18,
+        rowAlignment: HorizontalAlignment = .center,
         @ViewBuilder content: @escaping (Item) -> Content
     ) {
         self.items = items
@@ -239,6 +241,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
         self.minimumItemWidth = minimumItemWidth
         self.rowSpacing = rowSpacing
         self.columnSpacing = columnSpacing
+        self.rowAlignment = rowAlignment
         self.content = content
     }
 
@@ -261,7 +264,7 @@ struct CenteredLibraryGrid<Item: Identifiable, Content: View>: View {
                     }
                 }
                 // Center every row, regardless of how many cards it contains.
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: rowAlignment)
             }
         }
     }
