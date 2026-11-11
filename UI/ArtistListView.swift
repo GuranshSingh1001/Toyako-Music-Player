@@ -6,15 +6,9 @@ struct ArtistListView: View {
     let library: LocalLibrary
 
     @EnvironmentObject private var audioManager: AudioEngineManager
-    @State private var artistSearch = ""
     @State private var artistBeingEdited: ArtistGroup?
     @State private var artworkRefreshID = 0
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
-
-    private var visibleArtists: [ArtistGroup] {
-        guard !artistSearch.isEmpty else { return artists }
-        return artists.filter { $0.name.localizedCaseInsensitiveContains(artistSearch) }
-    }
 
     var body: some View {
         ZStack {
@@ -26,41 +20,16 @@ struct ArtistListView: View {
             GeometryReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 18) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text("Artists")
-                                .font(ToyakoDesign.Typography.screenTitle)
-                            Spacer()
-                            Text("\(visibleArtists.count) Artists")
-                                .font(ToyakoDesign.Typography.metadata)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        HStack(spacing: 9) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundStyle(.secondary)
-                            TextField("Search artists…", text: $artistSearch)
-                                .textFieldStyle(.plain)
-                                .submitLabel(.search)
-                            if !artistSearch.isEmpty {
-                                Button {
-                                    artistSearch = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .frame(height: ToyakoDesign.Metrics.standardControlHeight)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ToyakoDesign.Metrics.controlRadius, style: .continuous))
-
-                        if visibleArtists.isEmpty {
-                            ContentUnavailableView.search(text: artistSearch)
-                                .frame(maxWidth: .infinity, minHeight: 220)
+                        if artists.isEmpty {
+                            ContentUnavailableView(
+                                "No Artists",
+                                systemImage: "music.mic",
+                                description: Text("Import music to start building your artist library.")
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 220)
                         } else {
                             CenteredLibraryGrid(
-                                items: visibleArtists,
+                                items: artists,
                                 availableWidth: proxy.size.width - (ToyakoDesign.Metrics.screenHorizontal * 2),
                                 minimumItemWidth: CGFloat(libraryArtworkSize) + 24,
                                 rowSpacing: 24,
