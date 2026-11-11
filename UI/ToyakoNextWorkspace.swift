@@ -240,30 +240,37 @@ struct ToyakoNextWorkspace: View {
         VStack(alignment: .leading, spacing: 0) {
             workspaceHeader
             Group {
-                switch activeDestination {
-                case .home:
+                if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     ScrollView {
-                        overview.padding(.bottom, 28)
+                        searchResults.padding(.bottom, 28)
                     }
                     .scrollIndicators(.hidden)
-                case .tracks:
-                    TrackGridView(tracks: filteredTracks, library: library)
-                case .albums:
-                    AlbumGridView(albums: filteredAlbums, library: library)
-                case .artists:
-                    ArtistListView(artists: filteredArtists, library: library)
-                case .playlists:
-                    AllPlaylistsGridView(
-                        playlists: library.playlists,
-                        library: library,
-                        onAddSongs: onEditPlaylist,
-                        onRename: onRenamePlaylist
-                    )
-                case .statistics:
-                    ScrollView {
-                        statistics.padding(.bottom, 28)
+                } else {
+                    switch activeDestination {
+                    case .home:
+                        ScrollView {
+                            overview.padding(.bottom, 28)
+                        }
+                        .scrollIndicators(.hidden)
+                    case .tracks:
+                        ToyakoNextTrackBrowser(tracks: filteredTracks, library: library)
+                    case .albums:
+                        AlbumGridView(albums: filteredAlbums, library: library)
+                    case .artists:
+                        ArtistListView(artists: filteredArtists, library: library)
+                    case .playlists:
+                        AllPlaylistsGridView(
+                            playlists: library.playlists,
+                            library: library,
+                            onAddSongs: onEditPlaylist,
+                            onRename: onRenamePlaylist
+                        )
+                    case .statistics:
+                        ScrollView {
+                            statistics.padding(.bottom, 28)
+                        }
+                        .scrollIndicators(.hidden)
                     }
-                    .scrollIndicators(.hidden)
                 }
             }
         }
@@ -431,6 +438,71 @@ struct ToyakoNextWorkspace: View {
         .padding(.top, 6)
     }
 
+    private var searchResults: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if !filteredTracks.isEmpty {
+                NextSectionHeader(title: "Tracks", detail: "\(filteredTracks.count) MATCHES")
+                ForEach(Array(filteredTracks.prefix(10).enumerated()), id: \.element.id) { _, track in
+                    NextTrackRow(
+                        track: track,
+                        artworkURL: library.artworkURL(for: track),
+                        active: audioManager.currentTrack?.id == track.id
+                    ) {
+                        audioManager.playStandalonePreservingQueue(track)
+                    }
+                }
+            }
+            if !filteredAlbums.isEmpty {
+                NextSectionHeader(title: "Albums", detail: "\(filteredAlbums.count) MATCHES")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 16)], alignment: .leading, spacing: 18) {
+                    ForEach(filteredAlbums.prefix(8)) { album in
+                        NavigationLink {
+                            AlbumDetailView(album: album, library: library)
+                                .navigationTitle(album.name)
+                                .navigationBarTitleDisplayMode(.inline)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 7) {
+                                LazyAlbumArtwork(url: album.artworkURL, cornerRadius: 11)
+                                    .aspectRatio(1, contentMode: .fit)
+                                Text(album.name).font(.subheadline.weight(.semibold)).lineLimit(1).foregroundStyle(.primary)
+                                Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            if !filteredArtists.isEmpty {
+                NextSectionHeader(title: "Artists", detail: "\(filteredArtists.count) MATCHES")
+                ForEach(filteredArtists.prefix(8)) { artist in
+                    Button {
+                        searchText = ""
+                        selection = .artists
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "person.crop.circle")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 42, height: 42)
+                                .background(ToyakoDesign.Color.surface, in: Circle())
+                            Text(artist.name).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                            Spacer()
+                            Text("\(artist.tracks.count) tracks").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if filteredTracks.isEmpty && filteredAlbums.isEmpty && filteredArtists.isEmpty {
+                ContentUnavailableView.search(text: searchText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 48)
+            }
+        }
+        .padding(.horizontal, 26)
+        .padding(.top, 8)
+    }
+
     private var statistics: some View {
         VStack(alignment: .leading, spacing: 18) {
             NextSectionHeader(title: "Library overview", detail: "ON THIS DEVICE")
@@ -446,6 +518,89 @@ struct ToyakoNextWorkspace: View {
                 .padding(.top, 8)
         }
         .padding(26)
+    }
+}
+
+private struct ToyakoNextTrackBrowser: View {
+    let tracks: [LocalTrack]
+    let library: LocalLibrary
+    @EnvironmentObject private var audioManager: AudioEngineManager
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 1) {
+                HStack {
+                    Text("TRACK")
+                    Spacer()
+                    Text("ALBUM")
+                    Text("TIME")
+                        .frame(width: 52, alignment: .trailing)
+                }
+                .font(.system(size: 9, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 26)
+                .padding(.vertical, 10)
+
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    Button {
+                        audioManager.playStandalonePreservingQueue(track)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(String(format: "%02d", index + 1))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 26, alignment: .trailing)
+                            LazyArtwork(url: library.artworkURL(for: track), size: 42, cornerRadius: 8)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(track.title)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(track.artist)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            Text(track.album)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .frame(maxWidth: 150, alignment: .trailing)
+                            Text(nextTime(track.duration))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 52, alignment: .trailing)
+                        }
+                        .padding(.horizontal, 26)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .draggable(track.url.absoluteString)
+                    .contextMenu {
+                        Button {
+                            audioManager.enqueue([track])
+                        } label: {
+                            Label("Add to Queue", systemImage: "text.badge.plus")
+                        }
+                        Button {
+                            audioManager.playStandalonePreservingQueue(track)
+                        } label: {
+                            Label("Play Now", systemImage: "play.fill")
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 28)
+        }
+        .scrollIndicators(.hidden)
+        .overlay {
+            if tracks.isEmpty {
+                ContentUnavailableView("No tracks found", systemImage: "music.note.list")
+            }
+        }
     }
 }
 
