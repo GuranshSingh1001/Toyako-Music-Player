@@ -49,6 +49,8 @@ struct ToyakoNextWorkspace: View {
     @State private var selection: ToyakoNextDestination? = .home
     @State private var searchText = ""
     @State private var isQueueVisible = true
+    @State private var isCompactLayout = false
+    @State private var showCompactQueue = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     private var filteredTracks: [LocalTrack] {
@@ -93,6 +95,10 @@ struct ToyakoNextWorkspace: View {
                         }
                     }
                     .background(ToyakoDesign.Color.canvas)
+                    .onAppear { isCompactLayout = detailGeometry.size.width < 880 }
+                    .onChange(of: detailGeometry.size.width) { _, width in
+                        isCompactLayout = width < 880
+                    }
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -111,13 +117,17 @@ struct ToyakoNextWorkspace: View {
                         }
                         .accessibilityLabel("Refresh library")
                         Button {
-                            withAnimation(.easeInOut(duration: 0.24)) {
-                                isQueueVisible.toggle()
+                            if isCompactLayout {
+                                showCompactQueue = true
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.24)) {
+                                    isQueueVisible.toggle()
+                                }
                             }
                         } label: {
-                            Image(systemName: isQueueVisible ? "sidebar.right" : "sidebar.right")
+                            Image(systemName: "sidebar.right")
                         }
-                        .accessibilityLabel(isQueueVisible ? "Hide queue panel" : "Show queue panel")
+                        .accessibilityLabel(isQueueVisible ? "Show queue" : "Show queue")
                         Button(action: onSettings) {
                             Image(systemName: "slider.horizontal.3")
                         }
@@ -137,6 +147,19 @@ struct ToyakoNextWorkspace: View {
                 .padding(.top, 8)
         }
         .animation(.easeInOut(duration: 0.22), value: isQueueVisible)
+        .sheet(isPresented: $showCompactQueue) {
+            NavigationStack {
+                ToyakoNextQueuePanel()
+                    .navigationTitle("Queue")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showCompactQueue = false }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .onChange(of: searchText) { _, value in
             if !value.isEmpty && selection == .home {
                 selection = .tracks
