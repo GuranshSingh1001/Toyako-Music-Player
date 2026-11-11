@@ -16,7 +16,8 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
     @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
-    @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true\n    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "classic"
+    @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
+    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "classic"
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
