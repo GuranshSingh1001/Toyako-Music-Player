@@ -294,6 +294,70 @@ struct ToyakoNextHomeView: View {
     }
 }
 
+
+/// Compact Next-mode controls keep the playful visual language visible on every tab.
+struct ToyakoNextMiniPlayer: View {
+    @EnvironmentObject private var audioManager: AudioEngineManager
+    @EnvironmentObject private var clock: PlaybackClock
+    let isNowPlayingPresented: Bool
+    let onOpenNowPlaying: () -> Void
+
+    private let ink = Color(red: 0.16, green: 0.17, blue: 0.22)
+    private let lime = Color(red: 0.77, green: 0.96, blue: 0.36)
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Button(action: onOpenNowPlaying) {
+                HStack(spacing: 10) {
+                    if let track = audioManager.currentTrack {
+                        LazyArtwork(url: track.url, size: 42, cornerRadius: 11)
+                    } else {
+                        RoundedRectangle(cornerRadius: 11)
+                            .fill(lime)
+                            .frame(width: 42, height: 42)
+                            .overlay(Image(systemName: "waveform").foregroundStyle(ink))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(audioManager.currentTrack?.title ?? "Pick your soundtrack")
+                            .font(.system(size: 12, weight: .black, design: .rounded))
+                            .foregroundStyle(ink)
+                            .lineLimit(1)
+                        Text(audioManager.currentTrack?.artist ?? "Your library is waiting")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(ink.opacity(0.58))
+                            .lineLimit(1)
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(ink.opacity(0.12))
+                                Capsule().fill(ink).frame(width: proxy.size.width * min(max(clock.playbackProgress, 0), 1))
+                            }
+                        }
+                        .frame(height: 3)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            Button { audioManager.togglePlayPause() } label: {
+                Image(systemName: audioManager.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(ink)
+                    .frame(width: 42, height: 42)
+                    .background(lime, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(audioManager.currentTrack == nil)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(red: 0.98, green: 0.96, blue: 0.90), in: Capsule())
+        .overlay(Capsule().stroke(ink.opacity(0.16), lineWidth: 1.5))
+        .allowsHitTesting(!isNowPlayingPresented)
+    }
+}
+
 /// A separate, playful Now Playing surface. It talks to the same audio engine
 /// as Classic, so changing presentation never changes the active song or queue.
 struct ToyakoNextNowPlayingView: View {
