@@ -457,7 +457,7 @@ struct ArtistDetailView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: ToyakoDesign.Metrics.sectionSpacing) {
                         popularTracks
-                        albumSection
+                        albumSection(availableWidth: max(0, proxy.size.width - (heroHorizontalPadding(for: proxy.size.width) * 2)))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, heroHorizontalPadding(for: proxy.size.width))
@@ -663,8 +663,8 @@ struct ArtistDetailView: View {
         }
     }
 
-    private var albumSection: some View {
-        VStack(alignment: .leading, spacing: ToyakoDesign.Metrics.sectionSpacing) {
+    private func albumSection(availableWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Albums")
                     .font(ToyakoDesign.Typography.section)
@@ -674,59 +674,43 @@ struct ArtistDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
-            GeometryReader { proxy in
-                let availableWidth = proxy.size.width
-                let cardWidth = ToyakoArtworkSize.libraryCardWidth
-                let columnSpacing: CGFloat = 18
-                let columns = max(1, Int((availableWidth + columnSpacing) / (cardWidth + columnSpacing)))
+            CenteredLibraryGrid(
+                items: albums,
+                availableWidth: availableWidth,
+                minimumItemWidth: ToyakoArtworkSize.libraryCardWidth,
+                rowSpacing: 24,
+                columnSpacing: 18
+            ) { album in
+                Button {
+                    guard !album.tracks.isEmpty else { return }
+                    audioManager.startQueue(tracks: album.tracks, startIndex: 0)
+                } label: {
+                    ArtistAlbumCard(album: album)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button {
+                        guard !album.tracks.isEmpty else { return }
+                        audioManager.startQueue(tracks: album.tracks, startIndex: 0)
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                    }
 
-                LazyVStack(alignment: .leading, spacing: 24) {
-                    ForEach(Array(albums.chunked(into: columns).enumerated()), id: \.offset) { _, row in
-                        HStack(alignment: .top, spacing: columnSpacing) {
-                            ForEach(row) { album in
-                                Button {
-                                    guard !album.tracks.isEmpty else { return }
-                                    audioManager.startQueue(tracks: album.tracks, startIndex: 0)
-                                } label: {
-                                    ArtistAlbumCard(album: album)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button {
-                                        audioManager.startQueue(tracks: album.tracks, startIndex: 0)
-                                    } label: {
-                                        Label("Play", systemImage: "play.fill")
-                                    }
-
-                                    Button {
-                                        guard !album.tracks.isEmpty else { return }
-                                        if !audioManager.isShuffle {
-                                            audioManager.toggleShuffle()
-                                        }
-                                        audioManager.startQueue(
-                                            tracks: album.tracks,
-                                            startIndex: Int.random(in: album.tracks.indices)
-                                        )
-                                    } label: {
-                                        Label("Shuffle", systemImage: "shuffle")
-                                    }
-                                }
-                            }
+                    Button {
+                        guard !album.tracks.isEmpty else { return }
+                        if !audioManager.isShuffle {
+                            audioManager.toggleShuffle()
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        audioManager.startQueue(
+                            tracks: album.tracks,
+                            startIndex: Int.random(in: album.tracks.indices)
+                        )
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .frame(height: albumGridHeight(availableWidth: 0))
-            .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private func albumGridHeight(availableWidth: CGFloat) -> CGFloat {
-        // The GeometryReader is allowed to grow with its content; this value is
-        // intentionally zero so the parent ScrollView measures the grid naturally.
-        0
     }
 
     private func playArtist() {
@@ -953,11 +937,3 @@ private struct ArtistAlbumCard: View {
     }
 }
 
-private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [self] }
-        return stride(from: 0, to: count, by: size).map {
-            Array(self[$0..<Swift.min($0 + size, count)])
-        }
-    }
-}
