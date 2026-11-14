@@ -26,6 +26,7 @@ struct ContentView: View {
         showFilePicker = false
 
     @AppStorage("Toyako.NowPlayingPresented") private var showNowPlaying = false
+    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "next"
 
     @State private var
         showNewPlaylistAlert = false
@@ -58,22 +59,44 @@ struct ContentView: View {
     }
 
     private var presentedContent: some View {
-        mainTabView
-
+        Group {
+            if interfaceMode == "next" {
+                ToyakoNextWorkspace(
+                    library: library,
+                    onImport: { showFilePicker = true },
+                    onNewPlaylist: { showNewPlaylistAlert = true },
+                    onEditPlaylist: { playlistToEdit = $0 },
+                    onRenamePlaylist: {
+                        renameText = $0.name
+                        playlistToRename = $0
+                    },
+                    onSettings: { showSettings = true },
+                    onOpenNowPlaying: {
+                        withAnimation(.easeInOut(duration: 0.28)) {
+                            showNowPlaying = true
+                        }
+                    },
+                    onRefresh: { library.reloadFiles() }
+                )
+            } else {
+                mainTabView
+            }
+        }
         // MARK: - Now Playing
 
         .overlay {
             if showNowPlaying {
-                NowPlayingView(
-                    isPresented:
-                        $showNowPlaying,
-                )
+                Group {
+                    if interfaceMode == "next" {
+                        ToyakoNextNowPlayingView(
+                            isPresented: $showNowPlaying,
+                            library: library
+                        )
+                    } else {
+                        NowPlayingView(isPresented: $showNowPlaying)
+                    }
+                }
                 .ignoresSafeArea(.all)
-                // NowPlayingView owns its dismissal animation by moving its
-                // own surface off-screen. Do not apply a second parent removal
-                // transition here: on Home, that extra transition forces the
-                // large nested ScrollView/LazyVStack hierarchy to be reconciled
-                // while the full-screen player is already animating away.
                 .zIndex(100)
             }
         }

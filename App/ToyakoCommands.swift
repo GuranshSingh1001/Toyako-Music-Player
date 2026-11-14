@@ -5,10 +5,16 @@ import Foundation
 /// On iPad, the system reveals this menu bar when the user swipes down from
 /// the top edge while using Windowed Apps or Stage Manager.
 struct ToyakoCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("Toyako.NowPlayingPresented") private var isNowPlayingPresented = false
 
     var body: some Commands {
         CommandMenu("File") {
+            Button("New Workspace Window", systemImage: "macwindow.badge.plus") {
+                openWindow(id: "main")
+            }
+            .keyboardShortcut("n", modifiers: [.command, .option, .shift])
+
             Button("Import Songs…", systemImage: "square.and.arrow.down") {
                 NotificationCenter.default.post(name: .toyakoCommandImportSongs, object: nil)
             }

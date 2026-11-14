@@ -17,12 +17,25 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
     @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
     @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
+    @AppStorage("Toyako.Interface.Mode") private var interfaceMode = "next"
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Interface") {
+                    Picker("Experience", selection: $interfaceMode) {
+                        Text("Toyako Next").tag("next")
+                        Text("Classic").tag("classic")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Toyako Next is the new iPad-first workspace. Classic preserves the original interface.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Appearance") {
                     Picker("Theme", selection: $appearance) {
                         ForEach(AppAppearance.allCases) { option in
