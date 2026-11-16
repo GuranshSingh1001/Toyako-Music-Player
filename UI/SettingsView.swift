@@ -42,7 +42,7 @@ struct SettingsView: View {
                         HStack {
                             Text("Library Cover Art Size")
                             Spacer()
-                            Text("\(Int(libraryArtworkSize)) pt")
+                            Text("\(Int(artworkSizeDraft)) pt")
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
