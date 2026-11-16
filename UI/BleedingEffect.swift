@@ -587,7 +587,7 @@ struct ArtworkBleedPageBackground: View {
                             .opacity(colorScheme == .dark ? 0.22 : 0.075)
                             .scaleEffect(1.08)
 
-                        Image(uiImage: image)
+                        Image(uiImage: artworkImage)
                             .resizable()
                             .scaledToFill()
                             .frame(
@@ -659,7 +659,7 @@ struct ArtworkBleedPageBackground: View {
             let loaded = await ArtworkStore.shared.data(for: artworkURL)
             guard !Task.isCancelled else { return }
             artworkData = loaded
-            artworkImage = loaded.flatMap(UIImage.init(data:)
+            artworkImage = loaded.flatMap(UIImage.init(data:))
         }
     }
 }
