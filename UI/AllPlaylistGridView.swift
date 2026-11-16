@@ -82,6 +82,7 @@ struct AllPlaylistsGridView: View {
                 .padding(.bottom, ToyakoDesign.Metrics.screenBottom + 24)
             }
                 .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                .animation(.snappy(duration: 0.22), value: libraryArtworkSize)
             }
         }
         .confirmationDialog(
