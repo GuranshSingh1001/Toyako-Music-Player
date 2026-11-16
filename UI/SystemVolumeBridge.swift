@@ -14,6 +14,15 @@ struct AppSystemVolumeBridge: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MPVolumeView {
         let view = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        // MPVolumeView has an intrinsic slider size and can draw its UIKit
+        // subviews outside the tiny frame unless the native view clips them.
+        // Keep it mounted for system-volume writes, but never let it render or
+        // receive touches as a second user-facing slider.
+        view.clipsToBounds = true
+        view.layer.masksToBounds = true
+        view.isUserInteractionEnabled = false
+        view.isAccessibilityElement = false
+        view.accessibilityElementsHidden = true
         view.showsRouteButton = false
         view.showsVolumeSlider = true
 
