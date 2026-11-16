@@ -50,6 +50,19 @@ struct SettingsView: View {
                         Slider(
                             value: $libraryArtworkSize,
                             in: 120...220,
+                            label: {
+                                Text("Library Cover Art Size")
+                            },
+                            minimumValueLabel: {
+                                Text("120")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            },
+                            maximumValueLabel: {
+                                Text("220")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            },
                             onEditingChanged: { isEditing in
                                 // Keep the thumb continuous while dragging, then
                                 // snap to the nearest 5 pt only after release.
@@ -57,17 +70,7 @@ struct SettingsView: View {
                                     libraryArtworkSize = (libraryArtworkSize / 5).rounded() * 5
                                 }
                             }
-                        ) {
-                            Text("Library Cover Art Size")
-                        } minimumValueLabel: {
-                            Text("120")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        } maximumValueLabel: {
-                            Text("220")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                        )
 
                         Text("Controls the square cover size on Home, Tracks, Albums, and Playlists.")
                             .font(.caption)
