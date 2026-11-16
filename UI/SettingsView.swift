@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
+    @StateObject private var performanceMonitor = AppPerformanceMonitor()
 
     var body: some View {
         NavigationStack {
@@ -49,7 +50,13 @@ struct SettingsView: View {
                         Slider(
                             value: $libraryArtworkSize,
                             in: 120...220,
-                            step: 5
+                            onEditingChanged: { isEditing in
+                                // Keep the thumb continuous while dragging, then
+                                // snap to the nearest 5 pt only after release.
+                                if !isEditing {
+                                    libraryArtworkSize = (libraryArtworkSize / 5).rounded() * 5
+                                }
+                            }
                         ) {
                             Text("Library Cover Art Size")
                         } minimumValueLabel: {
@@ -154,6 +161,14 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Performance") {
+                    LabeledContent("Memory", value: performanceMonitor.memoryDescription)
+                    LabeledContent("CPU", value: performanceMonitor.cpuDescription)
+                    Text("CPU and memory are sampled approximately once per second. iOS does not provide a supported public API for reporting this app's live GPU utilization.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("About") {
                     LabeledContent("App", value: "Toyako")
                     LabeledContent("Version", value: "2.1.0")
@@ -180,6 +195,10 @@ struct SettingsView: View {
         .tint(ToyakoDesign.Color.accent)
         .onAppear {
             ToyakoPreferences.registerDefaults()
+            performanceMonitor.start()
+        }
+        .onDisappear {
+            performanceMonitor.stop()
         }
     }
 }
