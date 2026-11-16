@@ -60,6 +60,18 @@ struct OfflineMusicApp: App {
                 .environmentObject(audioManager.clock)
                 .environmentObject(remoteServer)
                 .onAppear {
+                    // Keep system-volume observation live without taking audio
+                    // focus away from another app. The ambient + mixWithOthers
+                    // session is non-interrupting; Toyako switches to playback
+                    // only when its own player is explicitly started.
+                    let session = AVAudioSession.sharedInstance()
+                    do {
+                        try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+                        try session.setActive(true)
+                    } catch {
+                        print("Unable to activate non-interrupting volume observation session: \(error)")
+                    }
+
                     remoteServer.attach(to: audioManager)
                     remoteServer.autoStartIfEnabled()
                 }
