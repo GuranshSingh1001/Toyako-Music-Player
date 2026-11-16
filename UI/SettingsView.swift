@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
+    @State private var isEditingLibraryArtworkSize = false
     @StateObject private var performanceMonitor = AppPerformanceMonitor()
 
     var body: some View {
@@ -43,7 +44,7 @@ struct SettingsView: View {
                             Text("Library Cover Art Size")
                             Spacer()
                             Text("\(Int(libraryArtworkSize)) pt")
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(isEditingLibraryArtworkSize ? .red : .secondary)
                                 .monospacedDigit()
                         }
 
@@ -61,6 +62,8 @@ struct SettingsView: View {
                             Text("220")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                        } onEditingChanged: { editing in
+                            isEditingLibraryArtworkSize = editing
                         }
 
                         Text("Controls the square cover size on Home, Tracks, Albums, and Playlists.")
