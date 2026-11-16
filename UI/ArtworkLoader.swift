@@ -143,14 +143,13 @@ struct LazyArtwork: View {
     let size: CGFloat
     let cornerRadius: CGFloat
 
-    @State private var data: Data?
     @State private var decodedImage: UIImage?
 
     init(url: URL?, size: CGFloat, cornerRadius: CGFloat = 12, initialData: Data? = nil) {
         self.url = url
         self.size = size
         self.cornerRadius = cornerRadius
-        _data = State(initialValue: initialData)
+        _decodedImage = State(initialValue: initialData.flatMap(UIImage.init(data:))
     }
 
     var body: some View {
@@ -179,7 +178,6 @@ struct LazyArtwork: View {
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)
             guard !Task.isCancelled else { return }
-            data = loaded
             decodedImage = loaded.flatMap(UIImage.init(data:))
         }
     }
@@ -188,7 +186,6 @@ struct LazyArtwork: View {
 struct LazyAlbumArtwork: View {
     let url: URL?
     let cornerRadius: CGFloat
-    @State private var data: Data?
     @State private var decodedImage: UIImage?
 
     init(url: URL?, cornerRadius: CGFloat = 12) {
@@ -211,7 +208,6 @@ struct LazyAlbumArtwork: View {
             guard let url else { return }
             let loaded = await ArtworkStore.shared.data(for: url)
             guard !Task.isCancelled else { return }
-            data = loaded
             decodedImage = loaded.flatMap(UIImage.init(data:))
         }
     }
