@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Darwin
 
 /// Lightweight process metrics for the Settings diagnostics panel.
