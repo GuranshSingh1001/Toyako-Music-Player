@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.automaticArtistArtworkKey) private var automaticArtistArtwork = false
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
+    @State private var artworkSizeDraft = 180.0
     @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
     @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
     @State private var showClearArtistArtworkConfirmation = false
@@ -47,7 +48,7 @@ struct SettingsView: View {
                         }
 
                         Slider(
-                            value: $libraryArtworkSize,
+                            value: $artworkSizeDraft,
                             in: 120...220,
                             step: 5
                         ) {
@@ -60,6 +61,10 @@ struct SettingsView: View {
                             Text("220")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                        } onEditingChanged: { editing in
+                            if !editing {
+                                libraryArtworkSize = artworkSizeDraft
+                            }
                         }
 
                         Text("Controls the square cover size on Home, Tracks, Albums, and Playlists.")
@@ -180,6 +185,7 @@ struct SettingsView: View {
         .tint(ToyakoDesign.Color.accent)
         .onAppear {
             ToyakoPreferences.registerDefaults()
+            artworkSizeDraft = libraryArtworkSize
         }
     }
 }
