@@ -1542,8 +1542,9 @@ struct SystemVolumeSlider: View {
                 )
             }
             .frame(height: 20)
-            // Follow the exact system-reported volume value. Do not interpolate
-            // between hardware/Control Center volume steps.
+            // Preserve the earlier smooth response to hardware volume-button changes.
+            .transaction { $0.disablesAnimations = false }
+            .animation(.linear(duration: 0.16), value: shownVolume)
 
             Image(systemName: "speaker.wave.2.fill")
                 .font(.system(size: 17, weight: .semibold))
@@ -1623,7 +1624,9 @@ private struct SystemVolumeBridge: UIViewRepresentable {
                 guard let self, let newValue = change.newValue else { return }
 
                 DispatchQueue.main.async {
-                    self.value.wrappedValue = newValue
+                    withAnimation(.linear(duration: 0.16)) {
+                        self.value.wrappedValue = newValue
+                    }
                 }
             }
 
