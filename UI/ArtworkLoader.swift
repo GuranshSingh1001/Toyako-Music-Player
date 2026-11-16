@@ -144,6 +144,7 @@ struct LazyArtwork: View {
     let cornerRadius: CGFloat
 
     @State private var data: Data?
+    @State private var decodedImage: UIImage?
 
     init(url: URL?, size: CGFloat, cornerRadius: CGFloat = 12, initialData: Data? = nil) {
         self.url = url
@@ -154,8 +155,8 @@ struct LazyArtwork: View {
 
     var body: some View {
         Group {
-            if let data, let image = UIImage(data: data) {
-                Image(uiImage: image)
+            if let decodedImage {
+                Image(uiImage: decodedImage)
                     .resizable()
                     .scaledToFill()
             } else {
@@ -169,6 +170,7 @@ struct LazyArtwork: View {
             }
         }
         .frame(width: size, height: size)
+        .animation(.snappy(duration: 0.22), value: size)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         // Placeholder-to-image is a content swap, not a resize, so this
         // only smooths the crossfade when artwork finishes loading — it
@@ -178,6 +180,7 @@ struct LazyArtwork: View {
             let loaded = await ArtworkStore.shared.data(for: url)
             guard !Task.isCancelled else { return }
             data = loaded
+            decodedImage = loaded.flatMap(UIImage.init(data:))
         }
     }
 }
@@ -186,6 +189,7 @@ struct LazyAlbumArtwork: View {
     let url: URL?
     let cornerRadius: CGFloat
     @State private var data: Data?
+    @State private var decodedImage: UIImage?
 
     init(url: URL?, cornerRadius: CGFloat = 12) {
         self.url = url
@@ -194,8 +198,8 @@ struct LazyAlbumArtwork: View {
 
     var body: some View {
         Group {
-            if let data, let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFill()
+            if let decodedImage {
+                Image(uiImage: decodedImage).resizable().scaledToFill()
             } else {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.thinMaterial)
@@ -208,6 +212,7 @@ struct LazyAlbumArtwork: View {
             let loaded = await ArtworkStore.shared.data(for: url)
             guard !Task.isCancelled else { return }
             data = loaded
+            decodedImage = loaded.flatMap(UIImage.init(data:))
         }
     }
 }
