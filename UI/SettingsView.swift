@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @AppStorage(ToyakoPreferences.libraryArtworkSizeKey) private var libraryArtworkSize = 180.0
     @State private var artworkSizeDraft = 180.0
+    @State private var lyricsFontScaleDraft = 1.0
+    @State private var lyricsLineSpacingDraft = 30.0
     @AppStorage(ToyakoPreferences.appearanceKey) private var appearance = AppAppearance.system.rawValue
     @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
     @State private var showClearArtistArtworkConfirmation = false
@@ -91,23 +93,43 @@ struct SettingsView: View {
                         HStack {
                             Text("Text Size")
                             Spacer()
-                            Text("\(Int(lyricsFontScale * 100))%")
+                            Text("\(Int(lyricsFontScaleDraft * 100))%")
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
 
-                        Slider(value: $lyricsFontScale, in: 0.82...1.18, step: 0.01)
+                        Slider(
+                            value: $lyricsFontScaleDraft,
+                            in: 0.82...1.18,
+                            step: 0.01
+                        ) {
+                            Text("Text Size")
+                        } onEditingChanged: { editing in
+                            if !editing {
+                                lyricsFontScale = lyricsFontScaleDraft
+                            }
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Line Spacing")
                             Spacer()
-                            Text("\(Int(lyricsLineSpacing)) pt")
+                            Text("\(Int(lyricsLineSpacingDraft)) pt")
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
-                        Slider(value: $lyricsLineSpacing, in: 8...60, step: 1)
+                        Slider(
+                            value: $lyricsLineSpacingDraft,
+                            in: 8...60,
+                            step: 1
+                        ) {
+                            Text("Line Spacing")
+                        } onEditingChanged: { editing in
+                            if !editing {
+                                lyricsLineSpacing = lyricsLineSpacingDraft
+                            }
+                        }
                     }
                 }
 
@@ -186,6 +208,8 @@ struct SettingsView: View {
         .onAppear {
             ToyakoPreferences.registerDefaults()
             artworkSizeDraft = libraryArtworkSize
+            lyricsFontScaleDraft = lyricsFontScale
+            lyricsLineSpacingDraft = lyricsLineSpacing
         }
     }
 }
