@@ -39,14 +39,8 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Library Cover Art Size")
-                            Spacer()
-                            Text("\(Int(libraryArtworkSize)) pt")
-                                .foregroundColor(isEditingLibraryArtworkSize ? .red : .secondary)
-                                .monospacedDigit()
-                        }
+                    VStack {
+                        Text("Library Cover Art Size")
 
                         Slider(
                             value: $libraryArtworkSize,
@@ -56,19 +50,15 @@ struct SettingsView: View {
                             Text("Library Cover Art Size")
                         } minimumValueLabel: {
                             Text("120")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                         } maximumValueLabel: {
                             Text("220")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                         } onEditingChanged: { editing in
                             isEditingLibraryArtworkSize = editing
                         }
 
-                        Text("Controls the square cover size on Home, Tracks, Albums, and Playlists.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text("\(Int(libraryArtworkSize)) pt")
+                            .foregroundColor(isEditingLibraryArtworkSize ? .red : .blue)
+                            .monospacedDigit()
                     }
                 }
 
