@@ -46,9 +46,11 @@ final class AppPerformanceMonitor: ObservableObject {
         if let previousCPUSeconds, let previousSampleTime {
             let elapsed = max(0.001, now - previousSampleTime)
             let used = max(0, cpuSeconds - previousCPUSeconds)
-            // 100% represents one fully occupied logical CPU core.
-            cpuPercent = min(100 * Double(ProcessInfo.processInfo.activeProcessorCount),
-                             (used / elapsed) * 100)
+            // Normalize process CPU time across all logical CPU cores so
+            // the displayed percentage represents a share of total device
+            // CPU capacity and remains within 0...100%.
+            let coreCount = max(1, Double(ProcessInfo.processInfo.activeProcessorCount))
+            cpuPercent = min(100, (used / elapsed) / coreCount * 100)
         }
 
         previousCPUSeconds = cpuSeconds
