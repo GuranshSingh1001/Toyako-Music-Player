@@ -1957,8 +1957,9 @@ class AudioEngineManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self, self.currentTrack != nil else { return }
-            // Restore the session, but never implicitly resume a user-paused track.
-            _ = self.activateAudioSessionForPlayback()
+            // Merely foregrounding Toyako must not claim the audio session:
+            // doing so would interrupt music already playing in another app.
+            // The session is activated only when the user starts Toyako playback.
             self.updatePlaybackState()
         }
     }
