@@ -1614,9 +1614,6 @@ private struct SystemVolumeBridge: UIViewRepresentable {
         func startObservingSystemVolume() {
             guard volumeObservation == nil else { return }
 
-            let session = AVAudioSession.sharedInstance()
-            try? session.setActive(true)
-
             volumeObservation = session.observe(
                 \.outputVolume,
                 options: [.initial, .new]
