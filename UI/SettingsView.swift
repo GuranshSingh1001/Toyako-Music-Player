@@ -156,9 +156,9 @@ struct SettingsView: View {
                 }
 
                 Section("Performance") {
-                    LabeledContent("Memory", value: performanceMonitor.memoryDescription)
-                    LabeledContent("CPU", value: performanceMonitor.cpuDescription)
-                    Text("CPU and memory are sampled approximately once per second. iOS does not provide a supported public API for reporting this app's live GPU utilization.")
+                    LabeledContent("App Memory", value: performanceMonitor.memoryDescription)
+                    LabeledContent("App CPU (device capacity)", value: performanceMonitor.cpuDescription)
+                    Text("These are Toyako process measurements, sampled approximately once per second. CPU is normalized across all logical CPU cores, so 100% represents the app using the device's full logical CPU capacity. iOS does not provide a supported public API for reporting this app's live GPU utilization.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
