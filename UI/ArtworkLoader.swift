@@ -149,7 +149,7 @@ struct LazyArtwork: View {
         self.url = url
         self.size = size
         self.cornerRadius = cornerRadius
-        _decodedImage = State(initialValue: initialData.flatMap(UIImage.init(data:))
+        _decodedImage = State(initialValue: initialData.flatMap(UIImage.init(data:)))
     }
 
     var body: some View {
