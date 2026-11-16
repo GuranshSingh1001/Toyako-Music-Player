@@ -96,6 +96,7 @@ struct HomeView: View {
                 .toyakoScreenPadding()
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .animation(.snappy(duration: 0.22), value: libraryArtworkSize)
         }
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
