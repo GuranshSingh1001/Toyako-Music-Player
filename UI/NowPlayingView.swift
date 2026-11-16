@@ -1542,6 +1542,11 @@ struct SystemVolumeSlider: View {
                 )
             }
             .frame(height: 20)
+            // The parent Now Playing layout disables broad implicit
+            // animations for performance. Re-enable a short linear transition
+            // locally so hardware volume-button steps don't look like jumps.
+            .transaction { $0.disablesAnimations = false }
+            .animation(.linear(duration: 0.16), value: shownVolume)
 
             Image(systemName: "speaker.wave.2.fill")
                 .font(.system(size: 17, weight: .semibold))
@@ -1621,7 +1626,9 @@ private struct SystemVolumeBridge: UIViewRepresentable {
                 guard let self, let newValue = change.newValue else { return }
 
                 DispatchQueue.main.async {
-                    self.value.wrappedValue = newValue
+                    withAnimation(.linear(duration: 0.16)) {
+                        self.value.wrappedValue = newValue
+                    }
                 }
             }
 
