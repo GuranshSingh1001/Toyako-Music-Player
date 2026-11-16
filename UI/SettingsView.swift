@@ -19,8 +19,6 @@ struct SettingsView: View {
     @AppStorage(ToyakoPreferences.liquidGlassKey) private var liquidGlassEnabled = true
     @State private var showClearArtistArtworkConfirmation = false
     @State private var artistArtworkStatus: String?
-    @State private var isEditingLibraryArtworkSize = false
-    @StateObject private var performanceMonitor = AppPerformanceMonitor()
 
     var body: some View {
         NavigationStack {
@@ -39,8 +37,14 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    VStack {
-                        Text("Library Cover Art Size")
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Library Cover Art Size")
+                            Spacer()
+                            Text("\(Int(libraryArtworkSize)) pt")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
 
                         Slider(
                             value: $libraryArtworkSize,
@@ -50,15 +54,17 @@ struct SettingsView: View {
                             Text("Library Cover Art Size")
                         } minimumValueLabel: {
                             Text("120")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         } maximumValueLabel: {
                             Text("220")
-                        } onEditingChanged: { editing in
-                            isEditingLibraryArtworkSize = editing
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
 
-                        Text("\(Int(libraryArtworkSize)) pt")
-                            .foregroundColor(isEditingLibraryArtworkSize ? .red : .blue)
-                            .monospacedDigit()
+                        Text("Controls the square cover size on Home, Tracks, Albums, and Playlists.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -148,14 +154,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Performance") {
-                    LabeledContent("App Memory", value: performanceMonitor.memoryDescription)
-                    LabeledContent("App CPU (device capacity)", value: performanceMonitor.cpuDescription)
-                    Text("These are Toyako process measurements, sampled approximately once per second. CPU is normalized across all logical CPU cores, so 100% represents the app using the device's full logical CPU capacity. iOS does not provide a supported public API for reporting this app's live GPU utilization.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 Section("About") {
                     LabeledContent("App", value: "Toyako")
                     LabeledContent("Version", value: "2.1.0")
@@ -182,10 +180,6 @@ struct SettingsView: View {
         .tint(ToyakoDesign.Color.accent)
         .onAppear {
             ToyakoPreferences.registerDefaults()
-            performanceMonitor.start()
-        }
-        .onDisappear {
-            performanceMonitor.stop()
         }
     }
 }
