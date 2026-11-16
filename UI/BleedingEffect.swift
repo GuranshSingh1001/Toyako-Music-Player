@@ -24,6 +24,7 @@ struct ColorfulArtworkBleedBackground: View {
     @State private var targetPalette = ArtworkBleedPalette.fallback
     @State private var transitionProgress: CGFloat = 1.0
     @State private var transitionID = 0
+    @State private var artworkImage: UIImage?
 
     var body: some View {
         GeometryReader { geometry in
@@ -57,9 +58,8 @@ struct ColorfulArtworkBleedBackground: View {
 
                     // Very faint artwork texture. The cloudy palette remains
                     // the main visual effect.
-                    if let artworkData,
-                       let image = UIImage(data: artworkData) {
-                        Image(uiImage: image)
+                    if let artworkImage {
+                        Image(uiImage: artworkImage)
                             .resizable()
                             .scaledToFill()
                             .frame(
@@ -99,10 +99,13 @@ struct ColorfulArtworkBleedBackground: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .task(id: artworkData?.hashValue) {
+            artworkImage = artworkData.flatMap(UIImage.init(data:))
+
             let newPalette = await Task.detached(priority: .userInitiated) {
                 ArtworkBleedPalette.extract(from: artworkData)
             }.value
 
+            guard !Task.isCancelled else { return }
             updatePalette(to: newPalette)
         }
     }
@@ -559,6 +562,7 @@ struct ArtworkBleedPageBackground: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ToyakoPreferences.bleedingEffectKey) private var bleedingEffect = true
     @State private var artworkData: Data?
+    @State private var artworkImage: UIImage?
 
     var body: some View {
         GeometryReader { proxy in
@@ -570,8 +574,8 @@ struct ArtworkBleedPageBackground: View {
                 Color(uiColor: .systemBackground)
 
                 if bleedingEffect {
-                    if let artworkData, let image = UIImage(data: artworkData) {
-                        Image(uiImage: image)
+                    if let artworkImage {
+                        Image(uiImage: artworkImage)
                             .resizable()
                             .scaledToFill()
                             .frame(
@@ -648,12 +652,14 @@ struct ArtworkBleedPageBackground: View {
         .task(id: artworkURL) {
             guard let artworkURL else {
                 artworkData = nil
+                artworkImage = nil
                 return
             }
 
             let loaded = await ArtworkStore.shared.data(for: artworkURL)
             guard !Task.isCancelled else { return }
             artworkData = loaded
+            artworkImage = loaded.flatMap(UIImage.init(data:)
         }
     }
 }
